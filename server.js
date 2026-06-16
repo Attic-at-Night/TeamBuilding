@@ -5,6 +5,7 @@ const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
 const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation } = require('./src/url');
+const { MessageType, ClientRole } = require('./src/protocol');
 
 const app = express();
 const sessionManager = new SessionManager();
@@ -38,27 +39,54 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocketServer({ server });
 
+const handlers = {
+  [MessageType.DISPLAY_REGISTER](message, socket) {
+    sessionManager.registerDisplay(message.sessionId, socket);
+  },
+
+  [MessageType.CONTROLLER_JOIN](message, socket) {
+    sessionManager.joinController(message.sessionId, message.name, socket);
+  },
+
+  [MessageType.GAME_START](_message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY) {
+      sessionManager.startGame(meta.sessionId);
+    }
+  },
+
+  [MessageType.PLAYER_INPUT](message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.CONTROLLER) {
+      sessionManager.handleInput(meta.sessionId, meta.playerId, message.input);
+    }
+  },
+
+  [MessageType.RESYNC_REQUEST](_message, socket) {
+    const meta = socket.meta;
+    if (meta?.sessionId) {
+      sessionManager.resync(meta.sessionId, socket);
+    }
+  },
+};
+
 wss.on('connection', (socket) => {
   socket.on('message', (rawMessage) => {
     let message;
     try {
       message = JSON.parse(String(rawMessage));
     } catch {
-      socket.send(JSON.stringify({ type: 'join_error', message: 'Invalid message format.' }));
+      socket.send(JSON.stringify({ type: MessageType.JOIN_ERROR, message: 'Invalid message format.' }));
       return;
     }
 
-    if (message.type === 'host_register') {
-      sessionManager.registerHost(message.sessionId, socket);
+    const handler = handlers[message.type];
+    if (handler) {
+      handler(message, socket);
       return;
     }
 
-    if (message.type === 'participant_join') {
-      sessionManager.joinParticipant(message.sessionId, message.name, socket);
-      return;
-    }
-
-    socket.send(JSON.stringify({ type: 'join_error', message: 'Unknown message type.' }));
+    socket.send(JSON.stringify({ type: MessageType.JOIN_ERROR, message: 'Unknown message type.' }));
   });
 
   socket.on('close', () => {
