@@ -87,13 +87,17 @@ class LobbyScene extends Phaser.Scene {
       fontSize: '24px', color: '#ffff88',
     }).setOrigin(0.5);
 
-    // Load QR code from the base64 data URL returned by the server
+    // Load QR code from the base64 data URL returned by the server.
+    // Use `on` (not `once`) so the listener isn't consumed by an earlier
+    // addtexture event (e.g. Phaser internals) before qr_code is ready.
     if (this.textures.exists('qr_code')) this.textures.remove('qr_code');
-    this.textures.once('addtexture', (key) => {
+    const onQrAdd = (key) => {
       if (key === 'qr_code') {
+        this.textures.off('addtexture', onQrAdd);
         this.add.image(width / 2, 276, 'qr_code').setDisplaySize(240, 240);
       }
-    });
+    };
+    this.textures.on('addtexture', onQrAdd);
     this.textures.addBase64('qr_code', qrCodeDataUrl);
 
     this.add.text(width / 2, 416, joinUrl, {
