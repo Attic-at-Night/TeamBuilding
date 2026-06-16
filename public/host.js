@@ -2,6 +2,7 @@ const startButton = document.getElementById('start-session');
 const sessionIdElement = document.getElementById('session-id');
 const qrCodeElement = document.getElementById('qr-code');
 const joinUrlElement = document.getElementById('join-url');
+const connectionInfoElement = document.getElementById('connection-info');
 const participantsElement = document.getElementById('participants');
 
 let socket;
@@ -21,6 +22,26 @@ function renderParticipants(participants) {
     li.textContent = participant.name;
     participantsElement.appendChild(li);
   }
+}
+
+function renderConnectionInfo(connection) {
+  if (!connection) {
+    connectionInfoElement.textContent = '';
+    return;
+  }
+
+  const parts = [];
+  if (connection.ipAddress) {
+    parts.push(`IP: ${connection.ipAddress}`);
+  }
+  if (connection.interfaceName) {
+    parts.push(`Adapter: ${connection.interfaceName}`);
+  }
+  if (connection.networkName) {
+    parts.push(`Network: ${connection.networkName}`);
+  }
+
+  connectionInfoElement.textContent = parts.length ? `Connection details: ${parts.join(' • ')}` : '';
 }
 
 function connectHostSocket(sessionId) {
@@ -45,7 +66,7 @@ function connectHostSocket(sessionId) {
 
 startButton.addEventListener('click', async () => {
   const response = await fetch('/api/session', { method: 'POST' });
-  const { sessionId, joinUrl, qrCodeDataUrl } = await response.json();
+  const { sessionId, joinUrl, qrCodeDataUrl, connection } = await response.json();
 
   sessionIdElement.textContent = sessionId;
   qrCodeElement.src = qrCodeDataUrl;
@@ -54,6 +75,7 @@ startButton.addEventListener('click', async () => {
   joinUrlElement.textContent = joinUrl;
   joinUrlElement.href = joinUrl;
 
+  renderConnectionInfo(connection);
   renderParticipants([]);
   connectHostSocket(sessionId);
 });

@@ -1,21 +1,10 @@
-const os = require('os');
 const path = require('path');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
+const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation } = require('./src/url');
-
-function getLocalIp() {
-  for (const interfaces of Object.values(os.networkInterfaces())) {
-    for (const iface of interfaces) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return null;
-}
 
 const app = express();
 const sessionManager = new SessionManager();
@@ -29,7 +18,8 @@ app.get('/join', (req, res) => {
 
 app.post('/api/session', async (req, res) => {
   const port = server.address().port;
-  const host = getLocalIp() || req.hostname;
+  const connection = await detectNetworkConnection();
+  const host = connection?.ipAddress || req.hostname;
   const origin = `${req.protocol}://${host}:${port}`;
   const { sessionId, joinUrl } = sessionManager.createSession(origin);
 
@@ -38,7 +28,7 @@ app.post('/api/session', async (req, res) => {
     width: 320,
   });
 
-  res.json({ sessionId, joinUrl, qrCodeDataUrl });
+  res.json({ sessionId, joinUrl, qrCodeDataUrl, connection });
 });
 
 const server = app.listen(process.env.PORT || 3000, () => {
