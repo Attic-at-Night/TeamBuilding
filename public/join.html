@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Join TeamBuilding Session</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+      input, button { font-size: 1rem; padding: 0.5rem; }
+      .status { margin-top: 1rem; }
+      .error { color: #b00020; }
+    </style>
+  </head>
+  <body>
+    <h1>Join Session</h1>
+    <p>Session code: <strong id="session-id">—</strong></p>
+
+    <label for="name">Display name</label>
+    <input id="name" maxlength="30" autocomplete="name" placeholder="Your name" />
+    <button id="join">Join</button>
+
+    <p class="status" id="status"></p>
+
+    <script src="/join.js"></script>
+  </body>
+</html>

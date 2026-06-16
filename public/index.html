@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TeamBuilding Session Host</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+      #qr-code { max-width: 320px; width: 100%; border: 1px solid #ddd; border-radius: 8px; display: none; }
+      .muted { color: #666; }
+    </style>
+  </head>
+  <body>
+    <h1>Host Session</h1>
+    <p class="muted">Create a session, display the QR on TV, and let players join from mobile.</p>
+    <button id="start-session">Start Session</button>
+    <p>Session code: <strong id="session-id">—</strong></p>
+    <img id="qr-code" alt="Join session QR code" />
+    <p>Join URL: <a id="join-url" href="#"></a></p>
+    <h2>Connected Players</h2>
+    <ul id="participants"></ul>
+
+    <script src="/host.js"></script>
+  </body>
+</html>
