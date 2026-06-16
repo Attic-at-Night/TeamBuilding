@@ -4,6 +4,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
+const { getJoinRedirectLocation } = require('./src/url');
 
 function getLocalIp() {
   for (const interfaces of Object.values(os.networkInterfaces())) {
@@ -22,8 +23,8 @@ const sessionManager = new SessionManager();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/join', (_req, res) => {
-  res.redirect(302, '/join.html');
+app.get('/join', (req, res) => {
+  res.redirect(302, getJoinRedirectLocation(req.originalUrl));
 });
 
 app.post('/api/session', async (req, res) => {
