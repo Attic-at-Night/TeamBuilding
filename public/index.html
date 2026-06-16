@@ -5,33 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TeamBuilding – Display</title>
     <style>
-      body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-      #qr-code { max-width: 320px; width: 100%; border: 1px solid #ddd; border-radius: 8px; display: none; }
-      .muted { color: #666; }
-      #start-game { display: none; }
-      #game-area { display: none; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #1a1a2e; overflow: hidden; }
     </style>
   </head>
   <body>
-    <h1>Display</h1>
-    <p class="muted">Start a session, show the QR code on the big screen, and let players join from their phones.</p>
-    <button id="start-session">Start Session</button>
-    <p>Session code: <strong id="session-id">—</strong></p>
-    <img id="qr-code" alt="Join QR code" />
-    <p>Join URL: <a id="join-url" href="#"></a></p>
-    <p id="connection-info" class="muted"></p>
-    <p id="game-status" class="muted"></p>
-
-    <h2>Connected Players</h2>
-    <ul id="players"></ul>
-    <button id="start-game">Start Game</button>
-
-    <div id="game-area">
-      <h2>Game in Progress</h2>
-      <h3>Player Inputs</h3>
-      <ul id="input-log"></ul>
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.88.2/dist/phaser.min.js"></script>
     <script src="/display.js"></script>
   </body>
 </html>

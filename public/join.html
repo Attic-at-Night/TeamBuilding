@@ -2,34 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Join TeamBuilding</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>TeamBuilding – Controller</title>
     <style>
-      body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
-      input, button { font-size: 1rem; padding: 0.5rem; }
-      .status { margin-top: 1rem; }
-      .error { color: #b00020; }
-      #game-area { display: none; }
-      #buzz { font-size: 2rem; padding: 1rem 2rem; margin-top: 1rem; width: 100%; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #1a1a2e; overflow: hidden; }
     </style>
   </head>
   <body>
-    <h1>Join Session</h1>
-    <p>Session code: <strong id="session-id">—</strong></p>
-
-    <div id="lobby">
-      <label for="name">Display name</label>
-      <input id="name" maxlength="30" autocomplete="name" placeholder="Your name" />
-      <button id="join">Join</button>
-    </div>
-
-    <p class="status" id="status"></p>
-
-    <div id="game-area">
-      <h2>Game in progress</h2>
-      <button id="buzz">🔔 Buzz!</button>
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.88.2/dist/phaser.min.js"></script>
     <script src="/join.js"></script>
   </body>
 </html>
