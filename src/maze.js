@@ -115,6 +115,7 @@ function movePlayer(maze, dir) {
 
   if (maze.hazards.some(h => h.row === nr && h.col === nc)) {
     maze.hitHazards += 1;
+    maze.playerPos = { row: 0, col: 0 };
     return { result: 'hazard', from: { row, col }, to: { row: nr, col: nc } };
   }
 

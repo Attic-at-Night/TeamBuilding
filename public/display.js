@@ -272,16 +272,6 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Hazards – red cross
-    this.mazeGraphics.lineStyle(4, 0xff3333);
-    for (const h of hazards) {
-      const cx = OX + h.col * CS + CS / 2;
-      const cy = OY + h.row * CS + CS / 2;
-      const r = 20;
-      this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
-      this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
-    }
-
     // Goal – filled green square
     this.mazeGraphics.fillStyle(0x22aa55);
     this.mazeGraphics.fillRect(
