@@ -14,6 +14,18 @@ Then open:
 - `http://localhost:3000/` on the TV/browser — this is the **display** screen
 - Scan the QR code from a phone to open the **controller** screen
 
+## Host online
+
+This app can also run on a public host. When the display is opened through a real domain or public IP, new sessions now generate QR codes and join links that reuse that public URL, so remote devices can connect directly over the internet.
+
+If your hosting setup sits behind a proxy or you want to force a specific public URL, set `PUBLIC_ORIGIN` before starting the server:
+
+```bash
+PUBLIC_ORIGIN=https://your-app.example.com npm start
+```
+
+When running locally on `localhost`, the server still falls back to your LAN IP so phones on the same network can join.
+
 ## Architecture overview
 
 ```
