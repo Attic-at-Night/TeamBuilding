@@ -172,10 +172,10 @@ class LobbyScene extends Phaser.Scene {
 // Right panel: role assignment list + scrolling event log for debrief.
 // Driven entirely by state_sync messages – no per-frame update needed.
 
-// Maze drawing constants (7 × 7 cells at 80 px each, 80 px margin).
-const MAZE_OX = 80;
-const MAZE_OY = 80;
-const MAZE_CS = 80;
+// Maze drawing constants (14 × 14 cells at 46 px each, fitting the left panel).
+const MAZE_OX = 18;
+const MAZE_OY = 70;
+const MAZE_CS = 46;
 
 class GameScene extends Phaser.Scene {
   constructor() { super({ key: 'GameScene' }); }

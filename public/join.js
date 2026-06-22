@@ -218,13 +218,13 @@ class ControllerScene extends Phaser.Scene {
   _buildMoverUI() {
     const { width } = this.scale;
 
-    // Small maze: 7 × 7 cells at 40 px each
-    this.mazeOX = Math.floor((width - 7 * 40) / 2);
+    // Small maze: 14 × 14 cells at 26 px each
+    this.mazeOX = Math.floor((width - 14 * 26) / 2);
     this.mazeOY = 80;
-    this.mazeCS = 40;
+    this.mazeCS = 26;
 
     // Position readout
-    this.posText = this.add.text(width / 2, 80 + 7 * 40 + 14, '', {
+    this.posText = this.add.text(width / 2, 80 + 14 * 26 + 14, '', {
       fontSize: '14px', color: '#666666',
     }).setOrigin(0.5);
 
@@ -260,12 +260,12 @@ class ControllerScene extends Phaser.Scene {
   _buildGuideUI() {
     const { width } = this.scale;
 
-    // Larger maze: 7 × 7 cells at 48 px each
-    this.mazeOX = Math.floor((width - 7 * 48) / 2);
+    // Larger maze: 14 × 14 cells at 26 px each
+    this.mazeOX = Math.floor((width - 14 * 26) / 2);
     this.mazeOY = 88;
-    this.mazeCS = 48;
+    this.mazeCS = 26;
 
-    this.add.text(width / 2, 88 + 7 * 48 + 18, 'Guide the mover \u2013 you see the hazards', {
+    this.add.text(width / 2, 88 + 14 * 26 + 18, 'Guide the mover \u2013 you see the hazards', {
       fontSize: '14px', color: '#888888', wordWrap: { width: width - 40 },
     }).setOrigin(0.5);
   }

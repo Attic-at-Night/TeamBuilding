@@ -148,7 +148,7 @@ test('resync sends current state to requesting socket', () => {
   assert.equal(reconnected.sent.at(-1).state.status, GameStatus.LOBBY);
 });
 
-test('startGame assigns roles and generates a 7x7 maze', () => {
+test('startGame assigns roles and generates a 14x14 maze', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
   const c1 = createFakeSocket();
@@ -163,11 +163,11 @@ test('startGame assigns roles and generates a 7x7 maze', () => {
   const sync = display.sent.at(-1);
   assert.equal(sync.state.status, GameStatus.PLAYING);
   assert.ok(sync.state.maze, 'maze sub-state created');
-  assert.equal(sync.state.maze.width, 7);
-  assert.equal(sync.state.maze.height, 7);
+  assert.equal(sync.state.maze.width, 14);
+  assert.equal(sync.state.maze.height, 14);
   assert.equal(sync.state.maze.playerPos.row, 0);
   assert.equal(sync.state.maze.playerPos.col, 0);
-  assert.equal(sync.state.maze.hazards.length, 4);
+  assert.equal(sync.state.maze.hazards.length, 12);
 
   const roles = sync.state.roles;
   const movers = Object.values(roles).filter(v => v === 'mover');

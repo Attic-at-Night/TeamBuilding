@@ -113,7 +113,7 @@ class SessionManager {
     });
 
     session.state.roles = roles;
-    session.state.maze = generateMaze(7, 7, 4);
+    session.state.maze = generateMaze(14, 14, 12);
     session.state.log = [{ ts: Date.now(), event: 'game_start' }];
     session.state.status = GameStatus.PLAYING;
     this.broadcastState(sessionId);
