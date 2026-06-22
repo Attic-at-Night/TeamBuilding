@@ -157,7 +157,7 @@ class LobbyScene extends Phaser.Scene {
 
     if (state.status === 'playing') {
       this.game.events.off('ws_message', this.onMessage, this);
-      this.scene.start('GameScene', { players: state.players });
+      this.scene.start('GameScene', { players: state.players, initialState: state });
     }
   }
 
@@ -167,59 +167,153 @@ class LobbyScene extends Phaser.Scene {
 }
 
 // ── GameScene ─────────────────────────────────────────────────────────────────
-// Template game scene: a bouncing ball as a placeholder visual.
-// Player inputs are logged in the top-right corner.
-// Replace the ball logic with real game mechanics when building a minigame.
+// Maze game display: full-information view for the facilitator.
+// Left panel: maze grid with player position, hazards (×), and goal (■).
+// Right panel: role assignment list + scrolling event log for debrief.
+// Driven entirely by state_sync messages – no per-frame update needed.
+
+// Maze drawing constants (14 × 14 cells at 46 px each, fitting the left panel).
+const MAZE_OX = 18;
+const MAZE_OY = 70;
+const MAZE_CS = 46;
 
 class GameScene extends Phaser.Scene {
   constructor() { super({ key: 'GameScene' }); }
 
-  init(data) { this.players = data.players || []; }
+  init(data) {
+    this.players = data.players || [];
+    this.pendingState = data.initialState || null;
+  }
 
   create() {
     const { width, height } = this.scale;
 
-    this.add.text(width / 2, 36, 'Game in Progress', {
+    this.add.text(width / 2, 32, 'Maze Game', {
       fontSize: '32px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // ── Template: bouncing ball ──────────────────────────────────────────────
-    this.ball = this.add.circle(width / 2, height / 2, 32, 0xff4444);
-    this.vx = Phaser.Math.Between(200, 350) * (Math.random() < 0.5 ? 1 : -1);
-    this.vy = Phaser.Math.Between(200, 350) * (Math.random() < 0.5 ? 1 : -1);
-    // ── End template ─────────────────────────────────────────────────────────
+    // Maze graphics layer – redrawn on each state update.
+    this.mazeGraphics = this.add.graphics();
 
-    this.add.text(width - 20, 76, 'Inputs', {
-      fontSize: '18px', color: '#ffff88',
-    }).setOrigin(1, 0);
+    // ── Right panel ──────────────────────────────────────────────────────────
+    const RX = 700;
 
-    this.logText = this.add.text(width - 20, 104, '', {
-      fontSize: '14px', color: '#aaaaaa', align: 'right',
-      wordWrap: { width: 380 },
-    }).setOrigin(1, 0);
-    this.logLines = [];
+    this.add.text(RX, 70, 'Roles', { fontSize: '20px', color: '#ffff88' });
+    this.rolesText = this.add.text(RX, 96, '', {
+      fontSize: '16px', color: '#dddddd', lineSpacing: 4,
+    });
+
+    this.add.text(RX, 230, 'Event Log', { fontSize: '20px', color: '#ffff88' });
+    this.logText = this.add.text(RX, 256, '', {
+      fontSize: '13px', color: '#aaaaaa', lineSpacing: 3,
+      wordWrap: { width: width - RX - 20 },
+    });
+
+    // ── End overlay (hidden until game ends) ─────────────────────────────────
+    this.endOverlay = this.add.rectangle(width / 2, height / 2, 640, 220, 0x000000, 0.88)
+      .setDepth(10).setVisible(false);
+    this.endText = this.add.text(width / 2, height / 2 - 40, '', {
+      fontSize: '38px', color: '#22ee66', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(11).setVisible(false);
+    this.endSubText = this.add.text(width / 2, height / 2 + 24, '', {
+      fontSize: '20px', color: '#aaaaaa',
+    }).setOrigin(0.5).setDepth(11).setVisible(false);
 
     this.game.events.on('ws_message', this.onMessage, this);
-  }
 
-  update(_time, delta) {
-    const { width, height } = this.scale;
-    const r = 32;
-    const dt = delta / 1000;
-    this.ball.x += this.vx * dt;
-    this.ball.y += this.vy * dt;
-    if (this.ball.x - r < 0 || this.ball.x + r > width) this.vx *= -1;
-    if (this.ball.y - r < 80 || this.ball.y + r > height) this.vy *= -1;
+    // Render state passed in from LobbyScene; also request a resync in case
+    // the socket reconnected after the initial broadcast.
+    if (this.pendingState) {
+      this.renderState(this.pendingState);
+    }
+    sendWs({ type: 'resync_request' });
   }
 
   onMessage(message) {
-    if (message.type !== 'player_input') return;
-    const player = this.players.find(p => p.id === message.playerId);
-    const name = player ? player.name : `${message.playerId.slice(0, 6)}\u2026`;
-    const time = new Date().toLocaleTimeString();
-    this.logLines.unshift(`[${time}] ${name} \u2192 ${JSON.stringify(message.input)}`);
-    if (this.logLines.length > 8) this.logLines.pop();
-    this.logText.setText(this.logLines.join('\n'));
+    if (message.type === 'state_sync') {
+      this.renderState(message.state);
+    }
+  }
+
+  renderState(state) {
+    if (!state.maze) return;
+
+    this.drawMaze(state.maze);
+    this.updateRoles(state.players || [], state.roles || {});
+    this.updateLog(state.log || []);
+
+    if (state.status === 'ended') {
+      const moves = (state.log || []).filter(e => e.event === 'move').length;
+      this.endOverlay.setVisible(true);
+      this.endText.setText('Goal reached!').setVisible(true);
+      this.endSubText
+        .setText(`Hazards hit: ${state.maze.hitHazards}   Moves: ${moves}   (see log for debrief)`)
+        .setVisible(true);
+    }
+  }
+
+  drawMaze(maze) {
+    const OX = MAZE_OX, OY = MAZE_OY, CS = MAZE_CS;
+    const { cells, height, width, hazards, goal, playerPos } = maze;
+
+    this.mazeGraphics.clear();
+
+    // Walls
+    this.mazeGraphics.lineStyle(3, 0x8888cc);
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const x = OX + c * CS;
+        const y = OY + r * CS;
+        const w = cells[r][c].walls;
+        if (w.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
+        if (w.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
+        if (w.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
+        if (w.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
+      }
+    }
+
+    // Goal – filled green square
+    this.mazeGraphics.fillStyle(0x22aa55);
+    this.mazeGraphics.fillRect(
+      OX + goal.col * CS + 14, OY + goal.row * CS + 14, CS - 28, CS - 28
+    );
+
+    // Start marker – small dim circle at (0,0)
+    this.mazeGraphics.fillStyle(0xffffff, 0.35);
+    this.mazeGraphics.fillCircle(OX + CS / 2, OY + CS / 2, 10);
+
+    // Player – filled blue circle
+    this.mazeGraphics.fillStyle(0x4488ff);
+    this.mazeGraphics.fillCircle(
+      OX + playerPos.col * CS + CS / 2,
+      OY + playerPos.row * CS + CS / 2,
+      24
+    );
+  }
+
+  updateRoles(players, roles) {
+    const lines = players.map(p => {
+      const role = roles[p.id] || '?';
+      const tag = role === 'mover' ? '[mover]' : '[guide]';
+      const color = role === 'mover' ? '' : '';  // text is uniform; colour is via prefix
+      return `${tag} ${p.name}`;
+    });
+    this.rolesText.setText(lines.join('\n'));
+  }
+
+  updateLog(log) {
+    const RESULT_ICON = { ok: '\u2713', wall: '\u25a0', hazard: '!', goal: '*', invalid: '?' };
+    const recent = [...log].reverse().slice(0, 16);
+    const lines = recent.map(entry => {
+      if (entry.event === 'game_start') return '> Game started';
+      if (entry.event === 'game_end')   return `* ${entry.player} reached the goal!`;
+      if (entry.event === 'move') {
+        const icon = RESULT_ICON[entry.result] || '?';
+        return `${icon} ${entry.player} -> ${entry.dir.toUpperCase()} (${entry.result})`;
+      }
+      return JSON.stringify(entry);
+    });
+    this.logText.setText(lines.join('\n'));
   }
 
   shutdown() {

@@ -58,11 +58,27 @@ game_start ───────→ status → playing
 ```json
 {
   "status": "lobby | playing | ended",
-  "players": [{ "id": "uuid", "name": "Alice" }]
+  "players": [{ "id": "uuid", "name": "Alice" }],
+  "roles": { "<playerId>": "mover | guide" },
+  "maze": {
+    "width": 7, "height": 7,
+    "cells": [[{ "walls": { "n": true, "e": false, "s": false, "w": true } }]],
+    "hazards": [{ "row": 2, "col": 3 }],
+    "goal": { "row": 6, "col": 6 },
+    "playerPos": { "row": 0, "col": 0 },
+    "reached": false,
+    "hitHazards": 0
+  },
+  "log": [
+    { "ts": 1700000000000, "event": "game_start" },
+    { "ts": 1700000001000, "event": "move", "player": "Alice", "dir": "e", "result": "ok", "from": { "row": 0, "col": 0 }, "to": { "row": 0, "col": 1 } }
+  ]
 }
 ```
 
 ### Adding a minigame
+
+The maze game is already implemented as the first minigame.  It follows this pattern and can serve as a reference:
 
 1. Add minigame state fields to the session's `state` object in `SessionManager`.
 2. Handle `player_input` in `handleInput()` to update state server-side.
@@ -70,6 +86,19 @@ game_start ───────→ status → playing
 4. Add display-side rendering in `public/display.js` and controller UI in `public/join.js`.
 
 The shared message type constants live in `src/protocol.js`.
+
+### Maze game
+
+The first minigame uses **asymmetric information** to surface clarity issues in communication and role assignment:
+
+| Role | Can do | Can see |
+|------|--------|---------|
+| **Mover** (first player) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Maze walls + own position — **no hazard markers** |
+| **Guide** (all others) | Communicate verbally | Full map including hazard (×) positions — **cannot move** |
+
+The display screen shows everything (walls, hazards, player position, event log) for the facilitator.
+
+Every move — including wall hits and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards.  When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
 
 ## Project structure
 

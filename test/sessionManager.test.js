@@ -84,7 +84,7 @@ test('game_start transitions status to playing for all clients', () => {
   assert.equal(controller.sent.at(-1).state.status, GameStatus.PLAYING);
 });
 
-test('player_input is forwarded to display', () => {
+test('mover move input logs event and broadcasts state_sync', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
   const controller = createFakeSocket();
@@ -92,14 +92,17 @@ test('player_input is forwarded to display', () => {
 
   manager.registerDisplay(sessionId, display);
   manager.joinController(sessionId, 'Alex', controller);
+  manager.startGame(sessionId);
 
   const { playerId } = controller.sent.find(m => m.type === MessageType.CLIENT_REGISTERED);
-  manager.handleInput(sessionId, playerId, { action: 'buzz' });
 
-  const inputMsg = display.sent.at(-1);
-  assert.equal(inputMsg.type, MessageType.PLAYER_INPUT);
-  assert.equal(inputMsg.playerId, playerId);
-  assert.deepEqual(inputMsg.input, { action: 'buzz' });
+  // 'e' may be open or wall – either way it is a valid maze event that is logged.
+  const result = manager.handleInput(sessionId, playerId, { action: 'move', dir: 'e' });
+  assert.equal(result, true);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.type, MessageType.STATE_SYNC);
+  assert.ok(sync.state.log.some(e => e.event === 'move' && e.dir === 'e'), 'move logged');
 });
 
 test('closing display closes session and notifies controllers', () => {
@@ -143,4 +146,55 @@ test('resync sends current state to requesting socket', () => {
 
   assert.equal(reconnected.sent.at(-1).type, MessageType.STATE_SYNC);
   assert.equal(reconnected.sent.at(-1).state.status, GameStatus.LOBBY);
+});
+
+test('startGame assigns roles and generates a 14x14 maze', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const c1 = createFakeSocket();
+  const c2 = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  manager.joinController(sessionId, 'Mover', c1);
+  manager.joinController(sessionId, 'Guide', c2);
+  manager.startGame(sessionId);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.status, GameStatus.PLAYING);
+  assert.ok(sync.state.maze, 'maze sub-state created');
+  assert.equal(sync.state.maze.width, 14);
+  assert.equal(sync.state.maze.height, 14);
+  assert.equal(sync.state.maze.playerPos.row, 0);
+  assert.equal(sync.state.maze.playerPos.col, 0);
+  assert.equal(sync.state.maze.hazards.length, 12);
+
+  const roles = sync.state.roles;
+  const movers = Object.values(roles).filter(v => v === 'mover');
+  const guides = Object.values(roles).filter(v => v === 'guide');
+  assert.equal(movers.length, 1, 'exactly one mover');
+  assert.equal(guides.length, 1, 'exactly one guide');
+
+  const id1 = c1.sent.find(m => m.type === MessageType.CLIENT_REGISTERED).playerId;
+  assert.equal(roles[id1], 'mover', 'first joiner is mover');
+});
+
+test('guide input is rejected without state change', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const c1 = createFakeSocket();
+  const c2 = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  manager.joinController(sessionId, 'Mover', c1);
+  manager.joinController(sessionId, 'Guide', c2);
+  manager.startGame(sessionId);
+
+  const { playerId: guideId } = c2.sent.find(m => m.type === MessageType.CLIENT_REGISTERED);
+  const beforeCount = display.sent.length;
+
+  const result = manager.handleInput(sessionId, guideId, { action: 'move', dir: 'e' });
+  assert.equal(result, false, 'guide input rejected');
+  assert.equal(display.sent.length, beforeCount, 'no extra broadcast on rejected input');
 });

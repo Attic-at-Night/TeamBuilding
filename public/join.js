@@ -1,6 +1,9 @@
 // WebSocket connection shared across all controller scenes via the game event bus.
 let socket = null;
 
+// Player identity – set when client_registered is received; read by all scenes.
+let myPlayerId = null;
+
 function connectControllerSocket(sessionId, name, game) {
   if (socket) socket.close();
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -83,6 +86,7 @@ class JoinScene extends Phaser.Scene {
 
   onMessage(message) {
     if (message.type === 'client_registered') {
+      myPlayerId = message.playerId || null;
       this.game.events.off('ws_message', this.onMessage, this);
       this.scene.start('WaitScene');
     } else if (message.type === 'join_error') {
@@ -140,7 +144,7 @@ class WaitScene extends Phaser.Scene {
     if (message.type === 'state_sync' && message.state.status === 'playing') {
       this.game.events.off('ws_message', this.onMessage, this);
       this.game.events.off('ws_close', this.onClose, this);
-      this.scene.start('ControllerScene');
+      this.scene.start('ControllerScene', { initialState: message.state });
     }
     if (message.type === 'session_closed') this.onClose();
   }
@@ -158,44 +162,206 @@ class WaitScene extends Phaser.Scene {
 }
 
 // ── ControllerScene ───────────────────────────────────────────────────────────
-// Template controller: one large BUZZ button.
-// Replace or extend with directional pads, sliders, etc. for real minigames.
+// Role-based controller UI for the maze game.
+//
+// Mover  – directional pad (N/E/S/W) + small maze view (no hazard markers).
+//          Communicates with guides to navigate safely.
+//
+// Guide  – full maze view with hazard (×) and goal markers.
+//          Cannot send movement inputs; guides the mover verbally.
+//
+// The full state (including hazards) is received by all clients.
+// Each client intentionally renders only the information its role should see.
 
 class ControllerScene extends Phaser.Scene {
   constructor() { super({ key: 'ControllerScene' }); }
 
+  init(data) {
+    this.currentState = data.initialState || null;
+    this.myRole = this.currentState ? (this.currentState.roles?.[myPlayerId] || null) : null;
+    this._shownEnd = false;
+  }
+
   create() {
     const { width, height } = this.scale;
 
-    this.add.text(width / 2, 70, 'Game in Progress', {
-      fontSize: '28px', color: '#ffffff',
+    // Role banner
+    const roleLabel = this.myRole === 'mover' ? 'Mover' : (this.myRole === 'guide' ? 'Guide' : 'Connecting...');
+    const roleColor = this.myRole === 'mover' ? '#4488ff' : '#ff8844';
+    this.add.text(width / 2, 36, roleLabel, {
+      fontSize: '28px', color: roleColor, fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // ── Template: buzz button ────────────────────────────────────────────────
-    const buzzBg = this.add.rectangle(width / 2, height / 2, width * 0.8, height * 0.35, 0xcc2222)
-      .setInteractive({ useHandCursor: true });
-    const buzzLabel = this.add.text(width / 2, height / 2, '\uD83D\uDD14 BUZZ!', {
-      fontSize: '42px', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5);
+    // Maze graphics layer
+    this.mazeGraphics = this.add.graphics();
 
-    buzzBg.on('pointerover', () => buzzBg.setFillStyle(0xee3333));
-    buzzBg.on('pointerout', () => buzzBg.setFillStyle(0xcc2222));
-    buzzBg.on('pointerdown', () => {
-      buzzBg.setFillStyle(0xff8800);
-      buzzLabel.setScale(0.9);
-      sendWs({ type: 'player_input', input: { action: 'buzz' } });
-    });
-    buzzBg.on('pointerup', () => {
-      buzzBg.setFillStyle(0xcc2222);
-      buzzLabel.setScale(1);
-    });
-    // ── End template ─────────────────────────────────────────────────────────
+    if (this.myRole === 'mover') {
+      this._buildMoverUI();
+    } else if (this.myRole === 'guide') {
+      this._buildGuideUI();
+    }
+    // If role is unknown (edge case: reconnect before state arrives), a resync
+    // will trigger onMessage which restarts this scene with the correct state.
+
+    if (this.currentState) {
+      this._renderState(this.currentState);
+    }
 
     this.game.events.on('ws_message', this.onMessage, this);
     this.game.events.on('ws_close', this.onClose, this);
+
+    sendWs({ type: 'resync_request' });
+  }
+
+  // ── Mover UI: small maze (no hazards) + d-pad ─────────────────────────────
+
+  _buildMoverUI() {
+    const { width } = this.scale;
+
+    // Small maze: 14 × 14 cells; cell size computed to fill available width.
+    this.mazeCS = Math.floor((width - 12) / 14);
+    this.mazeOX = Math.floor((width - 14 * this.mazeCS) / 2);
+    this.mazeOY = 80;
+
+    // Position readout
+    this.posText = this.add.text(width / 2, 80 + 14 * this.mazeCS + 14, '', {
+      fontSize: '14px', color: '#666666',
+    }).setOrigin(0.5);
+
+    // D-pad: four buttons in a cross
+    const cx = width / 2;
+    const cy = 650;
+    const bw = 110, bh = 80;
+    const gap = 8;
+
+    const dpad = [
+      { label: '\u2191', dir: 'n', x: cx,       y: cy - bh - gap },
+      { label: '\u2193', dir: 's', x: cx,       y: cy + bh + gap },
+      { label: '\u2190', dir: 'w', x: cx - bw - gap, y: cy },
+      { label: '\u2192', dir: 'e', x: cx + bw + gap, y: cy },
+    ];
+
+    for (const { label, dir, x, y } of dpad) {
+      const btn = this.add.rectangle(x, y, bw, bh, 0x3355ff)
+        .setInteractive({ useHandCursor: true });
+      this.add.text(x, y, label, { fontSize: '38px', color: '#ffffff' }).setOrigin(0.5);
+
+      btn.on('pointerdown', () => {
+        btn.setFillStyle(0x5577ff);
+        sendWs({ type: 'player_input', input: { action: 'move', dir } });
+      });
+      btn.on('pointerup',  () => btn.setFillStyle(0x3355ff));
+      btn.on('pointerout', () => btn.setFillStyle(0x3355ff));
+    }
+  }
+
+  // ── Guide UI: full maze with hazards ──────────────────────────────────────
+
+  _buildGuideUI() {
+    const { width } = this.scale;
+
+    // Larger maze: 14 × 14 cells; cell size computed to fill available width.
+    this.mazeCS = Math.floor((width - 12) / 14);
+    this.mazeOX = Math.floor((width - 14 * this.mazeCS) / 2);
+    this.mazeOY = 88;
+
+    this.add.text(width / 2, 88 + 14 * this.mazeCS + 18, 'Guide the mover \u2013 you see the hazards', {
+      fontSize: '14px', color: '#888888', wordWrap: { width: width - 40 },
+    }).setOrigin(0.5);
+  }
+
+  // ── Shared maze renderer ──────────────────────────────────────────────────
+
+  _drawMaze(maze, showHazards) {
+    const OX = this.mazeOX, OY = this.mazeOY, CS = this.mazeCS;
+    const { cells, height, width, hazards, goal, playerPos } = maze;
+
+    this.mazeGraphics.clear();
+
+    // Walls
+    this.mazeGraphics.lineStyle(2, 0x8888cc);
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const x = OX + c * CS;
+        const y = OY + r * CS;
+        const w = cells[r][c].walls;
+        if (w.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
+        if (w.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
+        if (w.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
+        if (w.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
+      }
+    }
+
+    // Hazards – red cross (guides only)
+    if (showHazards) {
+      this.mazeGraphics.lineStyle(3, 0xff3333);
+      for (const h of hazards) {
+        const cx = OX + h.col * CS + CS / 2;
+        const cy = OY + h.row * CS + CS / 2;
+        const r = Math.max(8, Math.floor(CS * 0.28));
+        this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
+        this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
+      }
+    }
+
+    // Goal – green square
+    const gpad = Math.max(4, Math.floor(CS * 0.18));
+    this.mazeGraphics.fillStyle(0x22aa55);
+    this.mazeGraphics.fillRect(
+      OX + goal.col * CS + gpad, OY + goal.row * CS + gpad,
+      CS - gpad * 2, CS - gpad * 2
+    );
+
+    // Player – blue circle
+    this.mazeGraphics.fillStyle(0x4488ff);
+    this.mazeGraphics.fillCircle(
+      OX + playerPos.col * CS + CS / 2,
+      OY + playerPos.row * CS + CS / 2,
+      Math.max(6, Math.floor(CS * 0.28))
+    );
+  }
+
+  _renderState(state) {
+    if (!state.maze || this.mazeOX === undefined) return;
+
+    const isGuide = this.myRole === 'guide';
+    this._drawMaze(state.maze, isGuide);
+
+    if (this.posText) {
+      const { row, col } = state.maze.playerPos;
+      this.posText.setText(`Position: row ${row + 1}, col ${col + 1}`);
+    }
+
+    if (state.status === 'ended' && !this._shownEnd) {
+      this._shownEnd = true;
+      this._showEnd(state.maze);
+    }
+  }
+
+  _showEnd(maze) {
+    const { width, height } = this.scale;
+    this.add.rectangle(width / 2, height / 2, width - 40, 210, 0x000000, 0.92).setDepth(10);
+    this.add.text(width / 2, height / 2 - 44, 'Goal reached!', {
+      fontSize: '34px', color: '#22ee66', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(11);
+    this.add.text(width / 2, height / 2 + 14, `Hazards hit: ${maze.hitHazards}`, {
+      fontSize: '22px', color: '#ffff88',
+    }).setOrigin(0.5).setDepth(11);
+    this.add.text(width / 2, height / 2 + 54, 'Wait for the debrief', {
+      fontSize: '16px', color: '#888888',
+    }).setOrigin(0.5).setDepth(11);
   }
 
   onMessage(message) {
+    if (message.type === 'state_sync') {
+      // If role was not yet known (reconnect edge case), restart to build correct UI.
+      if (!this.myRole && myPlayerId && message.state.roles?.[myPlayerId]) {
+        this.scene.restart({ initialState: message.state });
+        return;
+      }
+      this.currentState = message.state;
+      this._renderState(message.state);
+    }
     if (message.type === 'session_closed') this.onClose();
   }
 
