@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { MessageType, GameStatus, ClientRole } = require('./protocol');
+const { MessageType, GameStatus, ClientRole, MazeRole } = require('./protocol');
+const { generateMaze, movePlayer } = require('./maze');
 
 function makeSessionId() {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -21,6 +22,10 @@ function makeInitialState() {
   return {
     status: GameStatus.LOBBY,
     players: [],
+    // Maze-game fields (populated when game starts):
+    roles: {},    // { [playerId]: 'mover' | 'guide' }
+    maze: null,   // maze sub-state (see src/maze.js)
+    log: [],      // event log for debrief
   };
 }
 
@@ -99,6 +104,17 @@ class SessionManager {
       return false;
     }
 
+    const players = this._getPlayers(session);
+
+    // Assign roles: first player to join becomes the mover, all others are guides.
+    const roles = {};
+    players.forEach((p, i) => {
+      roles[p.id] = i === 0 ? MazeRole.MOVER : MazeRole.GUIDE;
+    });
+
+    session.state.roles = roles;
+    session.state.maze = generateMaze(7, 7, 4);
+    session.state.log = [{ ts: Date.now(), event: 'game_start' }];
     session.state.status = GameStatus.PLAYING;
     this.broadcastState(sessionId);
     return true;
@@ -110,13 +126,37 @@ class SessionManager {
       return false;
     }
 
-    // Forward validated input to the display for game-specific handling.
-    // Future minigame modules can intercept here to update server-side state.
-    sendJson(session.display, {
-      type: MessageType.PLAYER_INPUT,
-      playerId,
-      input,
+    const { state } = session;
+
+    // Only process maze moves while the game is active.
+    if (state.status !== GameStatus.PLAYING) return false;
+
+    // Only the mover role can send movement inputs.
+    if (state.roles[playerId] !== MazeRole.MOVER) return false;
+
+    // Validate input shape: { action: 'move', dir: 'n'|'e'|'s'|'w' }
+    if (input.action !== 'move' || !['n', 'e', 's', 'w'].includes(input.dir)) return false;
+
+    const maze = state.maze;
+    if (!maze || maze.reached) return false;
+
+    const controller = session.controllers.get(playerId);
+    const moveResult = movePlayer(maze, input.dir);
+
+    state.log.push({
+      ts: Date.now(),
+      event: 'move',
+      player: controller.name,
+      dir: input.dir,
+      ...moveResult,
     });
+
+    if (moveResult.result === 'goal') {
+      state.status = GameStatus.ENDED;
+      state.log.push({ ts: Date.now(), event: 'game_end', player: controller.name });
+    }
+
+    this.broadcastState(sessionId);
     return true;
   }
 

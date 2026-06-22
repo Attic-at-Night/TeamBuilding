@@ -47,4 +47,11 @@ const ClientRole = {
   CONTROLLER: 'controller',
 };
 
-module.exports = { MessageType, GameStatus, ClientRole };
+// Roles within the maze game.
+// The first player to join becomes the mover; all others are guides.
+const MazeRole = {
+  MOVER: 'mover',
+  GUIDE: 'guide',
+};
+
+module.exports = { MessageType, GameStatus, ClientRole, MazeRole };
