@@ -4,12 +4,13 @@ const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
 const { detectNetworkConnection } = require('./src/network');
-const { getJoinRedirectLocation } = require('./src/url');
+const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
 const { MessageType, ClientRole } = require('./src/protocol');
 
 const app = express();
 const sessionManager = new SessionManager();
 
+app.set('trust proxy', true);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -19,9 +20,23 @@ app.get('/join', (req, res) => {
 
 app.post('/api/session', async (req, res) => {
   const port = server.address().port;
-  const connection = await detectNetworkConnection();
-  const host = connection?.ipAddress || req.hostname;
-  const origin = `${req.protocol}://${host}:${port}`;
+  const requestHost = req.get('host');
+  const requestHostname = req.hostname;
+  const publicOrigin = getPublicSessionOrigin({
+    publicOrigin: process.env.PUBLIC_ORIGIN,
+    requestProtocol: req.protocol,
+    requestHost,
+    requestHostname,
+  });
+  const connection = publicOrigin ? null : await detectNetworkConnection();
+  const origin = getSessionOrigin({
+    publicOrigin: process.env.PUBLIC_ORIGIN,
+    requestProtocol: req.protocol,
+    requestHost,
+    requestHostname,
+    port,
+    localIpAddress: connection?.ipAddress,
+  });
   const { sessionId, joinUrl } = sessionManager.createSession(origin);
 
   const qrCodeDataUrl = await QRCode.toDataURL(joinUrl, {
