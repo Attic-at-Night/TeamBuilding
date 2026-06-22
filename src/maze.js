@@ -72,34 +72,34 @@ function findPath(cells, height, width, startRow, startCol, goalRow, goalCol) {
 }
 
 /**
- * Braid a perfect maze by removing a fraction of dead-end walls, creating loops
- * and therefore multiple routes between cells.
+ * Add extra passages by randomly removing a fraction of the remaining interior walls.
+ * Unlike dead-end-only braiding this creates loops throughout the entire maze,
+ * reliably producing multiple distinct routes between any two cells (including
+ * start → goal).
  *
  * @param {object[][]} cells
  * @param {number} height
  * @param {number} width
- * @param {number} fraction  Probability (0–1) that each dead-end is opened up.
+ * @param {number} fraction  Fraction (0–1) of remaining interior walls to remove.
  */
-function braidMaze(cells, height, width, fraction) {
+function addLoops(cells, height, width, fraction) {
+  // Collect every remaining interior wall edge once (south-wall of row r, or
+  // east-wall of column c) to avoid double-counting the same wall.
+  const walls = [];
   for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) {
-      const openCount = DIRS.filter(d => !cells[r][c].walls[d]).length;
-      if (openCount !== 1) continue; // only dead-ends
-      if (Math.random() > fraction) continue;
-
-      // Remove one random closed wall that leads to a valid neighbour.
-      const closedDirs = shuffle(DIRS.filter(d => cells[r][c].walls[d]));
-      for (const dir of closedDirs) {
-        const [dr, dc] = DELTA[dir];
-        const nr = r + dr;
-        const nc = c + dc;
-        if (nr >= 0 && nr < height && nc >= 0 && nc < width) {
-          cells[r][c].walls[dir] = false;
-          cells[nr][nc].walls[OPPOSITE[dir]] = false;
-          break;
-        }
-      }
+      if (r < height - 1 && cells[r][c].walls.s) walls.push([r, c, 's']);
+      if (c < width  - 1 && cells[r][c].walls.e) walls.push([r, c, 'e']);
     }
+  }
+  shuffle(walls);
+  const removeCount = Math.round(walls.length * fraction);
+  for (let i = 0; i < removeCount; i++) {
+    const [r, c, dir] = walls[i];
+    const nr = r + (dir === 's' ? 1 : 0);
+    const nc = c + (dir === 'e' ? 1 : 0);
+    cells[r][c].walls[dir] = false;
+    cells[nr][nc].walls[OPPOSITE[dir]] = false;
   }
 }
 
@@ -153,8 +153,9 @@ function generateMaze(width, height, hazardCount = 12) {
     stack.push([nr, nc]);
   }
 
-  // Braid ~40 % of dead-ends to create multiple routes.
-  braidMaze(cells, height, width, 0.4);
+  // Add loops by removing ~35 % of remaining interior walls, creating many
+  // independent cycles and guaranteeing multiple routes from start to goal.
+  addLoops(cells, height, width, 0.35);
 
   // Find the BFS safe path from start to goal; hazards will never be placed on it.
   const safePath = findPath(cells, height, width, 0, 0, height - 1, width - 1) || [];
