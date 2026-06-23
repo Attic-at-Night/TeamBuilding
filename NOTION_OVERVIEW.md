@@ -1,5 +1,9 @@
 # TeamBuilding Project Overview
 
+**GitHub Repository**: https://github.com/Attic-at-Night/TeamBuilding
+
+---
+
 ## What is TeamBuilding?
 
 A real-time multiplayer game where teams compete to navigate mazes on a shared display. Players join via their phones by scanning a QR code, then control their character using touch controls on their device. The display screen shows the maze, all players, and live game state.
