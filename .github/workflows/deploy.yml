@@ -106,7 +106,7 @@ jobs:
           mkdir -p "$DEPLOY_PATH/releases/$GITHUB_SHA"
           tar -xzf "/tmp/teambuilding-$GITHUB_SHA.tar.gz" -C "$DEPLOY_PATH/releases/$GITHUB_SHA"
           cd "$DEPLOY_PATH/releases/$GITHUB_SHA"
-          npm ci --omit=dev
+          npm ci --omit=dev --cache /tmp/npm-cache-"$GITHUB_SHA"
 
           cat > .env <<ENVFILE
           PUBLIC_ORIGIN=$PUBLIC_ORIGIN
