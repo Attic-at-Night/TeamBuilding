@@ -26,6 +26,34 @@ PUBLIC_ORIGIN=https://your-app.example.com npm start
 
 When running locally on `localhost`, the server still falls back to your LAN IP so phones on the same network can join.
 
+## Deploy with GitHub Actions
+
+This repository includes a CI/CD workflow at `.github/workflows/deploy.yml`.
+
+- On pull requests: it installs dependencies, runs `npm test`, and packages a release artifact.
+- On pushes to `main` (or manual `workflow_dispatch`): it runs the same CI steps, then deploys the artifact to a VPS over SSH.
+
+### Required repository secrets
+
+Set these in **Settings → Secrets and variables → Actions**:
+
+- `DEPLOY_HOST` – hostname/IP of your server
+- `DEPLOY_USER` – SSH user for deployment
+- `DEPLOY_SSH_KEY` – private SSH key for `DEPLOY_USER`
+- `DEPLOY_PATH` – deployment directory on the server (example: `/var/www/teambuilding`)
+- `PUBLIC_ORIGIN` – public base URL used by the app for join/session links (example: `https://game.example.com`)
+
+Optional:
+
+- `PORT` – runtime port on the server (defaults to `3000`)
+
+### Deployment assumptions
+
+- The target server has Node.js and `npm` installed.
+- The workflow writes `.env` with `PUBLIC_ORIGIN` (and `PORT`) inside each release.
+- If `pm2` is installed on the server, the workflow restarts the app automatically as process `teambuilding`.
+- If `pm2` is not installed, the workflow still uploads/releases the app and prints the manual start command.
+
 ## Architecture overview
 
 ```
