@@ -282,6 +282,7 @@ class GameScene extends Phaser.Scene {
       `Keys collected: ${summary.keysCollected || 0}/3`,
       `Lives remaining: ${summary.livesRemaining || 0}`,
       `Lives lost: ${summary.livesLost || 0}`,
+      `Lives picked up: ${summary.livesPickedUp || 0}`,
       `Resets: ${summary.resets || 0}`,
       `Time: ${formatDuration(summary.durationMs, summary.startedAt, summary.endedAt)}`,
       `Outcome: ${summary.outcome || 'in progress'}`,
@@ -296,7 +297,7 @@ class GameScene extends Phaser.Scene {
       this.endText.setText(summary.outcome === 'success' ? 'Complete' : 'Failed').setVisible(true);
       this.endText.setColor(summary.outcome === 'success' ? '#22ee66' : '#ff6666');
       this.endSubText
-        .setText(`Keys: ${summary.keysCollected || 0}   Lives lost: ${summary.livesLost || 0}   Resets: ${summary.resets || 0}`)
+        .setText(`Keys: ${summary.keysCollected || 0}   Lives lost: ${summary.livesLost || 0}   Lives picked up: ${summary.livesPickedUp || 0}   Resets: ${summary.resets || 0}`)
         .setVisible(true);
     }
   }

@@ -1,14 +1,16 @@
 const crypto = require('crypto');
 const { MessageType, GameStatus, ClientRole, MazeRole } = require('./protocol');
-const { generateMaze, movePlayer, findKeyAt } = require('./maze');
+const { generateMaze, movePlayer, findKeyAt, findLifeAt } = require('./maze');
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 const START_LIVES = 3;
+const MAX_LIVES = 5;
 const MAZE_WIDTH = 14;
 const MAZE_HEIGHT = 14;
 const HAZARD_COUNT = 12;
 const KEY_COUNT = 3;
+const LIFE_PICKUP_COUNT = 2;
 const RECENT_EVENT_LIMIT = 10;
 
 function makeSessionId() {
@@ -41,6 +43,7 @@ function makeInitialState() {
       resets: 0,
       livesRemaining: START_LIVES,
       livesLost: 0,
+      livesPickedUp: 0,
       keysCollected: 0,
       outcome: null,
     },
@@ -48,7 +51,7 @@ function makeInitialState() {
 }
 
 function createRoundMaze() {
-  return generateMaze(MAZE_WIDTH, MAZE_HEIGHT, HAZARD_COUNT, KEY_COUNT);
+  return generateMaze(MAZE_WIDTH, MAZE_HEIGHT, HAZARD_COUNT, KEY_COUNT, LIFE_PICKUP_COUNT);
 }
 
 function appendLog(state, entry) {
@@ -77,15 +80,15 @@ function getRoleForPlayer(state, playerId) {
 function getRecentEventsForRole(state, role) {
   const relevantEvents = state.log.filter((entry) => {
     if (role === MazeRole.LIFE_KEEPER) {
-      return ['hazard_hit', 'life_change', 'reset', 'game_end', 'game_start'].includes(entry.event);
+      return ['hazard_hit', 'life_change', 'life_pickup', 'reset', 'game_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.KEY_SEER) {
       return ['key_pickup', 'reset', 'game_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.GUIDE) {
-      return ['hazard_hit', 'reset', 'life_change', 'game_end', 'game_start'].includes(entry.event);
+      return ['hazard_hit', 'reset', 'life_change', 'life_pickup', 'game_end', 'game_start'].includes(entry.event);
     }
-    return ['move', 'key_pickup', 'hazard_hit', 'reset', 'goal_locked', 'game_end', 'game_start'].includes(entry.event);
+    return ['move', 'key_pickup', 'life_pickup', 'hazard_hit', 'reset', 'goal_locked', 'game_end', 'game_start'].includes(entry.event);
   });
 
   return relevantEvents.slice(-RECENT_EVENT_LIMIT);
@@ -103,6 +106,7 @@ function buildMazeForMover(maze) {
     goal: maze.goal,
     playerPos: maze.playerPos,
     reached: maze.reached,
+    lifePickups: maze.lifePickups,
   };
 }
 
@@ -133,6 +137,7 @@ function buildRoleData(state, role) {
         col: key.col,
         collected: key.collected,
       })) : [],
+      playerPos: maze ? maze.playerPos : null,
       recentEvents: getRecentEventsForRole(state, role),
     };
   }
@@ -140,6 +145,7 @@ function buildRoleData(state, role) {
   if (role === MazeRole.LIFE_KEEPER) {
     return {
       livesRemaining: state.summary.livesRemaining,
+      playerPos: maze ? maze.playerPos : null,
       hazardLog: state.log.filter((entry) => entry.event === 'hazard_hit'),
       recentEvents: getRecentEventsForRole(state, role),
     };
@@ -314,6 +320,7 @@ class SessionManager {
       resets: 0,
       livesRemaining: START_LIVES,
       livesLost: 0,
+      livesPickedUp: 0,
       keysCollected: 0,
       outcome: null,
     };
@@ -426,6 +433,28 @@ class SessionManager {
         keyId: key.id,
         position,
         keysCollected: state.summary.keysCollected,
+      });
+    }
+
+    const lifePickup = position ? findLifeAt(maze, position.row, position.col) : null;
+    if (lifePickup) {
+      lifePickup.collected = true;
+      const beforeLives = state.summary.livesRemaining;
+      state.summary.livesRemaining = Math.min(MAX_LIVES, state.summary.livesRemaining + 1);
+      state.summary.livesPickedUp += 1;
+      appendLog(state, {
+        ts,
+        event: 'life_pickup',
+        playerId,
+        pickupId: lifePickup.id,
+        position,
+        livesBefore: beforeLives,
+        livesAfter: state.summary.livesRemaining,
+      });
+      appendLog(state, {
+        ts,
+        event: 'life_change',
+        livesRemaining: state.summary.livesRemaining,
       });
     }
 

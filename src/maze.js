@@ -129,7 +129,7 @@ function pickDistinctCells(candidates, count) {
   return candidates.slice(0, count);
 }
 
-function generateMaze(width, height, hazardCount = 12, keyCount = 3) {
+function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupCount = 2) {
   // Initialise all cells with every wall present.
   const cells = Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ walls: { n: true, e: true, s: true, w: true } }))
@@ -190,6 +190,13 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3) {
     col: cell.col,
     collected: false,
   }));
+  const pickupCandidates = keyCandidates.filter((cell) => !keys.some((key) => key.row === cell.row && key.col === cell.col));
+  const lifePickups = pickDistinctCells(pickupCandidates, lifePickupCount).map((cell, index) => ({
+    id: `life-${index + 1}-${randomId()}`,
+    row: cell.row,
+    col: cell.col,
+    collected: false,
+  }));
 
   return {
     seed: randomId(),
@@ -198,6 +205,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3) {
     cells,
     hazards,
     keys,
+    lifePickups,
     goal: { row: height - 1, col: width - 1 },
     playerPos: { row: 0, col: 0 },
     reached: false,
@@ -241,4 +249,8 @@ function findKeyAt(maze, row, col) {
   return maze.keys.find((key) => !key.collected && key.row === row && key.col === col) || null;
 }
 
-module.exports = { generateMaze, movePlayer, findKeyAt };
+function findLifeAt(maze, row, col) {
+  return maze.lifePickups.find((life) => !life.collected && life.row === row && life.col === col) || null;
+}
+
+module.exports = { generateMaze, movePlayer, findKeyAt, findLifeAt };
