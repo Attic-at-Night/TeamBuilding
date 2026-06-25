@@ -406,18 +406,6 @@ class ControllerScene extends Phaser.Scene {
       OY + maze.playerPos.row * CS + CS / 2,
       Math.max(7, Math.floor(CS * 0.28))
     );
-
-    for (const pickup of maze.lifePickups || []) {
-      if (pickup.collected) {
-        continue;
-      }
-      this.mazeGraphics.fillStyle(0xff6699);
-      this.mazeGraphics.fillCircle(
-        OX + pickup.col * CS + CS / 2,
-        OY + pickup.row * CS + CS / 2,
-        Math.max(6, Math.floor(CS * 0.22))
-      );
-    }
   }
 
   _drawGuideBoard(roleData) {
@@ -464,6 +452,18 @@ class ControllerScene extends Phaser.Scene {
 
   _drawLifeBoard(roleData) {
     this._drawBlankBoard();
+
+    const lifePickups = roleData.lifePickups || [];
+    for (const pickup of lifePickups) {
+      if (pickup.collected) {
+        continue;
+      }
+      const cx = this.mazeOX + pickup.col * this.mazeCS + this.mazeCS / 2;
+      const cy = this.mazeOY + pickup.row * this.mazeCS + this.mazeCS / 2;
+      this.mazeGraphics.fillStyle(0xff6699);
+      this.mazeGraphics.fillCircle(cx, cy, Math.max(6, Math.floor(this.mazeCS * 0.22)));
+    }
+
     if (roleData.playerPos) {
       this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }

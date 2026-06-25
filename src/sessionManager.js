@@ -146,6 +146,11 @@ function buildRoleData(state, role) {
     return {
       livesRemaining: state.summary.livesRemaining,
       playerPos: maze ? maze.playerPos : null,
+      lifePickups: maze ? maze.lifePickups.map((pickup) => ({
+        row: pickup.row,
+        col: pickup.col,
+        collected: pickup.collected,
+      })) : [],
       hazardLog: state.log.filter((entry) => entry.event === 'hazard_hit'),
       recentEvents: getRecentEventsForRole(state, role),
     };
