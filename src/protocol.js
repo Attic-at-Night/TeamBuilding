@@ -52,6 +52,8 @@ const ClientRole = {
 const MazeRole = {
   MOVER: 'mover',
   GUIDE: 'guide',
+  KEY_SEER: 'key-seer',
+  LIFE_KEEPER: 'life-keeper',
 };
 
 module.exports = { MessageType, GameStatus, ClientRole, MazeRole };
