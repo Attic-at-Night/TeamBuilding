@@ -39,6 +39,9 @@ function formatEvent(entry) {
   if (entry.event === 'key_pickup') {
     return `Key picked up at ${entry.position.row + 1},${entry.position.col + 1}`;
   }
+  if (entry.event === 'life_pickup') {
+    return `Life picked up at ${entry.position.row + 1},${entry.position.col + 1}`;
+  }
   if (entry.event === 'hazard_hit') {
     return `Hazard hit at ${entry.position.row + 1},${entry.position.col + 1}`;
   }
@@ -223,16 +226,16 @@ class ControllerScene extends Phaser.Scene {
 
     this.mazeGraphics = this.add.graphics();
     this.detailText = this.add.text(18, 70, '', {
-      fontSize: '16px',
+      fontSize: '15px',
       color: '#dddddd',
       wordWrap: { width: width - 36 },
-      lineSpacing: 4,
+      lineSpacing: 2,
     });
     this.eventsText = this.add.text(18, height - 170, '', {
-      fontSize: '14px',
+      fontSize: '13px',
       color: '#aaaaaa',
       wordWrap: { width: width - 36 },
-      lineSpacing: 3,
+      lineSpacing: 2,
     });
 
     this._buildRoleUi(this.viewerRole);
@@ -256,10 +259,32 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
-  _setupBoard() {
-    this.mazeCS = Math.floor((this.scale.width - 24) / 14);
-    this.mazeOX = Math.floor((this.scale.width - 14 * this.mazeCS) / 2);
-    this.mazeOY = 120;
+  _setupBoard(role) {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const topY = 120;
+    const bottomReserve = role === 'mover' ? 236 : 156;
+    const availableWidth = width - 24;
+    const availableHeight = Math.max(180, height - topY - bottomReserve);
+    this.mazeCS = Math.max(15, Math.floor(Math.min(availableWidth / 14, availableHeight / 14)));
+    const boardSize = this.mazeCS * 14;
+    this.mazeOX = Math.floor((width - boardSize) / 2);
+    this.mazeOY = topY;
+  }
+
+  _syncTextLayout(role) {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.detailText.setPosition(18, 56);
+    this.detailText.setWordWrapWidth(width - 36);
+
+    if (role === 'mover') {
+      this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
+    } else {
+      this.eventsText.setPosition(18, height - 112);
+    }
+    this.eventsText.setWordWrapWidth(width - 36);
   }
 
   _drawBlankBoard() {
@@ -298,27 +323,33 @@ class ControllerScene extends Phaser.Scene {
     this._clearRoleUi();
 
     const { width, height } = this.scale;
-    const baseY = height - 120;
+    const baseY = height - 110;
     const buttons = [];
 
     if (role === 'mover') {
-      this._setupBoard();
+      this._setupBoard(role);
+      this._syncTextLayout(role);
       buttons.push(
-        { label: '↑', dir: 'n', x: width / 2, y: baseY - 90 },
-        { label: '↓', dir: 's', x: width / 2, y: baseY - 10 },
-        { label: '←', dir: 'w', x: width / 2 - 120, y: baseY - 50 },
-        { label: '→', dir: 'e', x: width / 2 + 120, y: baseY - 50 }
+        { label: '↑', dir: 'n', x: width / 2, y: baseY - 78 },
+        { label: '↓', dir: 's', x: width / 2, y: baseY + 18 },
+        { label: '←', dir: 'w', x: width / 2 - 100, y: baseY - 30 },
+        { label: '→', dir: 'e', x: width / 2 + 100, y: baseY - 30 }
       );
       this.detailText.setText('Navigate the maze. Pick up keys, avoid hazards, and reach the exit once it unlocks.');
     } else if (role === 'guide') {
-      this._setupBoard();
-      this.detailText.setText('Track hazard markers, the ball, and the exit.');
+      this._setupBoard(role);
+      this._syncTextLayout(role);
+      this.detailText.setText('Hazards, the ball, and the exit.');
     } else if (role === 'key-seer') {
-      this._setupBoard();
-      this.detailText.setText('Track objective markers and relay their positions.');
+      this._setupBoard(role);
+      this._syncTextLayout(role);
+      this.detailText.setText('Keys and the ball.');
     } else if (role === 'life-keeper') {
-      this.detailText.setText('Watch the life counter and incident log.');
+      this._setupBoard(role);
+      this._syncTextLayout(role);
+      this.detailText.setText('Lives and the ball.');
     } else {
+      this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
     }
 
@@ -375,6 +406,18 @@ class ControllerScene extends Phaser.Scene {
       OY + maze.playerPos.row * CS + CS / 2,
       Math.max(7, Math.floor(CS * 0.28))
     );
+
+    for (const pickup of maze.lifePickups || []) {
+      if (pickup.collected) {
+        continue;
+      }
+      this.mazeGraphics.fillStyle(0xff6699);
+      this.mazeGraphics.fillCircle(
+        OX + pickup.col * CS + CS / 2,
+        OY + pickup.row * CS + CS / 2,
+        Math.max(6, Math.floor(CS * 0.22))
+      );
+    }
   }
 
   _drawGuideBoard(roleData) {
@@ -413,6 +456,17 @@ class ControllerScene extends Phaser.Scene {
       this.mazeGraphics.fillStyle(0xffcc33);
       this.mazeGraphics.fillCircle(cx, cy, Math.max(6, Math.floor(this.mazeCS * 0.2)));
     }
+
+    if (roleData.playerPos) {
+      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+    }
+  }
+
+  _drawLifeBoard(roleData) {
+    this._drawBlankBoard();
+    if (roleData.playerPos) {
+      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+    }
   }
 
   _renderState(state) {
@@ -425,29 +479,27 @@ class ControllerScene extends Phaser.Scene {
       this._drawGuideBoard(roleData);
     } else if (this.viewerRole === 'key-seer') {
       this._drawKeyBoard(roleData);
+    } else if (this.viewerRole === 'life-keeper') {
+      this._drawLifeBoard(roleData);
     } else if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
 
     if (this.viewerRole === 'mover') {
-      this.detailText.setText('Navigate the maze. Keys unlock the exit.');
+      this.detailText.setText(`Lives: ${summary.livesRemaining ?? 0}   Keys: ${summary.keysCollected || 0}/3`);
     } else if (this.viewerRole === 'guide') {
       const hazards = roleData.hazards || [];
-      this.detailText.setText(`Hazards tracked: ${hazards.length}\n` + hazards.map((hazard, index) => {
-        return `${index + 1}. ${hazard.row + 1}, ${hazard.col + 1}`;
-      }).join('\n'));
+      this.detailText.setText(`Hazards tracked: ${hazards.length}`);
     } else if (this.viewerRole === 'key-seer') {
       const keys = roleData.keys || [];
       const visibleKeys = keys.filter((key) => !key.collected);
-      this.detailText.setText(`Objective markers: ${visibleKeys.length}\n` + visibleKeys.map((key, index) => {
-        return `${index + 1}. ${key.row + 1}, ${key.col + 1}`;
-      }).join('\n'));
+      this.detailText.setText(`Objective markers: ${visibleKeys.length}`);
     } else if (this.viewerRole === 'life-keeper') {
       const hazardLog = roleData.hazardLog || [];
-      this.detailText.setText(`Lives remaining: ${summary.livesRemaining ?? 0}\nHazard hits: ${hazardLog.length}`);
+      this.detailText.setText(`Lives remaining: ${summary.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
     }
 
-    const recentEvents = (roleData.recentEvents || []).slice(-6).reverse();
+    const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
     this.eventsText.setText(recentEvents.length
       ? recentEvents.map(formatEvent).join('\n')
       : 'No recent updates.');

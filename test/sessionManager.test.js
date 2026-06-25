@@ -29,6 +29,7 @@ function makeOpenMaze(overrides = {}) {
     cells,
     hazards: overrides.hazards || [],
     keys: overrides.keys || [],
+    lifePickups: overrides.lifePickups || [],
     goal: overrides.goal || { row: 1, col: 1 },
     playerPos: overrides.playerPos || { row: 0, col: 0 },
     reached: overrides.reached || false,
@@ -110,6 +111,7 @@ test('startGame assigns the four roles in join order', () => {
   assert.equal(controllers[0].sent.at(-1).state.viewerRole, MazeRole.MOVER);
   assert.ok(controllers[0].sent.at(-1).state.roleData.maze);
   assert.equal(controllers[0].sent.at(-1).state.roleData.maze.hazards, undefined);
+  assert.ok(Array.isArray(controllers[0].sent.at(-1).state.roleData.maze.lifePickups));
 
   assert.equal(controllers[1].sent.at(-1).state.viewerRole, MazeRole.GUIDE);
   assert.ok(Array.isArray(controllers[1].sent.at(-1).state.roleData.hazards));
@@ -118,10 +120,11 @@ test('startGame assigns the four roles in join order', () => {
 
   assert.equal(controllers[2].sent.at(-1).state.viewerRole, MazeRole.KEY_SEER);
   assert.ok(Array.isArray(controllers[2].sent.at(-1).state.roleData.keys));
-  assert.equal(controllers[2].sent.at(-1).state.roleData.playerPos, undefined);
+  assert.ok(controllers[2].sent.at(-1).state.roleData.playerPos);
 
   assert.equal(controllers[3].sent.at(-1).state.viewerRole, MazeRole.LIFE_KEEPER);
   assert.equal(typeof controllers[3].sent.at(-1).state.roleData.livesRemaining, 'number');
+  assert.ok(controllers[3].sent.at(-1).state.roleData.playerPos);
 });
 
 test('mover pickup updates key progress and logs the pickup', () => {
@@ -137,6 +140,23 @@ test('mover pickup updates key progress and logs the pickup', () => {
   const sync = display.sent.at(-1);
   assert.equal(sync.state.summary.keysCollected, 1);
   assert.ok(sync.state.log.some((entry) => entry.event === 'key_pickup'));
+});
+
+test('mover pickup updates lives and logs the life pickup', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const moverId = controllers[0].sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeOpenMaze({
+    lifePickups: [{ id: 'life-1', row: 0, col: 1, collected: false }],
+  });
+  session.state.summary.livesRemaining = 2;
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.summary.livesRemaining, 3);
+  assert.equal(sync.state.summary.livesPickedUp, 1);
+  assert.ok(sync.state.log.some((entry) => entry.event === 'life_pickup'));
 });
 
 test('hazard hit decrements life and triggers a reset', () => {
