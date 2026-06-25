@@ -112,6 +112,7 @@ test('startGame assigns the four roles in join order', () => {
   assert.ok(controllers[0].sent.at(-1).state.roleData.maze);
   assert.equal(controllers[0].sent.at(-1).state.roleData.maze.hazards, undefined);
   assert.ok(Array.isArray(controllers[0].sent.at(-1).state.roleData.maze.lifePickups));
+  assert.equal(controllers[0].sent.at(-1).state.summary.livesRemaining, undefined);
 
   assert.equal(controllers[1].sent.at(-1).state.viewerRole, MazeRole.GUIDE);
   assert.ok(Array.isArray(controllers[1].sent.at(-1).state.roleData.hazards));

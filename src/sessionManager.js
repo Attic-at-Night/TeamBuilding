@@ -169,10 +169,11 @@ function buildDisplayState(state) {
 
 function buildControllerState(state, playerId) {
   const role = getRoleForPlayer(state, playerId);
+  const { livesRemaining, ...controllerSummary } = state.summary;
   return {
     status: state.status,
     players: state.players,
-    summary: state.summary,
+    summary: controllerSummary,
     viewerRole: role,
     roleData: buildRoleData(state, role),
     ready: state.players.length >= MIN_PLAYERS,
