@@ -486,7 +486,7 @@ class ControllerScene extends Phaser.Scene {
     }
 
     if (this.viewerRole === 'mover') {
-      this.detailText.setText(`Lives: ${summary.livesRemaining ?? 0}   Keys: ${summary.keysCollected || 0}/3`);
+      this.detailText.setText(`Keys: ${summary.keysCollected || 0}/3`);
     } else if (this.viewerRole === 'guide') {
       const hazards = roleData.hazards || [];
       this.detailText.setText(`Hazards tracked: ${hazards.length}`);
@@ -496,7 +496,7 @@ class ControllerScene extends Phaser.Scene {
       this.detailText.setText(`Objective markers: ${visibleKeys.length}`);
     } else if (this.viewerRole === 'life-keeper') {
       const hazardLog = roleData.hazardLog || [];
-      this.detailText.setText(`Lives remaining: ${summary.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
+      this.detailText.setText(`Lives remaining: ${roleData.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
     }
 
     const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
