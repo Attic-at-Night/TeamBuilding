@@ -10,9 +10,11 @@
 // trust-based team-building session – the game relies on communication, not
 // information hiding enforced by the server.
 
+const crypto = require('crypto');
+
 const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' };
-const DELTA    = { n: [-1, 0], s: [1, 0], e: [0, 1], w: [0, -1] };
-const DIRS     = ['n', 'e', 's', 'w'];
+const DELTA = { n: [-1, 0], s: [1, 0], e: [0, 1], w: [0, -1] };
+const DIRS = ['n', 'e', 's', 'w'];
 
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -118,7 +120,16 @@ function addLoops(cells, height, width, fraction) {
  * @param {number} [hazardCount=12]
  * @returns {object} maze state
  */
-function generateMaze(width, height, hazardCount = 12) {
+function randomId() {
+  return crypto.randomBytes(3).toString('hex');
+}
+
+function pickDistinctCells(candidates, count) {
+  shuffle(candidates);
+  return candidates.slice(0, count);
+}
+
+function generateMaze(width, height, hazardCount = 12, keyCount = 3) {
   // Initialise all cells with every wall present.
   const cells = Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ walls: { n: true, e: true, s: true, w: true } }))
@@ -171,13 +182,22 @@ function generateMaze(width, height, hazardCount = 12) {
     }
   }
   shuffle(candidates);
-  const hazards = candidates.slice(0, hazardCount);
+  const hazards = pickDistinctCells([...candidates], hazardCount);
+  const keyCandidates = candidates.filter((cell) => !hazards.some((hazard) => hazard.row === cell.row && hazard.col === cell.col));
+  const keys = pickDistinctCells(keyCandidates, keyCount).map((cell, index) => ({
+    id: `key-${index + 1}-${randomId()}`,
+    row: cell.row,
+    col: cell.col,
+    collected: false,
+  }));
 
   return {
+    seed: randomId(),
     width,
     height,
     cells,
     hazards,
+    keys,
     goal: { row: height - 1, col: width - 1 },
     playerPos: { row: 0, col: 0 },
     reached: false,
@@ -209,18 +229,16 @@ function movePlayer(maze, dir) {
   const nc = col + dc;
   maze.playerPos = { row: nr, col: nc };
 
-  if (maze.hazards.some(h => h.row === nr && h.col === nc)) {
-    maze.hitHazards += 1;
-    maze.playerPos = { row: 0, col: 0 };
-    return { result: 'hazard', from: { row, col }, to: { row: nr, col: nc } };
-  }
-
   if (nr === maze.goal.row && nc === maze.goal.col) {
-    maze.reached = true;
-    return { result: 'goal', from: { row, col }, to: { row: nr, col: nc } };
+   maze.reached = true;
+   return { result: 'goal', from: { row, col }, to: { row: nr, col: nc } };
   }
 
   return { result: 'ok', from: { row, col }, to: { row: nr, col: nc } };
 }
 
-module.exports = { generateMaze, movePlayer };
+function findKeyAt(maze, row, col) {
+  return maze.keys.find((key) => !key.collected && key.row === row && key.col === col) || null;
+}
+
+module.exports = { generateMaze, movePlayer, findKeyAt };

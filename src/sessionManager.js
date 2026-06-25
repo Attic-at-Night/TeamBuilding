@@ -1,6 +1,15 @@
 const crypto = require('crypto');
 const { MessageType, GameStatus, ClientRole, MazeRole } = require('./protocol');
-const { generateMaze, movePlayer } = require('./maze');
+const { generateMaze, movePlayer, findKeyAt } = require('./maze');
+
+const MAX_PLAYERS = 4;
+const MIN_PLAYERS = 2;
+const START_LIVES = 3;
+const MAZE_WIDTH = 14;
+const MAZE_HEIGHT = 14;
+const HAZARD_COUNT = 12;
+const KEY_COUNT = 3;
+const RECENT_EVENT_LIMIT = 10;
 
 function makeSessionId() {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -22,11 +31,178 @@ function makeInitialState() {
   return {
     status: GameStatus.LOBBY,
     players: [],
-    // Maze-game fields (populated when game starts):
-    roles: {},    // { [playerId]: 'mover' | 'guide' }
-    maze: null,   // maze sub-state (see src/maze.js)
-    log: [],      // event log for debrief
+    roles: {},
+    maze: null,
+    log: [],
+    summary: {
+      startedAt: null,
+      endedAt: null,
+      durationMs: null,
+      resets: 0,
+      livesRemaining: START_LIVES,
+      livesLost: 0,
+      keysCollected: 0,
+      outcome: null,
+    },
   };
+}
+
+function createRoundMaze() {
+  return generateMaze(MAZE_WIDTH, MAZE_HEIGHT, HAZARD_COUNT, KEY_COUNT);
+}
+
+function appendLog(state, entry) {
+  state.log.push(entry);
+}
+
+function clonePoint(point) {
+  return point ? { row: point.row, col: point.col } : null;
+}
+
+function getRoleOrder(playerCount) {
+  const roles = [MazeRole.MOVER, MazeRole.GUIDE];
+  if (playerCount >= 3) {
+    roles.push(MazeRole.KEY_SEER);
+  }
+  if (playerCount >= 4) {
+    roles.push(MazeRole.LIFE_KEEPER);
+  }
+  return roles;
+}
+
+function getRoleForPlayer(state, playerId) {
+  return state.roles[playerId] || null;
+}
+
+function getRecentEventsForRole(state, role) {
+  const relevantEvents = state.log.filter((entry) => {
+    if (role === MazeRole.LIFE_KEEPER) {
+      return ['hazard_hit', 'life_change', 'reset', 'game_end', 'game_start'].includes(entry.event);
+    }
+    if (role === MazeRole.KEY_SEER) {
+      return ['key_pickup', 'reset', 'game_end', 'game_start'].includes(entry.event);
+    }
+    if (role === MazeRole.GUIDE) {
+      return ['hazard_hit', 'reset', 'life_change', 'game_end', 'game_start'].includes(entry.event);
+    }
+    return ['move', 'key_pickup', 'hazard_hit', 'reset', 'goal_locked', 'game_end', 'game_start'].includes(entry.event);
+  });
+
+  return relevantEvents.slice(-RECENT_EVENT_LIMIT);
+}
+
+function buildMazeForMover(maze) {
+  if (!maze) {
+    return null;
+  }
+
+  return {
+    width: maze.width,
+    height: maze.height,
+    cells: maze.cells,
+    goal: maze.goal,
+    playerPos: maze.playerPos,
+    reached: maze.reached,
+  };
+}
+
+function buildRoleData(state, role) {
+  const maze = state.maze;
+
+  if (role === MazeRole.MOVER) {
+    return {
+      maze: buildMazeForMover(maze),
+      recentEvents: getRecentEventsForRole(state, role),
+    };
+  }
+
+  if (role === MazeRole.GUIDE) {
+    return {
+      hazards: maze ? maze.hazards : [],
+      recentEvents: getRecentEventsForRole(state, role),
+    };
+  }
+
+  if (role === MazeRole.KEY_SEER) {
+    return {
+      keys: maze ? maze.keys.map((key) => ({
+        id: key.id,
+        row: key.row,
+        col: key.col,
+        collected: key.collected,
+      })) : [],
+      recentEvents: getRecentEventsForRole(state, role),
+    };
+  }
+
+  if (role === MazeRole.LIFE_KEEPER) {
+    return {
+      livesRemaining: state.summary.livesRemaining,
+      hazardLog: state.log.filter((entry) => entry.event === 'hazard_hit'),
+      recentEvents: getRecentEventsForRole(state, role),
+    };
+  }
+
+  return {
+    recentEvents: getRecentEventsForRole(state, role),
+  };
+}
+
+function buildDisplayState(state) {
+  return {
+    status: state.status,
+    players: state.players,
+    summary: state.summary,
+    log: state.log,
+    ready: state.players.length >= MIN_PLAYERS,
+    capacity: MAX_PLAYERS,
+  };
+}
+
+function buildControllerState(state, playerId) {
+  const role = getRoleForPlayer(state, playerId);
+  return {
+    status: state.status,
+    players: state.players,
+    summary: state.summary,
+    viewerRole: role,
+    roleData: buildRoleData(state, role),
+    ready: state.players.length >= MIN_PLAYERS,
+    capacity: MAX_PLAYERS,
+  };
+}
+
+function finishGame(state, outcome, reason) {
+  if (state.status === GameStatus.ENDED) {
+    return;
+  }
+
+  const endedAt = Date.now();
+  state.status = GameStatus.ENDED;
+  state.summary.endedAt = endedAt;
+  state.summary.durationMs = state.summary.startedAt ? endedAt - state.summary.startedAt : null;
+  state.summary.outcome = outcome;
+
+  appendLog(state, {
+    ts: endedAt,
+    event: 'game_end',
+    outcome,
+    reason,
+  });
+}
+
+function resetRound(state, reason) {
+  const resetAt = Date.now();
+  state.summary.resets += 1;
+  state.summary.keysCollected = 0;
+  state.maze = createRoundMaze();
+
+  appendLog(state, {
+    ts: resetAt,
+    event: 'reset',
+    reason,
+    mazeSeed: state.maze.seed || null,
+  });
 }
 
 class SessionManager {
@@ -77,6 +253,16 @@ class SessionManager {
       return false;
     }
 
+    if (session.state.status !== GameStatus.LOBBY) {
+      sendJson(socket, { type: MessageType.JOIN_ERROR, message: 'Game already started.' });
+      return false;
+    }
+
+    if (session.controllers.size >= MAX_PLAYERS) {
+      sendJson(socket, { type: MessageType.JOIN_ERROR, message: 'Session is full.' });
+      return false;
+    }
+
     const playerId = crypto.randomUUID();
     const player = {
       id: playerId,
@@ -105,17 +291,39 @@ class SessionManager {
     }
 
     const players = this._getPlayers(session);
+    if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS) {
+      return false;
+    }
 
-    // Assign roles: first player to join becomes the mover, all others are guides.
     const roles = {};
-    players.forEach((p, i) => {
-      roles[p.id] = i === 0 ? MazeRole.MOVER : MazeRole.GUIDE;
+    const roleOrder = getRoleOrder(players.length);
+    players.forEach((player, index) => {
+      roles[player.id] = roleOrder[index];
     });
 
+    const now = Date.now();
     session.state.roles = roles;
-    session.state.maze = generateMaze(14, 14, 12);
-    session.state.log = [{ ts: Date.now(), event: 'game_start' }];
+    session.state.maze = createRoundMaze();
+    session.state.log = [];
+    session.state.summary = {
+      startedAt: now,
+      endedAt: null,
+      durationMs: null,
+      resets: 0,
+      livesRemaining: START_LIVES,
+      livesLost: 0,
+      keysCollected: 0,
+      outcome: null,
+    };
     session.state.status = GameStatus.PLAYING;
+
+    appendLog(session.state, {
+      ts: now,
+      event: 'game_start',
+      players: players.map((player) => ({ id: player.id, name: player.name })),
+      roles: Object.entries(roles).map(([playerId, role]) => ({ playerId, role })),
+    });
+
     this.broadcastState(sessionId);
     return true;
   }
@@ -127,33 +335,146 @@ class SessionManager {
     }
 
     const { state } = session;
-
-    // Only process maze moves while the game is active.
-    if (state.status !== GameStatus.PLAYING) return false;
-
-    // Only the mover role can send movement inputs.
-    if (state.roles[playerId] !== MazeRole.MOVER) return false;
-
-    // Validate input shape: { action: 'move', dir: 'n'|'e'|'s'|'w' }
-    if (input.action !== 'move' || !['n', 'e', 's', 'w'].includes(input.dir)) return false;
-
-    const maze = state.maze;
-    if (!maze || maze.reached) return false;
-
     const controller = session.controllers.get(playerId);
-    const moveResult = movePlayer(maze, input.dir);
+    const role = getRoleForPlayer(state, playerId);
+    const ts = Date.now();
 
-    state.log.push({
-      ts: Date.now(),
-      event: 'move',
+    appendLog(state, {
+      ts,
+      event: 'input',
+      playerId,
       player: controller.name,
-      dir: input.dir,
-      ...moveResult,
+      role,
+      action: input?.action || null,
+      dir: input?.dir || null,
     });
 
-    if (moveResult.result === 'goal') {
-      state.status = GameStatus.ENDED;
-      state.log.push({ ts: Date.now(), event: 'game_end', player: controller.name });
+    if (state.status !== GameStatus.PLAYING) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'not_playing',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    if (role !== MazeRole.MOVER) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'wrong_role',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    if (!input || input.action !== 'move' || !['n', 'e', 's', 'w'].includes(input.dir)) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'invalid_input',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    const maze = state.maze;
+    if (!maze || maze.reached) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'round_inactive',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    const moveResult = movePlayer(maze, input.dir);
+    appendLog(state, {
+      ts,
+      event: 'move',
+      playerId,
+      player: controller.name,
+      dir: input.dir,
+      result: moveResult.result,
+      from: moveResult.from || null,
+      to: moveResult.to || null,
+    });
+
+    if (moveResult.result === 'wall' || moveResult.result === 'invalid') {
+      this.broadcastState(sessionId);
+      return true;
+    }
+
+    const position = clonePoint(maze.playerPos);
+    const key = position ? findKeyAt(maze, position.row, position.col) : null;
+
+    if (key) {
+      key.collected = true;
+      state.summary.keysCollected += 1;
+      appendLog(state, {
+        ts,
+        event: 'key_pickup',
+        playerId,
+        keyId: key.id,
+        position,
+        keysCollected: state.summary.keysCollected,
+      });
+    }
+
+    const hitHazard = position
+      ? maze.hazards.some((hazard) => hazard.row === position.row && hazard.col === position.col)
+      : false;
+
+    if (hitHazard) {
+      state.summary.livesRemaining -= 1;
+      state.summary.livesLost += 1;
+      maze.hitHazards += 1;
+
+      appendLog(state, {
+        ts,
+        event: 'hazard_hit',
+        playerId,
+        player: controller.name,
+        direction: input.dir,
+        position,
+        livesRemaining: state.summary.livesRemaining,
+      });
+
+      appendLog(state, {
+        ts,
+        event: 'life_change',
+        livesRemaining: state.summary.livesRemaining,
+      });
+
+      if (state.summary.livesRemaining <= 0) {
+        finishGame(state, 'fail', 'lives_exhausted');
+      } else {
+        resetRound(state, 'hazard_hit');
+      }
+
+      this.broadcastState(sessionId);
+      return true;
+    }
+
+    if (maze.reached) {
+      if (state.summary.keysCollected >= KEY_COUNT) {
+        finishGame(state, 'success', 'goal_reached');
+      } else {
+        maze.reached = false;
+        appendLog(state, {
+          ts,
+          event: 'goal_locked',
+          playerId,
+          player: controller.name,
+          keysCollected: state.summary.keysCollected,
+        });
+      }
     }
 
     this.broadcastState(sessionId);
@@ -166,7 +487,9 @@ class SessionManager {
       return false;
     }
 
-    sendJson(socket, { type: MessageType.STATE_SYNC, state: session.state });
+    const meta = socket.meta || {};
+    const state = this._buildStateForSocket(session, meta);
+    sendJson(socket, { type: MessageType.STATE_SYNC, state });
     return true;
   }
 
@@ -202,11 +525,33 @@ class SessionManager {
       return;
     }
 
-    const payload = { type: MessageType.STATE_SYNC, state: session.state };
-    sendJson(session.display, payload);
-    for (const controller of session.controllers.values()) {
-      sendJson(controller.socket, payload);
+    if (session.display) {
+      sendJson(session.display, {
+        type: MessageType.STATE_SYNC,
+        state: this._buildStateForSocket(session, session.display.meta || {}),
+      });
     }
+
+    for (const controller of session.controllers.values()) {
+      sendJson(controller.socket, {
+        type: MessageType.STATE_SYNC,
+        state: this._buildStateForSocket(session, controller.socket.meta || {}),
+      });
+    }
+  }
+
+  _buildStateForSocket(session, meta) {
+    const { state } = session;
+
+    if (meta.role === ClientRole.DISPLAY) {
+      return buildDisplayState(state);
+    }
+
+    if (meta.role === ClientRole.CONTROLLER) {
+      return buildControllerState(state, meta.playerId);
+    }
+
+    return buildDisplayState(state);
   }
 
   _getPlayers(session) {

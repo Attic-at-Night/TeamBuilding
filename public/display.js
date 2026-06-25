@@ -1,8 +1,10 @@
-// WebSocket connection shared across all display scenes via the game event bus.
 let socket = null;
 
 function connectDisplaySocket(sessionId, game) {
-  if (socket) socket.close();
+  if (socket) {
+    socket.close();
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${protocol}://${window.location.host}`);
   socket.addEventListener('open', () => {
@@ -22,75 +24,102 @@ function sendWs(payload) {
   }
 }
 
-// ── SetupScene ────────────────────────────────────────────────────────────────
-// Shows a "Start Session" button. On click, calls /api/session and transitions
-// to LobbyScene with the response data.
+function formatDuration(ms, startedAt, endedAt, now = Date.now()) {
+  const value = typeof ms === 'number'
+    ? ms
+    : (startedAt ? ((endedAt || now) - startedAt) : 0);
+  const seconds = Math.max(0, Math.floor(value / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function formatLog(entry) {
+  if (!entry) {
+    return '';
+  }
+
+  const time = new Date(entry.ts).toLocaleTimeString();
+  if (entry.event === 'game_start') return `${time} • session started`;
+  if (entry.event === 'move') return `${time} • move ${entry.dir.toUpperCase()} (${entry.result})`;
+  if (entry.event === 'key_pickup') return `${time} • key collected at ${entry.position.row + 1},${entry.position.col + 1}`;
+  if (entry.event === 'hazard_hit') return `${time} • hazard hit at ${entry.position.row + 1},${entry.position.col + 1}`;
+  if (entry.event === 'reset') return `${time} • maze reset`;
+  if (entry.event === 'game_end') return `${time} • game ${entry.outcome}`;
+  if (entry.event === 'input_rejected') return `${time} • input rejected (${entry.reason})`;
+  return `${time} • ${entry.event.replace(/_/g, ' ')}`;
+}
 
 class SetupScene extends Phaser.Scene {
-  constructor() { super({ key: 'SetupScene' }); }
+  constructor() {
+    super({ key: 'SetupScene' });
+  }
 
   create() {
     const { width, height } = this.scale;
 
     this.add.text(width / 2, 120, 'TeamBuilding', {
-      fontSize: '56px', color: '#ffffff', fontStyle: 'bold',
+      fontSize: '56px',
+      color: '#ffffff',
+      fontStyle: 'bold',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 190, 'Display', {
-      fontSize: '26px', color: '#888888',
+      fontSize: '26px',
+      color: '#888888',
     }).setOrigin(0.5);
 
     const btn = this.add.rectangle(width / 2, height / 2, 260, 72, 0x3355ff)
       .setInteractive({ useHandCursor: true });
     const label = this.add.text(width / 2, height / 2, 'Start Session', {
-      fontSize: '24px', color: '#ffffff',
+      fontSize: '24px',
+      color: '#ffffff',
     }).setOrigin(0.5);
 
     btn.on('pointerover', () => btn.setFillStyle(0x5577ff));
     btn.on('pointerout', () => btn.setFillStyle(0x3355ff));
     btn.on('pointerup', async () => {
       btn.disableInteractive();
-      label.setText('Starting\u2026');
+      label.setText('Starting…');
       try {
         const res = await fetch('/api/session', { method: 'POST' });
         const data = await res.json();
         connectDisplaySocket(data.sessionId, this.game);
         this.scene.start('LobbyScene', data);
       } catch {
-        label.setText('Error \u2013 try again');
+        label.setText('Error – try again');
         btn.setInteractive({ useHandCursor: true });
       }
     });
   }
 }
 
-// ── LobbyScene ────────────────────────────────────────────────────────────────
-// Renders the QR code, session code, and a live player list.
-// Shows a "Start Game" button once at least one player has joined.
-// Transitions to GameScene when the server broadcasts status === 'playing'.
-
 class LobbyScene extends Phaser.Scene {
-  constructor() { super({ key: 'LobbyScene' }); }
+  constructor() {
+    super({ key: 'LobbyScene' });
+  }
 
-  init(data) { this.sessionData = data; }
+  init(data) {
+    this.sessionData = data;
+  }
 
   create() {
     const { width, height } = this.scale;
     const { sessionId, joinUrl, qrCodeDataUrl, connection } = this.sessionData;
 
-    // Left panel – QR code and join info
     this.add.text(width / 2, 36, 'Scan to Join', {
-      fontSize: '30px', color: '#ffffff',
+      fontSize: '30px',
+      color: '#ffffff',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 76, `Session: ${sessionId}`, {
-      fontSize: '24px', color: '#ffff88',
+      fontSize: '24px',
+      color: '#ffff88',
     }).setOrigin(0.5);
 
-    // Load QR code from the base64 data URL returned by the server.
-    // Use `on` (not `once`) so the listener isn't consumed by an earlier
-    // addtexture event (e.g. Phaser internals) before qr_code is ready.
-    if (this.textures.exists('qr_code')) this.textures.remove('qr_code');
+    if (this.textures.exists('qr_code')) {
+      this.textures.remove('qr_code');
+    }
+
     const onQrAdd = (key) => {
       if (key === 'qr_code') {
         this.textures.off('addtexture', onQrAdd);
@@ -101,27 +130,29 @@ class LobbyScene extends Phaser.Scene {
     this.textures.addBase64('qr_code', qrCodeDataUrl);
 
     this.add.text(width / 2, 416, joinUrl, {
-      fontSize: '14px', color: '#6688ff', wordWrap: { width: width * 0.55 },
+      fontSize: '14px',
+      color: '#6688ff',
+      wordWrap: { width: width * 0.55 },
     }).setOrigin(0.5);
 
     if (connection?.ipAddress) {
-      const info = [connection.ipAddress, connection.networkName].filter(Boolean).join(' \u2022 ');
+      const info = [connection.ipAddress, connection.networkName].filter(Boolean).join(' • ');
       this.add.text(width / 2, 450, info, { fontSize: '13px', color: '#555555' }).setOrigin(0.5);
     }
 
-    // Right panel – player list
     const px = width * 0.75;
     this.add.text(px, 36, 'Players', { fontSize: '26px', color: '#ffffff' }).setOrigin(0.5);
     this.playerGroup = this.add.group();
-
-    this.statusText = this.add.text(px, height - 140, 'Waiting for players\u2026', {
-      fontSize: '16px', color: '#888888',
+    this.statusText = this.add.text(px, height - 160, 'Waiting for players…', {
+      fontSize: '16px',
+      color: '#888888',
     }).setOrigin(0.5);
 
-    this.startBg = this.add.rectangle(px, height - 76, 240, 68, 0x22aa55)
+    this.startBg = this.add.rectangle(px, height - 90, 240, 68, 0x22aa55)
       .setInteractive({ useHandCursor: true }).setVisible(false);
-    this.startLabel = this.add.text(px, height - 76, 'Start Game', {
-      fontSize: '22px', color: '#ffffff',
+    this.startLabel = this.add.text(px, height - 90, 'Start Game', {
+      fontSize: '22px',
+      color: '#ffffff',
     }).setOrigin(0.5).setVisible(false);
 
     this.startBg.on('pointerover', () => this.startBg.setFillStyle(0x44cc77));
@@ -132,32 +163,38 @@ class LobbyScene extends Phaser.Scene {
   }
 
   onMessage(message) {
-    if (message.type !== 'state_sync') return;
+    if (message.type !== 'state_sync') {
+      return;
+    }
+
     const { width } = this.scale;
     const { state } = message;
     const players = state.players || [];
+    const summary = state.summary || {};
     const px = width * 0.75;
 
     this.playerGroup.clear(true, true);
     players.forEach((p, i) => {
       this.playerGroup.add(
-        this.add.text(px, 80 + i * 36, `\u2022 ${p.name}`, {
-          fontSize: '20px', color: '#dddddd',
+        this.add.text(px, 80 + i * 36, `• ${p.name}`, {
+          fontSize: '20px',
+          color: '#dddddd',
         }).setOrigin(0.5)
       );
     });
 
-    const hasPlayers = players.length > 0;
-    const isLobby = state.status === 'lobby';
-    this.startBg.setVisible(hasPlayers && isLobby);
-    this.startLabel.setVisible(hasPlayers && isLobby);
-    this.statusText.setText(hasPlayers
-      ? `${players.length} player${players.length === 1 ? '' : 's'} ready`
-      : 'Waiting for players\u2026');
+    const canStart = state.ready && state.status === 'lobby';
+    this.startBg.setVisible(canStart);
+    this.startLabel.setVisible(canStart);
+    this.statusText.setText(canStart ? 'Ready to start' : 'Waiting for 2–4 players…');
 
-    if (state.status === 'playing') {
+    if (state.status !== 'lobby') {
       this.game.events.off('ws_message', this.onMessage, this);
-      this.scene.start('GameScene', { players: state.players, initialState: state });
+      this.scene.start('GameScene', { initialState: state });
+    }
+
+    if (summary.outcome) {
+      this.statusText.setText(summary.outcome === 'success' ? 'Session complete' : 'Session failed');
     }
   }
 
@@ -166,66 +203,68 @@ class LobbyScene extends Phaser.Scene {
   }
 }
 
-// ── GameScene ─────────────────────────────────────────────────────────────────
-// Maze game display: full-information view for the facilitator.
-// Left panel: maze grid with player position, hazards (×), and goal (■).
-// Right panel: role assignment list + scrolling event log for debrief.
-// Driven entirely by state_sync messages – no per-frame update needed.
-
-// Maze drawing constants (14 × 14 cells at 46 px each, fitting the left panel).
-const MAZE_OX = 18;
-const MAZE_OY = 70;
-const MAZE_CS = 46;
-
 class GameScene extends Phaser.Scene {
-  constructor() { super({ key: 'GameScene' }); }
+  constructor() {
+    super({ key: 'GameScene' });
+  }
 
   init(data) {
-    this.players = data.players || [];
     this.pendingState = data.initialState || null;
+    this.currentState = this.pendingState;
   }
 
   create() {
     const { width, height } = this.scale;
 
-    this.add.text(width / 2, 32, 'Maze Game', {
-      fontSize: '32px', color: '#ffffff', fontStyle: 'bold',
+    this.add.text(width / 2, 28, 'Session Overview', {
+      fontSize: '30px',
+      color: '#ffffff',
+      fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // Maze graphics layer – redrawn on each state update.
-    this.mazeGraphics = this.add.graphics();
-
-    // ── Right panel ──────────────────────────────────────────────────────────
-    const RX = 700;
-
-    this.add.text(RX, 70, 'Roles', { fontSize: '20px', color: '#ffff88' });
-    this.rolesText = this.add.text(RX, 96, '', {
-      fontSize: '16px', color: '#dddddd', lineSpacing: 4,
+    this.summaryText = this.add.text(22, 74, '', {
+      fontSize: '18px',
+      color: '#ffff88',
+      lineSpacing: 6,
+      wordWrap: { width: width - 44 },
     });
 
-    this.add.text(RX, 230, 'Event Log', { fontSize: '20px', color: '#ffff88' });
-    this.logText = this.add.text(RX, 256, '', {
-      fontSize: '13px', color: '#aaaaaa', lineSpacing: 3,
-      wordWrap: { width: width - RX - 20 },
+    this.logText = this.add.text(22, 260, '', {
+      fontSize: '14px',
+      color: '#aaaaaa',
+      lineSpacing: 3,
+      wordWrap: { width: width - 44 },
     });
 
-    // ── End overlay (hidden until game ends) ─────────────────────────────────
-    this.endOverlay = this.add.rectangle(width / 2, height / 2, 640, 220, 0x000000, 0.88)
-      .setDepth(10).setVisible(false);
-    this.endText = this.add.text(width / 2, height / 2 - 40, '', {
-      fontSize: '38px', color: '#22ee66', fontStyle: 'bold',
+    this.endOverlay = this.add.rectangle(width / 2, height / 2, width - 60, 190, 0x000000, 0.88)
+      .setDepth(10)
+      .setVisible(false);
+    this.endText = this.add.text(width / 2, height / 2 - 42, '', {
+      fontSize: '34px',
+      color: '#22ee66',
+      fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(11).setVisible(false);
-    this.endSubText = this.add.text(width / 2, height / 2 + 24, '', {
-      fontSize: '20px', color: '#aaaaaa',
+    this.endSubText = this.add.text(width / 2, height / 2 + 20, '', {
+      fontSize: '18px',
+      color: '#dddddd',
     }).setOrigin(0.5).setDepth(11).setVisible(false);
 
     this.game.events.on('ws_message', this.onMessage, this);
 
-    // Render state passed in from LobbyScene; also request a resync in case
-    // the socket reconnected after the initial broadcast.
+    this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        if (this.currentState && this.currentState.status === 'playing') {
+          this.renderState(this.currentState);
+        }
+      },
+    });
+
     if (this.pendingState) {
       this.renderState(this.pendingState);
     }
+
     sendWs({ type: 'resync_request' });
   }
 
@@ -236,84 +275,30 @@ class GameScene extends Phaser.Scene {
   }
 
   renderState(state) {
-    if (!state.maze) return;
+    this.currentState = state;
+    const summary = state.summary || {};
+    const lines = [
+      `Status: ${state.status}`,
+      `Keys collected: ${summary.keysCollected || 0}/3`,
+      `Lives remaining: ${summary.livesRemaining || 0}`,
+      `Lives lost: ${summary.livesLost || 0}`,
+      `Resets: ${summary.resets || 0}`,
+      `Time: ${formatDuration(summary.durationMs, summary.startedAt, summary.endedAt)}`,
+      `Outcome: ${summary.outcome || 'in progress'}`,
+    ];
+    this.summaryText.setText(lines.join('\n'));
 
-    this.drawMaze(state.maze);
-    this.updateRoles(state.players || [], state.roles || {});
-    this.updateLog(state.log || []);
+    const logLines = (state.log || []).slice(-12).reverse().map(formatLog);
+    this.logText.setText(logLines.length ? logLines.join('\n') : 'No logs yet.');
 
     if (state.status === 'ended') {
-      const moves = (state.log || []).filter(e => e.event === 'move').length;
       this.endOverlay.setVisible(true);
-      this.endText.setText('Goal reached!').setVisible(true);
+      this.endText.setText(summary.outcome === 'success' ? 'Complete' : 'Failed').setVisible(true);
+      this.endText.setColor(summary.outcome === 'success' ? '#22ee66' : '#ff6666');
       this.endSubText
-        .setText(`Hazards hit: ${state.maze.hitHazards}   Moves: ${moves}   (see log for debrief)`)
+        .setText(`Keys: ${summary.keysCollected || 0}   Lives lost: ${summary.livesLost || 0}   Resets: ${summary.resets || 0}`)
         .setVisible(true);
     }
-  }
-
-  drawMaze(maze) {
-    const OX = MAZE_OX, OY = MAZE_OY, CS = MAZE_CS;
-    const { cells, height, width, hazards, goal, playerPos } = maze;
-
-    this.mazeGraphics.clear();
-
-    // Walls
-    this.mazeGraphics.lineStyle(3, 0x8888cc);
-    for (let r = 0; r < height; r++) {
-      for (let c = 0; c < width; c++) {
-        const x = OX + c * CS;
-        const y = OY + r * CS;
-        const w = cells[r][c].walls;
-        if (w.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
-        if (w.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
-        if (w.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
-        if (w.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
-      }
-    }
-
-    // Goal – filled green square
-    this.mazeGraphics.fillStyle(0x22aa55);
-    this.mazeGraphics.fillRect(
-      OX + goal.col * CS + 14, OY + goal.row * CS + 14, CS - 28, CS - 28
-    );
-
-    // Start marker – small dim circle at (0,0)
-    this.mazeGraphics.fillStyle(0xffffff, 0.35);
-    this.mazeGraphics.fillCircle(OX + CS / 2, OY + CS / 2, 10);
-
-    // Player – filled blue circle
-    this.mazeGraphics.fillStyle(0x4488ff);
-    this.mazeGraphics.fillCircle(
-      OX + playerPos.col * CS + CS / 2,
-      OY + playerPos.row * CS + CS / 2,
-      24
-    );
-  }
-
-  updateRoles(players, roles) {
-    const lines = players.map(p => {
-      const role = roles[p.id] || '?';
-      const tag = role === 'mover' ? '[mover]' : '[guide]';
-      const color = role === 'mover' ? '' : '';  // text is uniform; colour is via prefix
-      return `${tag} ${p.name}`;
-    });
-    this.rolesText.setText(lines.join('\n'));
-  }
-
-  updateLog(log) {
-    const RESULT_ICON = { ok: '\u2713', wall: '\u25a0', hazard: '!', goal: '*', invalid: '?' };
-    const recent = [...log].reverse().slice(0, 16);
-    const lines = recent.map(entry => {
-      if (entry.event === 'game_start') return '> Game started';
-      if (entry.event === 'game_end')   return `* ${entry.player} reached the goal!`;
-      if (entry.event === 'move') {
-        const icon = RESULT_ICON[entry.result] || '?';
-        return `${icon} ${entry.player} -> ${entry.dir.toUpperCase()} (${entry.result})`;
-      }
-      return JSON.stringify(entry);
-    });
-    this.logText.setText(lines.join('\n'));
   }
 
   shutdown() {
@@ -321,7 +306,6 @@ class GameScene extends Phaser.Scene {
   }
 }
 
-// ── Phaser game ───────────────────────────────────────────────────────────────
 new Phaser.Game({
   type: Phaser.AUTO,
   width: 1280,
