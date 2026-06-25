@@ -117,11 +117,11 @@ jobs:
 
           if command -v pm2 >/dev/null 2>&1; then
             cd "$DEPLOY_PATH/current"
-            pm2 delete teambuilding || true
             set -a
             . ./.env
             set +a
-            pm2 start server.js --name teambuilding --time --update-env
+            pm2 restart teambuilding --update-env 2>/dev/null || pm2 start server.js --name teambuilding --time --update-env
+            pm2 save
           else
             echo "pm2 is not installed. Start manually from $DEPLOY_PATH/current:"
             echo "  set -a && . ./.env && set +a && node server.js"
