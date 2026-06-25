@@ -256,6 +256,44 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
+  _setupBoard() {
+    this.mazeCS = Math.floor((this.scale.width - 24) / 14);
+    this.mazeOX = Math.floor((this.scale.width - 14 * this.mazeCS) / 2);
+    this.mazeOY = 120;
+  }
+
+  _drawBlankBoard() {
+    const OX = this.mazeOX;
+    const OY = this.mazeOY;
+    const CS = this.mazeCS;
+    const size = CS * 14;
+
+    this.mazeGraphics.clear();
+    this.mazeGraphics.lineStyle(2, 0x555588, 0.5);
+    this.mazeGraphics.strokeRect(OX, OY, size, size);
+  }
+
+  _drawMarkerSquare(row, col, color, alpha = 1) {
+    const CS = this.mazeCS;
+    this.mazeGraphics.fillStyle(color, alpha);
+    this.mazeGraphics.fillRect(
+      this.mazeOX + col * CS + 8,
+      this.mazeOY + row * CS + 8,
+      CS - 16,
+      CS - 16
+    );
+  }
+
+  _drawMarkerCircle(row, col, color, radiusScale = 0.28) {
+    const CS = this.mazeCS;
+    this.mazeGraphics.fillStyle(color);
+    this.mazeGraphics.fillCircle(
+      this.mazeOX + col * CS + CS / 2,
+      this.mazeOY + row * CS + CS / 2,
+      Math.max(7, Math.floor(CS * radiusScale))
+    );
+  }
+
   _buildRoleUi(role) {
     this._clearRoleUi();
 
@@ -264,9 +302,7 @@ class ControllerScene extends Phaser.Scene {
     const buttons = [];
 
     if (role === 'mover') {
-      this.mazeCS = Math.floor((width - 24) / 14);
-      this.mazeOX = Math.floor((width - 14 * this.mazeCS) / 2);
-      this.mazeOY = 120;
+      this._setupBoard();
       buttons.push(
         { label: '↑', dir: 'n', x: width / 2, y: baseY - 90 },
         { label: '↓', dir: 's', x: width / 2, y: baseY - 10 },
@@ -275,8 +311,10 @@ class ControllerScene extends Phaser.Scene {
       );
       this.detailText.setText('Navigate the maze. Pick up keys, avoid hazards, and reach the exit once it unlocks.');
     } else if (role === 'guide') {
-      this.detailText.setText('Track hazard markers and warn the team.');
+      this._setupBoard();
+      this.detailText.setText('Track hazard markers, the ball, and the exit.');
     } else if (role === 'key-seer') {
+      this._setupBoard();
       this.detailText.setText('Track objective markers and relay their positions.');
     } else if (role === 'life-keeper') {
       this.detailText.setText('Watch the life counter and incident log.');
@@ -339,12 +377,54 @@ class ControllerScene extends Phaser.Scene {
     );
   }
 
+  _drawGuideBoard(roleData) {
+    this._drawBlankBoard();
+
+    const hazards = roleData.hazards || [];
+    for (const hazard of hazards) {
+      const cx = this.mazeOX + hazard.col * this.mazeCS + this.mazeCS / 2;
+      const cy = this.mazeOY + hazard.row * this.mazeCS + this.mazeCS / 2;
+      const r = Math.max(8, Math.floor(this.mazeCS * 0.28));
+      this.mazeGraphics.lineStyle(3, 0xff3333);
+      this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
+      this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
+    }
+
+    if (roleData.goal) {
+      this._drawMarkerSquare(roleData.goal.row, roleData.goal.col, 0x22aa55);
+    }
+
+    if (roleData.playerPos) {
+      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+    }
+  }
+
+  _drawKeyBoard(roleData) {
+    this._drawBlankBoard();
+
+    const keys = roleData.keys || [];
+    this.mazeGraphics.lineStyle(2, 0xffcc33);
+    for (const key of keys) {
+      if (key.collected) {
+        continue;
+      }
+      const cx = this.mazeOX + key.col * this.mazeCS + this.mazeCS / 2;
+      const cy = this.mazeOY + key.row * this.mazeCS + this.mazeCS / 2;
+      this.mazeGraphics.fillStyle(0xffcc33);
+      this.mazeGraphics.fillCircle(cx, cy, Math.max(6, Math.floor(this.mazeCS * 0.2)));
+    }
+  }
+
   _renderState(state) {
     const roleData = state.roleData || {};
     const summary = state.summary || {};
 
     if (this.viewerRole === 'mover' && roleData.maze) {
       this._drawMoverMaze(roleData.maze);
+    } else if (this.viewerRole === 'guide') {
+      this._drawGuideBoard(roleData);
+    } else if (this.viewerRole === 'key-seer') {
+      this._drawKeyBoard(roleData);
     } else if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
