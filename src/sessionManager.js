@@ -119,6 +119,8 @@ function buildRoleData(state, role) {
   if (role === MazeRole.GUIDE) {
     return {
       hazards: maze ? maze.hazards : [],
+      goal: maze ? maze.goal : null,
+      playerPos: maze ? maze.playerPos : null,
       recentEvents: getRecentEventsForRole(state, role),
     };
   }
