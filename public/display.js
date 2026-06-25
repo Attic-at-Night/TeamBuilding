@@ -129,11 +129,17 @@ class LobbyScene extends Phaser.Scene {
     this.textures.on('addtexture', onQrAdd);
     this.textures.addBase64('qr_code', qrCodeDataUrl);
 
-    this.add.text(width / 2, 416, joinUrl, {
+    const urlText = this.add.text(width / 2, 416, joinUrl, {
       fontSize: '14px',
       color: '#6688ff',
       wordWrap: { width: width * 0.55 },
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    urlText.on('pointerover', () => urlText.setColor('#88aaff'));
+    urlText.on('pointerout', () => urlText.setColor('#6688ff'));
+    urlText.on('pointerup', () => {
+      window.open(joinUrl, '_blank');
+    });
 
     if (connection?.ipAddress) {
       const info = [connection.ipAddress, connection.networkName].filter(Boolean).join(' • ');
