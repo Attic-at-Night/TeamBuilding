@@ -37,21 +37,24 @@ function makeOpenMaze(overrides = {}) {
   };
 }
 
-function bootstrapGame(playerCount) {
+function bootstrapGame(gameplayPlayerCount) {
   const manager = new SessionManager();
   const display = createFakeSocket();
   const session = manager.createSession('http://localhost:3000');
   manager.registerDisplay(session.sessionId, display);
 
+  const trainer = createFakeSocket();
+  manager.joinController(session.sessionId, 'Trainer', trainer);
+
   const controllers = [];
-  for (let i = 0; i < playerCount; i++) {
+  for (let i = 0; i < gameplayPlayerCount; i++) {
     const socket = createFakeSocket();
     controllers.push(socket);
     manager.joinController(session.sessionId, `P${i + 1}`, socket);
   }
 
   manager.startGame(session.sessionId);
-  return { manager, display, controllers, sessionId: session.sessionId };
+  return { manager, display, trainer, controllers, sessionId: session.sessionId };
 }
 
 test('display registers and receives lobby state without the maze', () => {
@@ -70,19 +73,19 @@ test('display registers and receives lobby state without the maze', () => {
   assert.equal(sync.state.maze, undefined);
 });
 
-test('controller joins active lobby and gets a filtered controller view', () => {
+test('first controller becomes hidden trainer in lobby', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
-  const controller = createFakeSocket();
+  const trainer = createFakeSocket();
   const { sessionId } = manager.createSession('http://localhost:3000');
 
   manager.registerDisplay(sessionId, display);
-  manager.joinController(sessionId, 'Alex', controller);
+  manager.joinController(sessionId, 'Alex', trainer);
 
-  const sync = controller.sent.at(-1);
+  const sync = trainer.sent.at(-1);
   assert.equal(sync.type, MessageType.STATE_SYNC);
-  assert.equal(sync.state.viewerRole, null);
-  assert.equal(sync.state.roleData.recentEvents.length, 0);
+  assert.equal(sync.state.viewerRole, 'trainer');
+  assert.equal(sync.state.players.length, 0);
 });
 
 test('session rejects joins after four players', () => {
@@ -90,6 +93,7 @@ test('session rejects joins after four players', () => {
   const display = createFakeSocket();
   const { sessionId } = manager.createSession('http://localhost:3000');
   manager.registerDisplay(sessionId, display);
+  manager.joinController(sessionId, 'Trainer', createFakeSocket());
 
   for (let i = 0; i < 4; i++) {
     const socket = createFakeSocket();
@@ -102,11 +106,12 @@ test('session rejects joins after four players', () => {
   assert.equal(overflow.sent.at(-1).message, 'Session is full.');
 });
 
-test('startGame assigns the four roles in join order', () => {
-  const { display, controllers } = bootstrapGame(4);
+test('startGame assigns gameplay roles while trainer remains observer', () => {
+  const { display, trainer, controllers } = bootstrapGame(4);
 
   assert.equal(display.sent.at(-1).type, MessageType.STATE_SYNC);
   assert.equal(display.sent.at(-1).state.status, GameStatus.PLAYING);
+  assert.equal(trainer.sent.at(-1).state.viewerRole, 'trainer');
 
   assert.equal(controllers[0].sent.at(-1).state.viewerRole, MazeRole.MOVER);
   assert.ok(controllers[0].sent.at(-1).state.roleData.maze);
@@ -193,7 +198,7 @@ test('goal unlocks only after three keys are collected', () => {
   const sync = display.sent.at(-1);
   assert.equal(sync.state.status, GameStatus.ENDED);
   assert.equal(sync.state.summary.outcome, 'success');
-  assert.ok(sync.state.log.some((entry) => entry.event === 'game_end'));
+  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
 });
 
 test('goal remains locked until three keys are collected', () => {
@@ -228,5 +233,19 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.equal(sync.state.status, GameStatus.ENDED);
   assert.equal(sync.state.summary.outcome, 'fail');
   assert.equal(sync.state.summary.livesRemaining, 0);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'game_end'));
+  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
+});
+
+test('trainer can broadcast JSON payloads to display state', () => {
+  const { manager, display, trainer, sessionId } = bootstrapGame(2);
+  const trainerId = trainer.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
+
+  assert.equal(
+    manager.handleInput(sessionId, trainerId, { action: 'trainer_broadcast', payload: { note: 'Discuss reset timing' } }),
+    true
+  );
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.trainerBroadcast.payload.note, 'Discuss reset timing');
+  assert.ok(sync.state.log.some((entry) => entry.event === 'trainer_broadcast'));
 });

@@ -186,6 +186,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
   const keyCandidates = candidates.filter((cell) => !hazards.some((hazard) => hazard.row === cell.row && hazard.col === cell.col));
   const keys = pickDistinctCells(keyCandidates, keyCount).map((cell, index) => ({
     id: `key-${index + 1}-${randomId()}`,
+    key: index + 1,
     row: cell.row,
     col: cell.col,
     collected: false,

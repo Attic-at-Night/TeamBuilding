@@ -3,12 +3,14 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
+const { SessionLogStore } = require('./src/sessionLogStore');
 const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
 const { MessageType, ClientRole } = require('./src/protocol');
 
 const app = express();
-const sessionManager = new SessionManager();
+const logStore = new SessionLogStore();
+const sessionManager = new SessionManager({ logStore });
 
 app.set('trust proxy', true);
 app.use(express.json());
@@ -45,6 +47,16 @@ app.post('/api/session', async (req, res) => {
   });
 
   res.json({ sessionId, joinUrl, qrCodeDataUrl, connection });
+});
+
+app.get('/api/session/:sessionId/log', (req, res) => {
+  const sessionId = String(req.params.sessionId || '').toUpperCase();
+  const sessionLog = sessionManager.getSessionExport(sessionId);
+  if (!sessionLog) {
+    res.status(404).json({ error: 'Session log not found.' });
+    return;
+  }
+  res.json(sessionLog);
 });
 
 const server = app.listen(process.env.PORT || 3000, () => {
