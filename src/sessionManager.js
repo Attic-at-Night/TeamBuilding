@@ -427,6 +427,30 @@ class SessionManager {
       dir: input?.dir || null,
     });
 
+    if (isTrainer && input?.action === 'trainer_share_log') {
+      const payload = this._buildSessionExport(sessionId, state);
+      const sharedEventCount = Array.isArray(payload.events) ? payload.events.length : 0;
+
+      state.trainerBroadcast = {
+        ts,
+        trainerId: playerId,
+        trainerName: controller.name,
+        payload,
+      };
+
+      appendLog(state, {
+        ts,
+        event: 'trainer_broadcast',
+        playerId,
+        trainerName: controller.name,
+        payloadType: 'session_export',
+        sharedEventCount,
+      });
+
+      this.broadcastState(sessionId);
+      return true;
+    }
+
     if (isTrainer && input?.action === 'trainer_broadcast') {
       const payload = cloneJsonValue(input.payload);
       if (!payload || typeof payload !== 'object') {
