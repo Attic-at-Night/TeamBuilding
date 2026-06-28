@@ -48,8 +48,11 @@ function formatEvent(entry) {
   if (entry.event === 'reset') {
     return 'Maze reset';
   }
-  if (entry.event === 'game_end') {
-    return `Game ${entry.outcome}`;
+  if (entry.event === 'session_end') {
+    return `Session ${entry.outcome}`;
+  }
+  if (entry.event === 'trainer_broadcast') {
+    return 'Trainer data shared';
   }
 
   return entry.event.replace(/_/g, ' ');
@@ -348,21 +351,42 @@ class ControllerScene extends Phaser.Scene {
       this._setupBoard(role);
       this._syncTextLayout(role);
       this.detailText.setText('Lives and the ball.');
+    } else if (role === 'trainer') {
+      this._syncTextLayout(role);
+      this.detailText.setText('Trainer observer view. You can share JSON data to the display.');
+      buttons.push({ label: 'Share JSON', action: 'trainer_broadcast', x: width / 2, y: baseY - 20, width: 220 });
     } else {
       this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
     }
 
     for (const item of buttons) {
-      const bg = this.add.rectangle(item.x, item.y, 96, 64, 0x3355ff)
+      const buttonWidth = item.width || 96;
+      const bg = this.add.rectangle(item.x, item.y, buttonWidth, 64, 0x3355ff)
         .setInteractive({ useHandCursor: true });
       const label = this.add.text(item.x, item.y, item.label, {
-        fontSize: '34px',
+        fontSize: item.action ? '24px' : '34px',
         color: '#ffffff',
       }).setOrigin(0.5);
 
       bg.on('pointerdown', () => {
         bg.setFillStyle(0x5577ff);
+        if (item.action === 'trainer_broadcast') {
+          const raw = window.prompt('Enter trainer JSON payload', '{"note":"Debrief point"}');
+          if (!raw) {
+            bg.setFillStyle(0x3355ff);
+            return;
+          }
+
+          try {
+            const payload = JSON.parse(raw);
+            sendWs({ type: 'player_input', input: { action: 'trainer_broadcast', payload } });
+          } catch {
+            this.eventsText.setText('Invalid JSON payload.');
+          }
+          return;
+        }
+
         sendWs({ type: 'player_input', input: { action: 'move', dir: item.dir } });
       });
       bg.on('pointerup', () => bg.setFillStyle(0x3355ff));
@@ -497,6 +521,11 @@ class ControllerScene extends Phaser.Scene {
     } else if (this.viewerRole === 'life-keeper') {
       const hazardLog = roleData.hazardLog || [];
       this.detailText.setText(`Lives remaining: ${roleData.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
+    } else if (this.viewerRole === 'trainer') {
+      const payload = state.trainerBroadcast?.payload;
+      this.detailText.setText(payload
+        ? `Latest shared JSON: ${JSON.stringify(payload)}`
+        : 'No trainer JSON shared yet.');
     }
 
     const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();

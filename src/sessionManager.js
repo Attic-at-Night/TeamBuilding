@@ -36,6 +36,8 @@ function makeInitialState() {
     roles: {},
     maze: null,
     log: [],
+    trainer: null,
+    trainerBroadcast: null,
     summary: {
       startedAt: null,
       endedAt: null,
@@ -55,11 +57,28 @@ function createRoundMaze() {
 }
 
 function appendLog(state, entry) {
-  state.log.push(entry);
+  const logEntry = { ...entry };
+  if (typeof logEntry.ts !== 'number') {
+    logEntry.ts = Date.now();
+  }
+
+  if (state.summary.startedAt) {
+    const deltaSeconds = Math.max(0, (logEntry.ts - state.summary.startedAt) / 1000);
+    logEntry.t = Number(deltaSeconds.toFixed(3));
+  } else if (logEntry.event === 'game_start') {
+    logEntry.t = 0;
+  }
+
+  state.log.push(logEntry);
+  return logEntry;
 }
 
 function clonePoint(point) {
   return point ? { row: point.row, col: point.col } : null;
+}
+
+function pointToArray(point) {
+  return point ? [point.row, point.col] : null;
 }
 
 function getRoleOrder(playerCount) {
@@ -80,15 +99,15 @@ function getRoleForPlayer(state, playerId) {
 function getRecentEventsForRole(state, role) {
   const relevantEvents = state.log.filter((entry) => {
     if (role === MazeRole.LIFE_KEEPER) {
-      return ['hazard_hit', 'life_change', 'life_pickup', 'reset', 'game_end', 'game_start'].includes(entry.event);
+      return ['hazard_hit', 'life_change', 'life_pickup', 'reset', 'session_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.KEY_SEER) {
-      return ['key_pickup', 'reset', 'game_end', 'game_start'].includes(entry.event);
+      return ['key_pickup', 'reset', 'session_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.GUIDE) {
-      return ['hazard_hit', 'reset', 'life_change', 'life_pickup', 'game_end', 'game_start'].includes(entry.event);
+      return ['hazard_hit', 'reset', 'life_change', 'life_pickup', 'session_end', 'game_start'].includes(entry.event);
     }
-    return ['move', 'key_pickup', 'life_pickup', 'hazard_hit', 'reset', 'goal_locked', 'game_end', 'game_start'].includes(entry.event);
+    return ['move', 'key_pickup', 'life_pickup', 'hazard_hit', 'reset', 'goal_locked', 'session_end', 'game_start'].includes(entry.event);
   });
 
   return relevantEvents.slice(-RECENT_EVENT_LIMIT);
@@ -135,6 +154,7 @@ function buildRoleData(state, role) {
         id: key.id,
         row: key.row,
         col: key.col,
+        key: key.key,
         collected: key.collected,
       })) : [],
       playerPos: maze ? maze.playerPos : null,
@@ -167,6 +187,23 @@ function buildDisplayState(state) {
     players: state.players,
     summary: state.summary,
     log: state.log,
+    trainerBroadcast: state.trainerBroadcast,
+    ready: state.players.length >= MIN_PLAYERS,
+    capacity: MAX_PLAYERS,
+  };
+}
+
+function buildTrainerState(state) {
+  return {
+    status: state.status,
+    players: state.players,
+    summary: state.summary,
+    log: state.log,
+    maze: state.maze,
+    trainer: state.trainer,
+    trainerBroadcast: state.trainerBroadcast,
+    viewerRole: 'trainer',
+    canBroadcast: true,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
   };
@@ -181,6 +218,7 @@ function buildControllerState(state, playerId) {
     summary: controllerSummary,
     viewerRole: role,
     roleData: buildRoleData(state, role),
+    trainerBroadcast: state.trainerBroadcast,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
   };
@@ -199,9 +237,11 @@ function finishGame(state, outcome, reason) {
 
   appendLog(state, {
     ts: endedAt,
-    event: 'game_end',
+    event: 'session_end',
     outcome,
     reason,
+    keys: state.summary.keysCollected,
+    lives: state.summary.livesRemaining,
   });
 }
 
@@ -219,9 +259,18 @@ function resetRound(state, reason) {
   });
 }
 
+function cloneJsonValue(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+}
+
 class SessionManager {
-  constructor() {
+  constructor(options = {}) {
     this.sessions = new Map();
+    this.logStore = options.logStore || null;
   }
 
   createSession(origin) {
@@ -233,10 +282,12 @@ class SessionManager {
     const joinUrl = `${origin}/join?session=${sessionId}`;
     this.sessions.set(sessionId, {
       display: null,
+      trainerId: null,
       controllers: new Map(),
       state: makeInitialState(),
     });
 
+    this._persistSession(sessionId);
     return { sessionId, joinUrl };
   }
 
@@ -272,25 +323,34 @@ class SessionManager {
       return false;
     }
 
-    if (session.controllers.size >= MAX_PLAYERS) {
+    const isTrainer = session.trainerId === null;
+    if (!isTrainer && this._getGameplayControllers(session).length >= MAX_PLAYERS) {
       sendJson(socket, { type: MessageType.JOIN_ERROR, message: 'Session is full.' });
       return false;
     }
 
     const playerId = crypto.randomUUID();
+    const playerName = String(name || 'Player').trim() || 'Player';
     const player = {
       id: playerId,
-      name: String(name || 'Player').trim() || 'Player',
+      name: playerName,
+      isTrainer,
     };
 
     session.controllers.set(playerId, { socket, ...player });
-    socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId };
+    if (isTrainer) {
+      session.trainerId = playerId;
+      session.state.trainer = { id: playerId, name: playerName };
+    }
+
+    socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId, isTrainer };
 
     sendJson(socket, {
       type: MessageType.CLIENT_REGISTERED,
       role: ClientRole.CONTROLLER,
       sessionId,
       playerId,
+      isTrainer,
     });
 
     session.state.players = this._getPlayers(session);
@@ -319,6 +379,7 @@ class SessionManager {
     session.state.roles = roles;
     session.state.maze = createRoundMaze();
     session.state.log = [];
+    session.state.trainerBroadcast = null;
     session.state.summary = {
       startedAt: now,
       endedAt: null,
@@ -337,6 +398,7 @@ class SessionManager {
       event: 'game_start',
       players: players.map((player) => ({ id: player.id, name: player.name })),
       roles: Object.entries(roles).map(([playerId, role]) => ({ playerId, role })),
+      trainer: session.state.trainer,
     });
 
     this.broadcastState(sessionId);
@@ -351,6 +413,7 @@ class SessionManager {
 
     const { state } = session;
     const controller = session.controllers.get(playerId);
+    const isTrainer = controller.isTrainer;
     const role = getRoleForPlayer(state, playerId);
     const ts = Date.now();
 
@@ -359,10 +422,42 @@ class SessionManager {
       event: 'input',
       playerId,
       player: controller.name,
-      role,
+      role: isTrainer ? 'trainer' : role,
       action: input?.action || null,
       dir: input?.dir || null,
     });
+
+    if (isTrainer && input?.action === 'trainer_broadcast') {
+      const payload = cloneJsonValue(input.payload);
+      if (!payload || typeof payload !== 'object') {
+        appendLog(state, {
+          ts,
+          event: 'input_rejected',
+          playerId,
+          reason: 'invalid_trainer_payload',
+        });
+        this.broadcastState(sessionId);
+        return false;
+      }
+
+      state.trainerBroadcast = {
+        ts,
+        trainerId: playerId,
+        trainerName: controller.name,
+        payload,
+      };
+
+      appendLog(state, {
+        ts,
+        event: 'trainer_broadcast',
+        playerId,
+        trainerName: controller.name,
+        payload,
+      });
+
+      this.broadcastState(sessionId);
+      return true;
+    }
 
     if (state.status !== GameStatus.PLAYING) {
       appendLog(state, {
@@ -370,6 +465,17 @@ class SessionManager {
         event: 'input_rejected',
         playerId,
         reason: 'not_playing',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    if (isTrainer) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'trainer_observer',
       });
       this.broadcastState(sessionId);
       return false;
@@ -436,6 +542,7 @@ class SessionManager {
         ts,
         event: 'key_pickup',
         playerId,
+        key: key.key || null,
         keyId: key.id,
         position,
         keysCollected: state.summary.keysCollected,
@@ -460,7 +567,8 @@ class SessionManager {
       appendLog(state, {
         ts,
         event: 'life_change',
-        livesRemaining: state.summary.livesRemaining,
+        delta: state.summary.livesRemaining - beforeLives,
+        lives: state.summary.livesRemaining,
       });
     }
 
@@ -469,6 +577,7 @@ class SessionManager {
       : false;
 
     if (hitHazard) {
+      const beforeLives = state.summary.livesRemaining;
       state.summary.livesRemaining -= 1;
       state.summary.livesLost += 1;
       maze.hitHazards += 1;
@@ -486,7 +595,8 @@ class SessionManager {
       appendLog(state, {
         ts,
         event: 'life_change',
-        livesRemaining: state.summary.livesRemaining,
+        delta: state.summary.livesRemaining - beforeLives,
+        lives: state.summary.livesRemaining,
       });
 
       if (state.summary.livesRemaining <= 0) {
@@ -542,6 +652,11 @@ class SessionManager {
     }
 
     if (meta.role === ClientRole.DISPLAY) {
+      if (session.state.status === GameStatus.PLAYING) {
+        finishGame(session.state, 'aborted', 'display_disconnected');
+      }
+      this._persistSession(meta.sessionId);
+
       for (const controller of session.controllers.values()) {
         sendJson(controller.socket, { type: MessageType.SESSION_CLOSED });
       }
@@ -551,6 +666,10 @@ class SessionManager {
 
     if (meta.role === ClientRole.CONTROLLER) {
       session.controllers.delete(meta.playerId);
+      if (meta.playerId === session.trainerId) {
+        session.trainerId = null;
+        session.state.trainer = null;
+      }
       session.state.players = this._getPlayers(session);
       this.broadcastState(meta.sessionId);
     }
@@ -561,6 +680,8 @@ class SessionManager {
     if (!session) {
       return;
     }
+
+    this._persistSession(sessionId);
 
     if (session.display) {
       sendJson(session.display, {
@@ -577,6 +698,17 @@ class SessionManager {
     }
   }
 
+  getSessionExport(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      return this._buildSessionExport(sessionId, session.state);
+    }
+    if (!this.logStore) {
+      return null;
+    }
+    return this.logStore.load(sessionId);
+  }
+
   _buildStateForSocket(session, meta) {
     const { state } = session;
 
@@ -585,14 +717,83 @@ class SessionManager {
     }
 
     if (meta.role === ClientRole.CONTROLLER) {
+      if (meta.playerId === session.trainerId || meta.isTrainer) {
+        return buildTrainerState(state);
+      }
       return buildControllerState(state, meta.playerId);
     }
 
     return buildDisplayState(state);
   }
 
+  _getGameplayControllers(session) {
+    return [...session.controllers.values()].filter((controller) => !controller.isTrainer);
+  }
+
   _getPlayers(session) {
-    return [...session.controllers.values()].map(({ id, name }) => ({ id, name }));
+    return this._getGameplayControllers(session).map(({ id, name }) => ({ id, name }));
+  }
+
+  _buildSessionExport(sessionId, state) {
+    const summary = state.summary || {};
+    return {
+      session_id: sessionId,
+      started_at: summary.startedAt,
+      ended_at: summary.endedAt,
+      outcome: summary.outcome,
+      trainer: state.trainer,
+      events: state.log.map((entry) => this._mapLogEntryForExport(entry, summary)),
+    };
+  }
+
+  _mapLogEntryForExport(entry, summary) {
+    const eventType = entry.event === 'game_end' ? 'session_end' : entry.event;
+    const exported = {
+      t: typeof entry.t === 'number'
+        ? entry.t
+        : (summary.startedAt && typeof entry.ts === 'number'
+          ? Number(Math.max(0, (entry.ts - summary.startedAt) / 1000).toFixed(3))
+          : null),
+      type: eventType,
+    };
+
+    if (eventType === 'move') {
+      exported.dir = entry.dir || null;
+      if (entry.from) {
+        exported.from = pointToArray(entry.from);
+      }
+      if (entry.to) {
+        exported.to = pointToArray(entry.to);
+      }
+    } else if (eventType === 'key_pickup') {
+      exported.key = entry.key || null;
+    } else if (eventType === 'life_change') {
+      exported.delta = typeof entry.delta === 'number' ? entry.delta : null;
+      exported.lives = typeof entry.lives === 'number'
+        ? entry.lives
+        : (typeof entry.livesRemaining === 'number' ? entry.livesRemaining : null);
+    } else if (eventType === 'session_end') {
+      exported.outcome = entry.outcome || null;
+      exported.keys = typeof entry.keys === 'number'
+        ? entry.keys
+        : (typeof entry.keysCollected === 'number' ? entry.keysCollected : null);
+      exported.lives = typeof entry.lives === 'number'
+        ? entry.lives
+        : (typeof entry.livesRemaining === 'number' ? entry.livesRemaining : null);
+    }
+
+    return exported;
+  }
+
+  _persistSession(sessionId) {
+    if (!this.logStore) {
+      return;
+    }
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+    this.logStore.save(sessionId, this._buildSessionExport(sessionId, session.state));
   }
 }
 

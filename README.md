@@ -111,7 +111,8 @@ game_start ───────→ status → playing
   },
   "log": [
     { "ts": 1700000000000, "event": "game_start" },
-    { "ts": 1700000001000, "event": "move", "player": "Alice", "dir": "e", "result": "ok", "from": { "row": 0, "col": 0 }, "to": { "row": 0, "col": 1 } }
+    { "ts": 1700000001000, "event": "move", "player": "Alice", "dir": "e", "result": "ok", "from": { "row": 0, "col": 0 }, "to": { "row": 0, "col": 1 } },
+    { "ts": 1700000002000, "event": "session_end", "outcome": "success", "keys": 3, "lives": 1 }
   ]
 }
 ```
@@ -133,12 +134,20 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 
 | Role | Can do | Can see |
 |------|--------|---------|
-| **Mover** (first player) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Maze walls + own position — **no hazard markers** |
-| **Guide** (all others) | Communicate verbally | Full map including hazard (×) positions — **cannot move** |
+| **Trainer** (first controller) | Observe and send debrief JSON via `player_input` with `{ action: "trainer_broadcast", payload: {...} }` | Full observer state + latest trainer broadcast |
+| **Mover** (first gameplay player) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Maze walls + own position — **no hazard markers** |
+| **Guide / Key Seer / Life Keeper** (other gameplay players) | Communicate verbally (and role-specific support) | Role-specific slices of the full map |
 
 The display screen shows everything (walls, hazards, player position, event log) for the facilitator.
 
 Every move — including wall hits and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards.  When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
+
+### Durable session log export
+
+Session logs are also persisted to `session-logs/<SESSION_ID>.json` on the server host.  
+You can fetch the current/persisted export JSON with:
+
+`GET /api/session/:sessionId/log`
 
 ## Project structure
 

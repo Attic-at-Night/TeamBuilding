@@ -44,7 +44,8 @@ function formatLog(entry) {
   if (entry.event === 'key_pickup') return `${time} • key collected at ${entry.position.row + 1},${entry.position.col + 1}`;
   if (entry.event === 'hazard_hit') return `${time} • hazard hit at ${entry.position.row + 1},${entry.position.col + 1}`;
   if (entry.event === 'reset') return `${time} • maze reset`;
-  if (entry.event === 'game_end') return `${time} • game ${entry.outcome}`;
+  if (entry.event === 'session_end') return `${time} • session ${entry.outcome}`;
+  if (entry.event === 'trainer_broadcast') return `${time} • trainer shared debrief data`;
   if (entry.event === 'input_rejected') return `${time} • input rejected (${entry.reason})`;
   return `${time} • ${entry.event.replace(/_/g, ' ')}`;
 }
@@ -241,6 +242,12 @@ class GameScene extends Phaser.Scene {
       lineSpacing: 3,
       wordWrap: { width: width - 44 },
     });
+    this.trainerText = this.add.text(22, 520, '', {
+      fontSize: '14px',
+      color: '#88ddff',
+      lineSpacing: 3,
+      wordWrap: { width: width - 44 },
+    });
 
     this.endOverlay = this.add.rectangle(width / 2, height / 2, width - 60, 190, 0x000000, 0.88)
       .setDepth(10)
@@ -297,6 +304,12 @@ class GameScene extends Phaser.Scene {
 
     const logLines = (state.log || []).slice(-12).reverse().map(formatLog);
     this.logText.setText(logLines.length ? logLines.join('\n') : 'No logs yet.');
+    const trainerPayload = state.trainerBroadcast?.payload;
+    if (trainerPayload) {
+      this.trainerText.setText(`Trainer data:\n${JSON.stringify(trainerPayload)}`);
+    } else {
+      this.trainerText.setText('Trainer data: none');
+    }
 
     if (state.status === 'ended') {
       this.endOverlay.setVisible(true);
