@@ -33,21 +33,134 @@ function formatDuration(ms, startedAt, endedAt, now = Date.now()) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function formatLog(entry) {
+function truncateText(value, maxLength = 120) {
+  const text = String(value || '');
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function eventTone(entry) {
   if (!entry) {
-    return '';
+    return 'info';
   }
 
-  const time = new Date(entry.ts).toLocaleTimeString();
-  if (entry.event === 'game_start') return `${time} • session started`;
-  if (entry.event === 'move') return `${time} • move ${entry.dir.toUpperCase()} (${entry.result})`;
-  if (entry.event === 'key_pickup') return `${time} • key collected at ${entry.position.row + 1},${entry.position.col + 1}`;
-  if (entry.event === 'hazard_hit') return `${time} • hazard hit at ${entry.position.row + 1},${entry.position.col + 1}`;
-  if (entry.event === 'reset') return `${time} • maze reset`;
-  if (entry.event === 'session_end') return `${time} • session ${entry.outcome}`;
-  if (entry.event === 'trainer_broadcast') return `${time} • trainer shared debrief data`;
-  if (entry.event === 'input_rejected') return `${time} • input rejected (${entry.reason})`;
-  return `${time} • ${entry.event.replace(/_/g, ' ')}`;
+  if (entry.event === 'session_end' && entry.outcome === 'success') {
+    return 'success';
+  }
+  if (entry.event === 'key_pickup' || entry.event === 'life_pickup') {
+    return 'success';
+  }
+  if (entry.event === 'reset' || entry.event === 'goal_locked' || entry.event === 'life_change') {
+    return 'warning';
+  }
+  if (entry.event === 'hazard_hit' || entry.event === 'input_rejected') {
+    return 'danger';
+  }
+  if (entry.event === 'session_end' && entry.outcome !== 'success') {
+    return 'danger';
+  }
+  return 'info';
+}
+
+function toneStyle(tone) {
+  if (tone === 'success') {
+    return { border: 0x22aa55, text: '#d6ffe3', detail: '#95e8b5' };
+  }
+  if (tone === 'warning') {
+    return { border: 0xffbb33, text: '#fff0cc', detail: '#f3cb72' };
+  }
+  if (tone === 'danger') {
+    return { border: 0xff6666, text: '#ffdede', detail: '#f1a5a5' };
+  }
+  return { border: 0x708090, text: '#dde6f2', detail: '#a8b7cc' };
+}
+
+function formatTimelineCard(entry) {
+  if (!entry) {
+    return null;
+  }
+
+  const time = new Date(entry.ts || Date.now()).toLocaleTimeString();
+  if (entry.event === 'game_start') {
+    return { time, summary: 'Session started', detail: null, tone: eventTone(entry) };
+  }
+  if (entry.event === 'move') {
+    const direction = String(entry.dir || '?').toUpperCase();
+    return {
+      time,
+      summary: `Move ${direction} (${entry.result || 'unknown'})`,
+      detail: null,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'key_pickup') {
+    const pos = entry.position ? `${entry.position.row + 1},${entry.position.col + 1}` : 'unknown';
+    return {
+      time,
+      summary: `Key ${entry.key || '?'} collected`,
+      detail: `at cell ${pos}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'life_pickup') {
+    const pos = entry.position ? `${entry.position.row + 1},${entry.position.col + 1}` : 'unknown';
+    return {
+      time,
+      summary: 'Life pickup collected',
+      detail: `at cell ${pos}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'hazard_hit') {
+    const pos = entry.position ? `${entry.position.row + 1},${entry.position.col + 1}` : 'unknown';
+    return {
+      time,
+      summary: `Hazard hit at ${pos}`,
+      detail: `Lives remaining: ${entry.livesRemaining ?? '?'}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'reset') {
+    return {
+      time,
+      summary: 'Maze reset',
+      detail: entry.reason ? `reason: ${entry.reason}` : null,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'session_end') {
+    return {
+      time,
+      summary: `Session ${entry.outcome || 'ended'}`,
+      detail: `keys: ${entry.keys ?? '?'} • lives: ${entry.lives ?? '?'}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'trainer_broadcast') {
+    return {
+      time,
+      summary: 'Trainer shared debrief data',
+      detail: entry.sharedEventCount ? `${entry.sharedEventCount} event(s) included` : null,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'input_rejected') {
+    return {
+      time,
+      summary: 'Input rejected',
+      detail: entry.reason ? `reason: ${entry.reason}` : null,
+      tone: eventTone(entry),
+    };
+  }
+
+  return {
+    time,
+    summary: truncateText(entry.event.replace(/_/g, ' '), 80),
+    detail: null,
+    tone: eventTone(entry),
+  };
 }
 
 class SetupScene extends Phaser.Scene {
@@ -218,6 +331,11 @@ class GameScene extends Phaser.Scene {
   init(data) {
     this.pendingState = data.initialState || null;
     this.currentState = this.pendingState;
+    this.timelineItems = [];
+    this.timelineScroll = 0;
+    this.timelineContentHeight = 0;
+    this.timelineAutoFollow = true;
+    this.onWheel = this.onWheel.bind(this);
   }
 
   create() {
@@ -236,17 +354,43 @@ class GameScene extends Phaser.Scene {
       wordWrap: { width: width - 44 },
     });
 
-    this.logText = this.add.text(22, 260, '', {
-      fontSize: '14px',
-      color: '#aaaaaa',
-      lineSpacing: 3,
-      wordWrap: { width: width - 44 },
+    this.timelineViewport = {
+      x: 22,
+      y: 246,
+      width: width - 44,
+      height: height - 286,
+    };
+
+    this.add.text(this.timelineViewport.x, this.timelineViewport.y - 28, 'Timeline (scroll for older events)', {
+      fontSize: '16px',
+      color: '#99bbff',
     });
-    this.trainerText = this.add.text(22, 520, '', {
-      fontSize: '14px',
+
+    this.add.rectangle(
+      this.timelineViewport.x + this.timelineViewport.width / 2,
+      this.timelineViewport.y + this.timelineViewport.height / 2,
+      this.timelineViewport.width,
+      this.timelineViewport.height,
+      0x101827,
+      0.85
+    );
+
+    this.timelineContainer = this.add.container(this.timelineViewport.x + 4, this.timelineViewport.y + 4);
+    this.timelineMaskShape = this.add.graphics();
+    this.timelineMaskShape.fillStyle(0xffffff, 1);
+    this.timelineMaskShape.fillRect(
+      this.timelineViewport.x,
+      this.timelineViewport.y,
+      this.timelineViewport.width,
+      this.timelineViewport.height
+    );
+    this.timelineContainer.setMask(this.timelineMaskShape.createGeometryMask());
+    this.timelineMaskShape.setVisible(false);
+
+    this.timelineStatusText = this.add.text(this.timelineViewport.x, this.timelineViewport.y + this.timelineViewport.height + 8, '', {
+      fontSize: '13px',
       color: '#88ddff',
-      lineSpacing: 3,
-      wordWrap: { width: width - 44 },
+      wordWrap: { width: this.timelineViewport.width },
     });
 
     this.endOverlay = this.add.rectangle(width / 2, height / 2, width - 60, 190, 0x000000, 0.88)
@@ -263,6 +407,7 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(11).setVisible(false);
 
     this.game.events.on('ws_message', this.onMessage, this);
+    this.input.on('wheel', this.onWheel, this);
 
     this.time.addEvent({
       delay: 1000,
@@ -302,14 +447,8 @@ class GameScene extends Phaser.Scene {
     ];
     this.summaryText.setText(lines.join('\n'));
 
-    const logLines = (state.log || []).slice(-12).reverse().map(formatLog);
-    this.logText.setText(logLines.length ? logLines.join('\n') : 'No logs yet.');
-    const trainerPayload = state.trainerBroadcast?.payload;
-    if (trainerPayload) {
-      this.trainerText.setText(`Trainer data:\n${JSON.stringify(trainerPayload)}`);
-    } else {
-      this.trainerText.setText('Trainer data: none');
-    }
+    this.renderTimeline(state.log || []);
+    this.updateTimelineStatus(state);
 
     if (state.status === 'ended') {
       this.endOverlay.setVisible(true);
@@ -323,6 +462,107 @@ class GameScene extends Phaser.Scene {
 
   shutdown() {
     this.game.events.off('ws_message', this.onMessage, this);
+    this.input.off('wheel', this.onWheel, this);
+  }
+
+  renderTimeline(entries) {
+    for (const item of this.timelineItems) {
+      item.destroy();
+    }
+    this.timelineItems = [];
+
+    let y = 0;
+    const innerWidth = this.timelineViewport.width - 12;
+    for (const entry of entries) {
+      const card = formatTimelineCard(entry);
+      if (!card) {
+        continue;
+      }
+
+      const style = toneStyle(card.tone);
+      const detailLine = card.detail ? truncateText(card.detail, 110) : null;
+      const height = detailLine ? 54 : 36;
+      const bg = this.add.rectangle(0, y, innerWidth, height, 0x1a2130, 0.96).setOrigin(0, 0);
+      bg.setStrokeStyle(2, style.border, 0.95);
+      const summary = this.add.text(10, y + 6, `${card.time}  ${truncateText(card.summary, 90)}`, {
+        fontSize: '14px',
+        color: style.text,
+        wordWrap: { width: innerWidth - 20 },
+      });
+      this.timelineContainer.add([bg, summary]);
+      this.timelineItems.push(bg, summary);
+
+      if (detailLine) {
+        const detail = this.add.text(10, y + 28, detailLine, {
+          fontSize: '12px',
+          color: style.detail,
+          wordWrap: { width: innerWidth - 20 },
+        });
+        this.timelineContainer.add(detail);
+        this.timelineItems.push(detail);
+      }
+
+      y += height + 8;
+    }
+
+    if (!entries.length) {
+      const placeholder = this.add.text(8, 8, 'No events yet.', {
+        fontSize: '14px',
+        color: '#9aa7b8',
+      });
+      this.timelineContainer.add(placeholder);
+      this.timelineItems.push(placeholder);
+      y = 28;
+    }
+
+    this.timelineContentHeight = y + 8;
+    if (this.timelineAutoFollow) {
+      this.timelineScroll = this.getTimelineMaxScroll();
+    } else {
+      this.timelineScroll = Phaser.Math.Clamp(this.timelineScroll, 0, this.getTimelineMaxScroll());
+    }
+    this.applyTimelineScroll();
+  }
+
+  getTimelineMaxScroll() {
+    return Math.max(0, this.timelineContentHeight - (this.timelineViewport.height - 8));
+  }
+
+  applyTimelineScroll() {
+    this.timelineContainer.y = this.timelineViewport.y + 4 - this.timelineScroll;
+  }
+
+  onWheel(pointer, _gameObjects, _deltaX, deltaY) {
+    const vx = this.timelineViewport.x;
+    const vy = this.timelineViewport.y;
+    const vw = this.timelineViewport.width;
+    const vh = this.timelineViewport.height;
+    if (pointer.x < vx || pointer.x > vx + vw || pointer.y < vy || pointer.y > vy + vh) {
+      return;
+    }
+
+    const step = Math.sign(deltaY) * 28;
+    const maxScroll = this.getTimelineMaxScroll();
+    this.timelineScroll = Phaser.Math.Clamp(this.timelineScroll + step, 0, maxScroll);
+    this.timelineAutoFollow = this.timelineScroll >= Math.max(0, maxScroll - 2);
+    this.applyTimelineScroll();
+  }
+
+  updateTimelineStatus(state) {
+    const maxScroll = this.getTimelineMaxScroll();
+    const autoText = this.timelineAutoFollow ? 'ON' : 'OFF (manual scroll)';
+    const trainerPayload = state.trainerBroadcast?.payload;
+    let trainerLine = 'Trainer data: none';
+    if (trainerPayload) {
+      if (Array.isArray(trainerPayload.events)) {
+        trainerLine = `Trainer data: session export (${trainerPayload.events.length} events)`;
+      } else {
+        trainerLine = `Trainer data: ${truncateText(JSON.stringify(trainerPayload), 110)}`;
+      }
+    }
+    this.timelineStatusText.setText(
+      `Auto-follow: ${autoText} • Scroll ${Math.round(this.timelineScroll)}/${Math.round(maxScroll)}\n${trainerLine}`
+    );
   }
 }
 
