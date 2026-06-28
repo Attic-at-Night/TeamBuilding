@@ -353,8 +353,8 @@ class ControllerScene extends Phaser.Scene {
       this.detailText.setText('Lives and the ball.');
     } else if (role === 'trainer') {
       this._syncTextLayout(role);
-      this.detailText.setText('Trainer observer view. You can share JSON data to the display.');
-      buttons.push({ label: 'Share JSON', action: 'trainer_broadcast', x: width / 2, y: baseY - 20, width: 220 });
+      this.detailText.setText('Trainer observer view. Share the full session log to the display.');
+      buttons.push({ label: 'Share JSON', action: 'trainer_share_log', x: width / 2, y: baseY - 20, width: 220 });
     } else {
       this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
@@ -371,19 +371,8 @@ class ControllerScene extends Phaser.Scene {
 
       bg.on('pointerdown', () => {
         bg.setFillStyle(0x5577ff);
-        if (item.action === 'trainer_broadcast') {
-          const raw = window.prompt('Enter trainer JSON payload', '{"note":"Debrief point"}');
-          if (!raw) {
-            bg.setFillStyle(0x3355ff);
-            return;
-          }
-
-          try {
-            const payload = JSON.parse(raw);
-            sendWs({ type: 'player_input', input: { action: 'trainer_broadcast', payload } });
-          } catch {
-            this.eventsText.setText('Invalid JSON payload.');
-          }
+        if (item.action === 'trainer_share_log') {
+          sendWs({ type: 'player_input', input: { action: 'trainer_share_log' } });
           return;
         }
 

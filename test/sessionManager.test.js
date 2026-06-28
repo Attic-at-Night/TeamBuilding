@@ -236,16 +236,18 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
 });
 
-test('trainer can broadcast JSON payloads to display state', () => {
+test('trainer can share full session export to display state', () => {
   const { manager, display, trainer, sessionId } = bootstrapGame(2);
   const trainerId = trainer.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
 
   assert.equal(
-    manager.handleInput(sessionId, trainerId, { action: 'trainer_broadcast', payload: { note: 'Discuss reset timing' } }),
+    manager.handleInput(sessionId, trainerId, { action: 'trainer_share_log' }),
     true
   );
 
   const sync = display.sent.at(-1);
-  assert.equal(sync.state.trainerBroadcast.payload.note, 'Discuss reset timing');
+  assert.equal(sync.state.trainerBroadcast.payload.session_id, sessionId);
+  assert.ok(Array.isArray(sync.state.trainerBroadcast.payload.events));
+  assert.ok(sync.state.trainerBroadcast.payload.events.length > 0);
   assert.ok(sync.state.log.some((entry) => entry.event === 'trainer_broadcast'));
 });
