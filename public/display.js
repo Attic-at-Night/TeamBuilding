@@ -392,6 +392,12 @@ class GameScene extends Phaser.Scene {
       color: '#88ddff',
       wordWrap: { width: this.timelineViewport.width },
     });
+    this.highlightDeckText = this.add.text(width - 370, 74, '', {
+      fontSize: '13px',
+      color: '#ffdf9a',
+      lineSpacing: 4,
+      wordWrap: { width: 340 },
+    }).setOrigin(0, 0);
 
     this.endOverlay = this.add.rectangle(width / 2, height / 2, width - 60, 190, 0x000000, 0.88)
       .setDepth(10)
@@ -556,6 +562,8 @@ class GameScene extends Phaser.Scene {
     if (trainerPayload) {
       if (Array.isArray(trainerPayload.events)) {
         trainerLine = `Trainer data: session export (${trainerPayload.events.length} events)`;
+      } else if (trainerPayload.type === 'highlight_set') {
+        trainerLine = `Trainer highlights shared: ${trainerPayload.highlight_count || 0}`;
       } else {
         trainerLine = `Trainer data: ${truncateText(JSON.stringify(trainerPayload), 110)}`;
       }
@@ -563,6 +571,18 @@ class GameScene extends Phaser.Scene {
     this.timelineStatusText.setText(
       `Auto-follow: ${autoText} • Scroll ${Math.round(this.timelineScroll)}/${Math.round(maxScroll)}\n${trainerLine}`
     );
+
+    if (trainerPayload?.type === 'highlight_set') {
+      const list = (trainerPayload.highlights || []).slice(0, 8).map((entry, index) => {
+        const label = entry.event ? entry.event.replace(/_/g, ' ') : 'event';
+        return `${index + 1}. ${label}`;
+      });
+      this.highlightDeckText.setText(
+        `Debrief highlights (${trainerPayload.highlight_count || list.length})\n${list.join('\n')}`
+      );
+    } else {
+      this.highlightDeckText.setText('');
+    }
   }
 }
 
