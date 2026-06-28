@@ -139,6 +139,8 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 | **Guide / Key Seer / Life Keeper** (other gameplay players) | Communicate verbally (and role-specific support) | Role-specific slices of the full map |
 
 The display screen shows everything (walls, hazards, player position, event log) for the facilitator.
+The session log now renders as a color-coded chronological timeline with scroll support. It auto-follows
+new events during play, and facilitators can scroll back to inspect older moments.
 
 Every move — including wall hits and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards.  When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
 
