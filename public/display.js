@@ -118,7 +118,7 @@ function formatTimelineCard(entry) {
     return {
       time,
       summary: `Hazard hit at ${pos}`,
-      detail: `Lives remaining: ${entry.livesRemaining ?? '?'}`,
+      detail: `Lives remaining: ${entry.livesRemaining != null ? entry.livesRemaining : '?'}`,
       tone: eventTone(entry),
     };
   }
@@ -134,7 +134,7 @@ function formatTimelineCard(entry) {
     return {
       time,
       summary: `Session ${entry.outcome || 'ended'}`,
-      detail: `keys: ${entry.keys ?? '?'} • lives: ${entry.lives ?? '?'}`,
+      detail: `keys: ${entry.keys != null ? entry.keys : '?'} • lives: ${entry.lives != null ? entry.lives : '?'}`,
       tone: eventTone(entry),
     };
   }
@@ -255,7 +255,7 @@ class LobbyScene extends Phaser.Scene {
       window.open(joinUrl, '_blank');
     });
 
-    if (connection?.ipAddress) {
+    if (connection && connection.ipAddress) {
       const info = [connection.ipAddress, connection.networkName].filter(Boolean).join(' • ');
       this.add.text(width / 2, 450, info, { fontSize: '13px', color: '#555555' }).setOrigin(0.5);
     }
@@ -557,7 +557,7 @@ class GameScene extends Phaser.Scene {
   updateTimelineStatus(state) {
     const maxScroll = this.getTimelineMaxScroll();
     const autoText = this.timelineAutoFollow ? 'ON' : 'OFF (manual scroll)';
-    const trainerPayload = state.trainerBroadcast?.payload;
+    const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
     let trainerLine = 'Trainer data: none';
     if (trainerPayload) {
       if (Array.isArray(trainerPayload.events)) {
@@ -572,7 +572,7 @@ class GameScene extends Phaser.Scene {
       `Auto-follow: ${autoText} • Scroll ${Math.round(this.timelineScroll)}/${Math.round(maxScroll)}\n${trainerLine}`
     );
 
-    if (trainerPayload?.type === 'highlight_set') {
+    if (trainerPayload && trainerPayload.type === 'highlight_set') {
       const list = (trainerPayload.highlights || []).slice(0, 8).map((entry, index) => {
         const label = entry.event ? entry.event.replace(/_/g, ' ') : 'event';
         return `${index + 1}. ${label}`;
