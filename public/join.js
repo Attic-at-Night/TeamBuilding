@@ -530,77 +530,6 @@ class ControllerScene extends Phaser.Scene {
         continue;
       }
 
-      _drawTrainerBoard(roleData) {
-        this._drawBlankBoard();
-        const maze = roleData.trainerMaze;
-        if (!maze || !maze.cells) {
-          return;
-        }
-
-        const OX = this.mazeOX;
-        const OY = this.mazeOY;
-        const CS = this.mazeCS;
-        this.mazeGraphics.lineStyle(1, 0x7f8bb3, 0.9);
-        for (let r = 0; r < maze.height; r++) {
-          for (let c = 0; c < maze.width; c++) {
-            const x = OX + c * CS;
-            const y = OY + r * CS;
-            const walls = maze.cells[r][c].walls;
-            if (walls.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
-            if (walls.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
-            if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
-            if (walls.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
-          }
-        }
-
-        for (const hazard of maze.hazards || []) {
-          const cx = OX + hazard.col * CS + CS / 2;
-          const cy = OY + hazard.row * CS + CS / 2;
-          const r = Math.max(3, Math.floor(CS * 0.25));
-          this.mazeGraphics.lineStyle(2, 0xff5555);
-          this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
-          this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
-        }
-
-        for (const key of maze.keys || []) {
-          if (key.collected) continue;
-          this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
-        }
-
-        for (const life of maze.lifePickups || []) {
-          if (life.collected) continue;
-          this._drawMarkerCircle(life.row, life.col, 0xff77bb, 0.18);
-        }
-
-        if (maze.goal) {
-          this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
-        }
-        if (maze.playerPos) {
-          this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff, 0.24);
-        }
-      }
-
-      _renderTrainerFeed(roleData) {
-        const trainerEvents = roleData.trainerEvents || [];
-        if (!trainerEvents.length) {
-          this.eventsText.setText('No events yet.');
-          return;
-        }
-
-        const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-        const maxStart = Math.max(0, sorted.length - 6);
-        this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
-        const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 6);
-        const lines = visible.map((entry, idx) => {
-          const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
-          const star = entry.highlighted ? '*' : ' ';
-          const label = formatEvent(entry);
-          return `${pointer}${star} ${label}`;
-        });
-        const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
-        const header = `Highlights: ${highlightedCount} • Scroll: ${this.trainerEventScroll}/${maxStart}`;
-        this.eventsText.setText(`${header}\n${lines.join('\n')}`);
-      }
       const cx = this.mazeOX + pickup.col * this.mazeCS + this.mazeCS / 2;
       const cy = this.mazeOY + pickup.row * this.mazeCS + this.mazeCS / 2;
       this.mazeGraphics.fillStyle(0xff6699);
@@ -610,6 +539,78 @@ class ControllerScene extends Phaser.Scene {
     if (roleData.playerPos) {
       this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }
+  }
+
+  _drawTrainerBoard(roleData) {
+    this._drawBlankBoard();
+    const maze = roleData.trainerMaze;
+    if (!maze || !maze.cells) {
+      return;
+    }
+
+    const OX = this.mazeOX;
+    const OY = this.mazeOY;
+    const CS = this.mazeCS;
+    this.mazeGraphics.lineStyle(1, 0x7f8bb3, 0.9);
+    for (let r = 0; r < maze.height; r++) {
+      for (let c = 0; c < maze.width; c++) {
+        const x = OX + c * CS;
+        const y = OY + r * CS;
+        const walls = maze.cells[r][c].walls;
+        if (walls.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
+        if (walls.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
+        if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
+        if (walls.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
+      }
+    }
+
+    for (const hazard of maze.hazards || []) {
+      const cx = OX + hazard.col * CS + CS / 2;
+      const cy = OY + hazard.row * CS + CS / 2;
+      const r = Math.max(3, Math.floor(CS * 0.25));
+      this.mazeGraphics.lineStyle(2, 0xff5555);
+      this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
+      this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
+    }
+
+    for (const key of maze.keys || []) {
+      if (key.collected) continue;
+      this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
+    }
+
+    for (const life of maze.lifePickups || []) {
+      if (life.collected) continue;
+      this._drawMarkerCircle(life.row, life.col, 0xff77bb, 0.18);
+    }
+
+    if (maze.goal) {
+      this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
+    }
+    if (maze.playerPos) {
+      this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff, 0.24);
+    }
+  }
+
+  _renderTrainerFeed(roleData) {
+    const trainerEvents = roleData.trainerEvents || [];
+    if (!trainerEvents.length) {
+      this.eventsText.setText('No events yet.');
+      return;
+    }
+
+    const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const maxStart = Math.max(0, sorted.length - 6);
+    this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
+    const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 6);
+    const lines = visible.map((entry, idx) => {
+      const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
+      const star = entry.highlighted ? '*' : ' ';
+      const label = formatEvent(entry);
+      return `${pointer}${star} ${label}`;
+    });
+    const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
+    const header = `Highlights: ${highlightedCount} • Scroll: ${this.trainerEventScroll}/${maxStart}`;
+    this.eventsText.setText(`${header}\n${lines.join('\n')}`);
   }
 
   _renderState(state) {
