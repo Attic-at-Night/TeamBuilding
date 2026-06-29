@@ -407,21 +407,21 @@ class ControllerScene extends Phaser.Scene {
         }
         if (item.action === 'trainer_feed_up') {
           this.trainerEventScroll = Math.max(0, this.trainerEventScroll - 1);
-          this._renderTrainerFeed(this.currentState?.roleData || {});
+          this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
           return;
         }
         if (item.action === 'trainer_feed_down') {
           this.trainerEventScroll += 1;
-          this._renderTrainerFeed(this.currentState?.roleData || {});
+          this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
           return;
         }
         if (item.action === 'trainer_toggle_selected') {
-          const roleData = this.currentState?.roleData || {};
+          const roleData = (this.currentState && this.currentState.roleData) || {};
           const trainerEvents = roleData.trainerEvents || [];
-          const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+          const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
           const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
           const selected = index >= 0 ? sorted[index] : null;
-          if (selected?.eventId) {
+          if (selected && selected.eventId) {
             sendWs({
               type: 'player_input',
               input: { action: 'trainer_toggle_highlight', eventId: selected.eventId },
@@ -642,10 +642,10 @@ class ControllerScene extends Phaser.Scene {
       this.detailText.setText(`Objective markers: ${visibleKeys.length}`);
     } else if (this.viewerRole === 'life-keeper') {
       const hazardLog = roleData.hazardLog || [];
-      this.detailText.setText(`Lives remaining: ${roleData.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
+      this.detailText.setText(`Lives remaining: ${roleData.livesRemaining != null ? roleData.livesRemaining : 0}   Hazard hits: ${hazardLog.length}`);
     } else if (this.viewerRole === 'trainer') {
-      const latest = state.trainerBroadcast?.payload;
-      if (latest?.type === 'highlight_set') {
+      const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
+      if (latest && latest.type === 'highlight_set') {
         this.detailText.setText(`Latest share: ${latest.highlight_count || 0} highlighted event(s) sent to display.`);
       } else if (latest) {
         this.detailText.setText('Latest share: full session export sent.');
@@ -734,7 +734,7 @@ class ControllerScene extends Phaser.Scene {
     }
     const step = Math.sign(deltaY);
     this.trainerEventScroll = Math.max(0, this.trainerEventScroll + step);
-    this._renderTrainerFeed(this.currentState?.roleData || {});
+    this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
   }
 }
 
