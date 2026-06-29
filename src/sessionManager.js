@@ -36,8 +36,10 @@ function makeInitialState() {
     roles: {},
     maze: null,
     log: [],
+    nextEventId: 1,
     trainer: null,
     trainerBroadcast: null,
+    trainerHighlightEventIds: [],
     summary: {
       startedAt: null,
       endedAt: null,
@@ -58,6 +60,10 @@ function createRoundMaze() {
 
 function appendLog(state, entry) {
   const logEntry = { ...entry };
+  if (!logEntry.eventId) {
+    logEntry.eventId = `evt-${state.nextEventId}`;
+    state.nextEventId += 1;
+  }
   if (typeof logEntry.ts !== 'number') {
     logEntry.ts = Date.now();
   }
@@ -71,6 +77,23 @@ function appendLog(state, entry) {
 
   state.log.push(logEntry);
   return logEntry;
+}
+
+function isHighlightedEvent(state, eventId) {
+  return state.trainerHighlightEventIds.includes(eventId);
+}
+
+function toggleHighlightedEvent(state, eventId) {
+  if (!eventId) {
+    return false;
+  }
+  const existingIndex = state.trainerHighlightEventIds.indexOf(eventId);
+  if (existingIndex >= 0) {
+    state.trainerHighlightEventIds.splice(existingIndex, 1);
+    return false;
+  }
+  state.trainerHighlightEventIds.push(eventId);
+  return true;
 }
 
 function clonePoint(point) {
@@ -193,13 +216,56 @@ function buildDisplayState(state) {
   };
 }
 
+function buildTrainerCombinedMaze(maze) {
+  if (!maze) {
+    return null;
+  }
+  return {
+    width: maze.width,
+    height: maze.height,
+    cells: maze.cells,
+    hazards: maze.hazards,
+    keys: maze.keys,
+    lifePickups: maze.lifePickups,
+    goal: maze.goal,
+    playerPos: maze.playerPos,
+    reached: maze.reached,
+  };
+}
+
+function buildTrainerEvents(state) {
+  return state.log.map((entry) => ({
+    eventId: entry.eventId,
+    ts: entry.ts,
+    t: entry.t,
+    event: entry.event,
+    player: entry.player || null,
+    dir: entry.dir || null,
+    outcome: entry.outcome || null,
+    reason: entry.reason || null,
+    result: entry.result || null,
+    position: entry.position || null,
+    highlighted: isHighlightedEvent(state, entry.eventId),
+  }));
+}
+
 function buildTrainerState(state) {
+  const trainerMaze = buildTrainerCombinedMaze(state.maze);
+  const trainerEvents = buildTrainerEvents(state);
   return {
     status: state.status,
     players: state.players,
     summary: state.summary,
     log: state.log,
     maze: state.maze,
+    trainerMaze,
+    trainerEvents,
+    trainerHighlightEventIds: state.trainerHighlightEventIds,
+    roleData: {
+      trainerMaze,
+      trainerEvents,
+      trainerHighlightEventIds: state.trainerHighlightEventIds,
+    },
     trainer: state.trainer,
     trainerBroadcast: state.trainerBroadcast,
     viewerRole: 'trainer',
@@ -379,7 +445,9 @@ class SessionManager {
     session.state.roles = roles;
     session.state.maze = createRoundMaze();
     session.state.log = [];
+    session.state.nextEventId = 1;
     session.state.trainerBroadcast = null;
+    session.state.trainerHighlightEventIds = [];
     session.state.summary = {
       startedAt: now,
       endedAt: null,
@@ -426,6 +494,60 @@ class SessionManager {
       action: input?.action || null,
       dir: input?.dir || null,
     });
+
+    if (isTrainer && input?.action === 'trainer_toggle_highlight') {
+      const highlighted = toggleHighlightedEvent(state, input.eventId);
+      appendLog(state, {
+        ts,
+        event: 'trainer_highlight_toggle',
+        playerId,
+        trainerName: controller.name,
+        targetEventId: input.eventId || null,
+        highlighted,
+      });
+      this.broadcastState(sessionId);
+      return true;
+    }
+
+    if (isTrainer && input?.action === 'trainer_share_highlights') {
+      const highlights = state.log
+        .filter((entry) => isHighlightedEvent(state, entry.eventId))
+        .map((entry) => ({
+          eventId: entry.eventId,
+          event: entry.event,
+          ts: entry.ts,
+          t: entry.t,
+          player: entry.player || null,
+          dir: entry.dir || null,
+          outcome: entry.outcome || null,
+          reason: entry.reason || null,
+          result: entry.result || null,
+          position: entry.position || null,
+        }));
+
+      const payload = {
+        type: 'highlight_set',
+        session_id: sessionId,
+        highlight_count: highlights.length,
+        highlights,
+      };
+      state.trainerBroadcast = {
+        ts,
+        trainerId: playerId,
+        trainerName: controller.name,
+        payload,
+      };
+
+      appendLog(state, {
+        ts,
+        event: 'trainer_highlights_shared',
+        playerId,
+        trainerName: controller.name,
+        highlightCount: highlights.length,
+      });
+      this.broadcastState(sessionId);
+      return true;
+    }
 
     if (isTrainer && input?.action === 'trainer_share_log') {
       const payload = this._buildSessionExport(sessionId, state);
@@ -766,13 +888,15 @@ class SessionManager {
       ended_at: summary.endedAt,
       outcome: summary.outcome,
       trainer: state.trainer,
-      events: state.log.map((entry) => this._mapLogEntryForExport(entry, summary)),
+      highlighted_event_ids: state.trainerHighlightEventIds,
+      events: state.log.map((entry) => this._mapLogEntryForExport(entry, summary, state.trainerHighlightEventIds)),
     };
   }
 
-  _mapLogEntryForExport(entry, summary) {
+  _mapLogEntryForExport(entry, summary, highlightedEventIds = []) {
     const eventType = entry.event === 'game_end' ? 'session_end' : entry.event;
     const exported = {
+      id: entry.eventId || null,
       t: typeof entry.t === 'number'
         ? entry.t
         : (summary.startedAt && typeof entry.ts === 'number'
@@ -805,6 +929,8 @@ class SessionManager {
         ? entry.lives
         : (typeof entry.livesRemaining === 'number' ? entry.livesRemaining : null);
     }
+
+    exported.highlighted = highlightedEventIds.includes(entry.eventId);
 
     return exported;
   }

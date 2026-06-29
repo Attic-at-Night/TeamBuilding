@@ -54,6 +54,12 @@ function formatEvent(entry) {
   if (entry.event === 'trainer_broadcast') {
     return 'Trainer data shared';
   }
+  if (entry.event === 'trainer_highlight_toggle') {
+    return `${entry.highlighted ? 'Highlighted' : 'Unhighlighted'} ${entry.targetEventId || 'event'}`;
+  }
+  if (entry.event === 'trainer_highlights_shared') {
+    return `Shared ${entry.highlightCount || 0} highlights`;
+  }
 
   return entry.event.replace(/_/g, ' ');
 }
@@ -217,6 +223,9 @@ class ControllerScene extends Phaser.Scene {
     this.viewerRole = this.currentState ? (this.currentState.viewerRole || null) : null;
     this._shownEnd = false;
     this.roleUi = [];
+    this.trainerEventScroll = 0;
+    this.trainerSelectedOffset = 0;
+    this.onWheel = this.onWheel.bind(this);
   }
 
   create() {
@@ -248,6 +257,7 @@ class ControllerScene extends Phaser.Scene {
 
     this.game.events.on('ws_message', this.onMessage, this);
     this.game.events.on('ws_close', this.onClose, this);
+    this.input.on('wheel', this.onWheel, this);
 
     sendWs({ type: 'resync_request' });
   }
@@ -275,6 +285,18 @@ class ControllerScene extends Phaser.Scene {
     this.mazeOY = topY;
   }
 
+  _setupTrainerBoard() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const topY = 106;
+    const availableWidth = width - 24;
+    const availableHeight = Math.max(140, height - topY - 370);
+    this.mazeCS = Math.max(10, Math.floor(Math.min(availableWidth / 14, availableHeight / 14)));
+    const boardSize = this.mazeCS * 14;
+    this.mazeOX = Math.floor((width - boardSize) / 2);
+    this.mazeOY = topY;
+  }
+
   _syncTextLayout(role) {
     const width = this.scale.width;
     const height = this.scale.height;
@@ -283,6 +305,8 @@ class ControllerScene extends Phaser.Scene {
     this.detailText.setWordWrapWidth(width - 36);
 
     if (role === 'mover') {
+      this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
+    } else if (role === 'trainer') {
       this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
     } else {
       this.eventsText.setPosition(18, height - 112);
@@ -352,9 +376,15 @@ class ControllerScene extends Phaser.Scene {
       this._syncTextLayout(role);
       this.detailText.setText('Lives and the ball.');
     } else if (role === 'trainer') {
+      this._setupTrainerBoard();
       this._syncTextLayout(role);
-      this.detailText.setText('Trainer observer view. Share the full session log to the display.');
-      buttons.push({ label: 'Share JSON', action: 'trainer_share_log', x: width / 2, y: baseY - 20, width: 220 });
+      this.detailText.setText('Trainer cockpit: monitor the full maze, scroll events, and highlight debrief points.');
+      buttons.push(
+        { label: '▲', action: 'trainer_feed_up', x: width / 2 - 124, y: baseY - 30, width: 56 },
+        { label: '▼', action: 'trainer_feed_down', x: width / 2 - 54, y: baseY - 30, width: 56 },
+        { label: 'Toggle', action: 'trainer_toggle_selected', x: width / 2 + 52, y: baseY - 30, width: 110 },
+        { label: 'Share Highlights', action: 'trainer_share_highlights', x: width / 2, y: baseY + 42, width: 220 }
+      );
     } else {
       this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
@@ -373,6 +403,34 @@ class ControllerScene extends Phaser.Scene {
         bg.setFillStyle(0x5577ff);
         if (item.action === 'trainer_share_log') {
           sendWs({ type: 'player_input', input: { action: 'trainer_share_log' } });
+          return;
+        }
+        if (item.action === 'trainer_feed_up') {
+          this.trainerEventScroll = Math.max(0, this.trainerEventScroll - 1);
+          this._renderTrainerFeed(this.currentState?.roleData || {});
+          return;
+        }
+        if (item.action === 'trainer_feed_down') {
+          this.trainerEventScroll += 1;
+          this._renderTrainerFeed(this.currentState?.roleData || {});
+          return;
+        }
+        if (item.action === 'trainer_toggle_selected') {
+          const roleData = this.currentState?.roleData || {};
+          const trainerEvents = roleData.trainerEvents || [];
+          const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+          const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
+          const selected = index >= 0 ? sorted[index] : null;
+          if (selected?.eventId) {
+            sendWs({
+              type: 'player_input',
+              input: { action: 'trainer_toggle_highlight', eventId: selected.eventId },
+            });
+          }
+          return;
+        }
+        if (item.action === 'trainer_share_highlights') {
+          sendWs({ type: 'player_input', input: { action: 'trainer_share_highlights' } });
           return;
         }
 
@@ -471,6 +529,78 @@ class ControllerScene extends Phaser.Scene {
       if (pickup.collected) {
         continue;
       }
+
+      _drawTrainerBoard(roleData) {
+        this._drawBlankBoard();
+        const maze = roleData.trainerMaze;
+        if (!maze || !maze.cells) {
+          return;
+        }
+
+        const OX = this.mazeOX;
+        const OY = this.mazeOY;
+        const CS = this.mazeCS;
+        this.mazeGraphics.lineStyle(1, 0x7f8bb3, 0.9);
+        for (let r = 0; r < maze.height; r++) {
+          for (let c = 0; c < maze.width; c++) {
+            const x = OX + c * CS;
+            const y = OY + r * CS;
+            const walls = maze.cells[r][c].walls;
+            if (walls.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
+            if (walls.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
+            if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
+            if (walls.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
+          }
+        }
+
+        for (const hazard of maze.hazards || []) {
+          const cx = OX + hazard.col * CS + CS / 2;
+          const cy = OY + hazard.row * CS + CS / 2;
+          const r = Math.max(3, Math.floor(CS * 0.25));
+          this.mazeGraphics.lineStyle(2, 0xff5555);
+          this.mazeGraphics.lineBetween(cx - r, cy - r, cx + r, cy + r);
+          this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
+        }
+
+        for (const key of maze.keys || []) {
+          if (key.collected) continue;
+          this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
+        }
+
+        for (const life of maze.lifePickups || []) {
+          if (life.collected) continue;
+          this._drawMarkerCircle(life.row, life.col, 0xff77bb, 0.18);
+        }
+
+        if (maze.goal) {
+          this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
+        }
+        if (maze.playerPos) {
+          this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff, 0.24);
+        }
+      }
+
+      _renderTrainerFeed(roleData) {
+        const trainerEvents = roleData.trainerEvents || [];
+        if (!trainerEvents.length) {
+          this.eventsText.setText('No events yet.');
+          return;
+        }
+
+        const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        const maxStart = Math.max(0, sorted.length - 6);
+        this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
+        const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 6);
+        const lines = visible.map((entry, idx) => {
+          const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
+          const star = entry.highlighted ? '*' : ' ';
+          const label = formatEvent(entry);
+          return `${pointer}${star} ${label}`;
+        });
+        const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
+        const header = `Highlights: ${highlightedCount} • Scroll: ${this.trainerEventScroll}/${maxStart}`;
+        this.eventsText.setText(`${header}\n${lines.join('\n')}`);
+      }
       const cx = this.mazeOX + pickup.col * this.mazeCS + this.mazeCS / 2;
       const cy = this.mazeOY + pickup.row * this.mazeCS + this.mazeCS / 2;
       this.mazeGraphics.fillStyle(0xff6699);
@@ -494,6 +624,8 @@ class ControllerScene extends Phaser.Scene {
       this._drawKeyBoard(roleData);
     } else if (this.viewerRole === 'life-keeper') {
       this._drawLifeBoard(roleData);
+    } else if (this.viewerRole === 'trainer') {
+      this._drawTrainerBoard(roleData);
     } else if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
@@ -511,16 +643,24 @@ class ControllerScene extends Phaser.Scene {
       const hazardLog = roleData.hazardLog || [];
       this.detailText.setText(`Lives remaining: ${roleData.livesRemaining ?? 0}   Hazard hits: ${hazardLog.length}`);
     } else if (this.viewerRole === 'trainer') {
-      const payload = state.trainerBroadcast?.payload;
-      this.detailText.setText(payload
-        ? `Latest shared JSON: ${JSON.stringify(payload)}`
-        : 'No trainer JSON shared yet.');
+      const latest = state.trainerBroadcast?.payload;
+      if (latest?.type === 'highlight_set') {
+        this.detailText.setText(`Latest share: ${latest.highlight_count || 0} highlighted event(s) sent to display.`);
+      } else if (latest) {
+        this.detailText.setText('Latest share: full session export sent.');
+      } else {
+        this.detailText.setText('No trainer data shared yet.');
+      }
     }
 
-    const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
-    this.eventsText.setText(recentEvents.length
-      ? recentEvents.map(formatEvent).join('\n')
-      : 'No recent updates.');
+    if (this.viewerRole === 'trainer') {
+      this._renderTrainerFeed(roleData);
+    } else {
+      const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
+      this.eventsText.setText(recentEvents.length
+        ? recentEvents.map(formatEvent).join('\n')
+        : 'No recent updates.');
+    }
 
     if (state.status === 'ended' && !this._shownEnd) {
       this._shownEnd = true;
@@ -581,6 +721,19 @@ class ControllerScene extends Phaser.Scene {
   shutdown() {
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
+    this.input.off('wheel', this.onWheel, this);
+  }
+
+  onWheel(pointer, _gameObjects, _deltaX, deltaY) {
+    if (this.viewerRole !== 'trainer') {
+      return;
+    }
+    if (pointer.y < this.eventsText.y - 10) {
+      return;
+    }
+    const step = Math.sign(deltaY);
+    this.trainerEventScroll = Math.max(0, this.trainerEventScroll + step);
+    this._renderTrainerFeed(this.currentState?.roleData || {});
   }
 }
 

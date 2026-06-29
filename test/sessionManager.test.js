@@ -251,3 +251,32 @@ test('trainer can share full session export to display state', () => {
   assert.ok(sync.state.trainerBroadcast.payload.events.length > 0);
   assert.ok(sync.state.log.some((entry) => entry.event === 'trainer_broadcast'));
 });
+
+test('trainer state includes combined maze and event ids', () => {
+  const { trainer } = bootstrapGame(2);
+  const sync = trainer.sent.at(-1);
+  assert.equal(sync.state.viewerRole, 'trainer');
+  assert.ok(sync.state.roleData.trainerMaze);
+  assert.ok(Array.isArray(sync.state.roleData.trainerEvents));
+  assert.ok(sync.state.roleData.trainerEvents.every((entry) => typeof entry.eventId === 'string'));
+});
+
+test('trainer can toggle highlights and share highlight set', () => {
+  const { manager, display, trainer, sessionId } = bootstrapGame(2);
+  const trainerId = trainer.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
+
+  const firstEventId = display.sent.at(-1).state.log[0].eventId;
+  assert.equal(
+    manager.handleInput(sessionId, trainerId, { action: 'trainer_toggle_highlight', eventId: firstEventId }),
+    true
+  );
+
+  const afterToggle = trainer.sent.at(-1);
+  assert.ok(afterToggle.state.trainerHighlightEventIds.includes(firstEventId));
+
+  assert.equal(manager.handleInput(sessionId, trainerId, { action: 'trainer_share_highlights' }), true);
+  const afterShare = display.sent.at(-1);
+  assert.equal(afterShare.state.trainerBroadcast.payload.type, 'highlight_set');
+  assert.ok(Array.isArray(afterShare.state.trainerBroadcast.payload.highlights));
+  assert.ok(afterShare.state.trainerBroadcast.payload.highlights.some((entry) => entry.eventId === firstEventId));
+});

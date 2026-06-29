@@ -134,7 +134,7 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 
 | Role | Can do | Can see |
 |------|--------|---------|
-| **Trainer** (first controller) | Observe and share full session log JSON via `player_input` with `{ action: "trainer_share_log" }` | Full observer state + latest trainer broadcast |
+| **Trainer** (first controller) | Observe, scroll realtime events, toggle highlights, and share either full logs or curated highlights via `trainer_share_log` / `trainer_share_highlights` | Combined mini-maze overview + full trainer event feed |
 | **Mover** (first gameplay player) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Maze walls + own position — **no hazard markers** |
 | **Guide / Key Seer / Life Keeper** (other gameplay players) | Communicate verbally (and role-specific support) | Role-specific slices of the full map |
 
