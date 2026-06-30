@@ -236,6 +236,26 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
 });
 
+test('ended sessions can restart into a fresh round', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const moverId = controllers[0].sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeOpenMaze({
+    goal: { row: 0, col: 1 },
+  });
+  session.state.summary.keysCollected = 3;
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(manager.restartGame(sessionId), true);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.status, GameStatus.PLAYING);
+  assert.equal(sync.state.summary.outcome, null);
+  assert.equal(sync.state.summary.keysCollected, 0);
+  assert.equal(sync.state.summary.resets, 0);
+  assert.ok(sync.state.log.some((entry) => entry.event === 'game_start'));
+});
+
 test('trainer can share full session export to display state', () => {
   const { manager, display, trainer, sessionId } = bootstrapGame(2);
   const trainerId = trainer.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
