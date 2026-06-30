@@ -86,6 +86,7 @@ game_start ───────→ status → playing
 | Client → Server | `display_register` | Big screen claims display role for a session |
 | Client → Server | `controller_join` | Phone joins session as a controller |
 | Client → Server | `game_start` | Display requests game start |
+| Client → Server | `game_restart` | Display restarts an ended session |
 | Client → Server | `player_input` | Controller sends an action (e.g. `{ action: "buzz" }`) |
 | Client → Server | `resync_request` | Any client requests a full state re-send (reconnect) |
 | Server → Client | `client_registered` | Acknowledges display/controller registration |
@@ -141,6 +142,8 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 The display screen shows everything (walls, hazards, player position, event log) for the facilitator.
 The session log now renders as a color-coded chronological timeline with scroll support. It auto-follows
 new events during play, and facilitators can scroll back to inspect older moments.
+
+When a round ends, the display shows a restart button so the host can start a fresh round without rebuilding the session.
 
 Every move — including wall hits and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards.  When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
 
