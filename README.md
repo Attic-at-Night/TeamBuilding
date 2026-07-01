@@ -95,7 +95,7 @@ game_start ───────→ status → playing
 | Server → Client | `client_registered` | Acknowledges display/controller registration |
 | Server → Client | `state_sync` | Authoritative game state broadcast to all clients |
 | Server → Client | `join_error` | Registration or join failure |
-| Server → Client | `session_closed` | Session was explicitly closed or became unavailable |
+| Server → Client | `session_closed` | (Legacy) Session ended and was removed; currently not emitted by the server |
 
 All server-sent WebSocket messages now include protocol version `v`.
 Clients may send either the legacy flat payload format or an envelope format:
