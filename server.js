@@ -82,6 +82,13 @@ const handlers = {
     }
   },
 
+  [MessageType.GAME_RESTART](_message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY) {
+      sessionManager.restartGame(meta.sessionId);
+    }
+  },
+
   [MessageType.PLAYER_INPUT](message, socket) {
     const meta = socket.meta;
     if (meta?.role === ClientRole.CONTROLLER) {

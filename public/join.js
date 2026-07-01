@@ -25,6 +25,13 @@ function sendWs(payload) {
   }
 }
 
+_clearEndUi() {
+  for (const item of this.endUi) {
+    item.destroy();
+  }
+  this.endUi = [];
+}
+
 function formatEvent(entry) {
   if (!entry) {
     return '';
@@ -222,6 +229,7 @@ class ControllerScene extends Phaser.Scene {
     this.currentState = data.initialState || null;
     this.viewerRole = this.currentState ? (this.currentState.viewerRole || null) : null;
     this._shownEnd = false;
+    this.endUi = [];
     this.roleUi = [];
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
@@ -666,30 +674,33 @@ class ControllerScene extends Phaser.Scene {
     if (state.status === 'ended' && !this._shownEnd) {
       this._shownEnd = true;
       this._showEnd(state);
+    } else if (state.status !== 'ended' && this._shownEnd) {
+      this._shownEnd = false;
+      this._hideEndUi();
     }
   }
 
   _showEnd(state) {
     const { width, height } = this.scale;
     const summary = state.summary || {};
-    this.add.rectangle(width / 2, height / 2, width - 40, 210, 0x000000, 0.9).setDepth(10);
-    this.add.text(width / 2, height / 2 - 56, summary.outcome === 'success' ? 'Complete' : 'Failed', {
+    this._clearEndUi();
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width - 40, 190, 0x000000, 0.9).setDepth(10);
+    const title = this.add.text(width / 2, height / 2 - 28, summary.outcome === 'success' ? 'Complete' : 'Failed', {
       fontSize: '34px',
       color: summary.outcome === 'success' ? '#22ee66' : '#ff6666',
       fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(11);
-    this.add.text(width / 2, height / 2 - 6, `Keys collected: ${summary.keysCollected || 0}`, {
-      fontSize: '20px',
-      color: '#ffff88',
-    }).setOrigin(0.5).setDepth(11);
-    this.add.text(width / 2, height / 2 + 28, `Lives lost: ${summary.livesLost || 0}   Resets: ${summary.resets || 0}`, {
-      fontSize: '18px',
-      color: '#dddddd',
-    }).setOrigin(0.5).setDepth(11);
-    this.add.text(width / 2, height / 2 + 62, 'Hold for the debrief.', {
+    const subtitle = this.add.text(width / 2, height / 2 + 22, 'Waiting for the host to restart the round.', {
       fontSize: '16px',
       color: '#888888',
     }).setOrigin(0.5).setDepth(11);
+
+    this.endUi = [overlay, title, subtitle];
+  }
+
+  _hideEndUi() {
+    this._clearEndUi();
   }
 
   onMessage(message) {

@@ -26,6 +26,7 @@ const MessageType = {
   DISPLAY_REGISTER: 'display_register',
   CONTROLLER_JOIN: 'controller_join',
   GAME_START: 'game_start',
+  GAME_RESTART: 'game_restart',
   PLAYER_INPUT: 'player_input',
   RESYNC_REQUEST: 'resync_request',
 
