@@ -212,7 +212,6 @@ function buildDisplayState(state) {
     log: state.log,
     trainerBroadcast: state.trainerBroadcast,
     ready: state.players.length >= MIN_PLAYERS,
-    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
   };
 }
@@ -326,44 +325,6 @@ function resetRound(state, reason) {
   });
 }
 
-function beginGameState(session, startedAt) {
-  const players = session.controllers.size ? [...session.controllers.values()] : [];
-  const activePlayers = players.filter((player) => !player.isTrainer);
-  const roles = {};
-  const roleOrder = getRoleOrder(activePlayers.length);
-
-  activePlayers.forEach((player, index) => {
-    roles[player.id] = roleOrder[index];
-  });
-
-  session.state.roles = roles;
-  session.state.maze = createRoundMaze();
-  session.state.log = [];
-  session.state.nextEventId = 1;
-  session.state.trainerBroadcast = null;
-  session.state.trainerHighlightEventIds = [];
-  session.state.summary = {
-    startedAt,
-    endedAt: null,
-    durationMs: null,
-    resets: 0,
-    livesRemaining: START_LIVES,
-    livesLost: 0,
-    livesPickedUp: 0,
-    keysCollected: 0,
-    outcome: null,
-  };
-  session.state.status = GameStatus.PLAYING;
-
-  appendLog(session.state, {
-    ts: startedAt,
-    event: 'game_start',
-    players: activePlayers.map((player) => ({ id: player.id, name: player.name })),
-    roles: Object.entries(roles).map(([playerId, role]) => ({ playerId, role })),
-    trainer: session.state.trainer,
-  });
-}
-
 function cloneJsonValue(value) {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -474,29 +435,40 @@ class SessionManager {
       return false;
     }
 
+    const roles = {};
+    const roleOrder = getRoleOrder(players.length);
+    players.forEach((player, index) => {
+      roles[player.id] = roleOrder[index];
+    });
+
     const now = Date.now();
-    beginGameState(session, now);
+    session.state.roles = roles;
+    session.state.maze = createRoundMaze();
+    session.state.log = [];
+    session.state.nextEventId = 1;
+    session.state.trainerBroadcast = null;
+    session.state.trainerHighlightEventIds = [];
+    session.state.summary = {
+      startedAt: now,
+      endedAt: null,
+      durationMs: null,
+      resets: 0,
+      livesRemaining: START_LIVES,
+      livesLost: 0,
+      livesPickedUp: 0,
+      keysCollected: 0,
+      outcome: null,
+    };
+    session.state.status = GameStatus.PLAYING;
 
-    this.broadcastState(sessionId);
-    return true;
-  }
+    appendLog(session.state, {
+      ts: now,
+      event: 'game_start',
+      players: players.map((player) => ({ id: player.id, name: player.name })),
+      roles: Object.entries(roles).map(([playerId, role]) => ({ playerId, role })),
+      trainer: session.state.trainer,
+    });
 
-  restartGame(sessionId) {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      return false;
-    }
-
-    if (session.state.status !== GameStatus.ENDED) {
-      return false;
-    }
-
-    const players = this._getPlayers(session);
-    if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS) {
-      return false;
-    }
-
-    beginGameState(session, Date.now());
     this.broadcastState(sessionId);
     return true;
   }

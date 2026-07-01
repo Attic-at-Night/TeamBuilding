@@ -351,7 +351,7 @@ class GameScene extends Phaser.Scene {
       fontSize: '18px',
       color: '#ffff88',
       lineSpacing: 6,
-      wordWrap: { width: Math.floor(width * 0.58) },
+      wordWrap: { width: width - 44 },
     });
 
     this.timelineViewport = {
@@ -411,24 +411,6 @@ class GameScene extends Phaser.Scene {
       fontSize: '18px',
       color: '#dddddd',
     }).setOrigin(0.5).setDepth(11).setVisible(false);
-    this.restartButtonBg = this.add.rectangle(width / 2, height / 2 + 72, 220, 56, 0x22aa55)
-      .setDepth(11)
-      .setVisible(false)
-      .setInteractive({ useHandCursor: true });
-    this.restartButtonLabel = this.add.text(width / 2, height / 2 + 72, 'Restart Game', {
-      fontSize: '21px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(12).setVisible(false);
-
-    this.restartButtonBg.on('pointerover', () => this.restartButtonBg.setFillStyle(0x44cc77));
-    this.restartButtonBg.on('pointerout', () => this.restartButtonBg.setFillStyle(0x22aa55));
-    this.restartButtonBg.on('pointerup', () => {
-      if (this.restartButtonBg.visible) {
-        sendWs({ type: 'game_restart' });
-      }
-    });
-    this.restartButtonBg.disableInteractive();
 
     this.game.events.on('ws_message', this.onMessage, this);
     this.input.on('wheel', this.onWheel, this);
@@ -463,6 +445,9 @@ class GameScene extends Phaser.Scene {
       `Status: ${state.status}`,
       `Keys collected: ${summary.keysCollected || 0}/3`,
       `Lives remaining: ${summary.livesRemaining || 0}`,
+      `Lives lost: ${summary.livesLost || 0}`,
+      `Lives picked up: ${summary.livesPickedUp || 0}`,
+      `Resets: ${summary.resets || 0}`,
       `Time: ${formatDuration(summary.durationMs, summary.startedAt, summary.endedAt)}`,
       `Outcome: ${summary.outcome || 'in progress'}`,
     ];
@@ -476,22 +461,8 @@ class GameScene extends Phaser.Scene {
       this.endText.setText(summary.outcome === 'success' ? 'Complete' : 'Failed').setVisible(true);
       this.endText.setColor(summary.outcome === 'success' ? '#22ee66' : '#ff6666');
       this.endSubText
-        .setText(state.canRestart ? 'Press restart to play again.' : 'Waiting for enough players to restart.')
+        .setText(`Keys: ${summary.keysCollected || 0}   Lives lost: ${summary.livesLost || 0}   Lives picked up: ${summary.livesPickedUp || 0}   Resets: ${summary.resets || 0}`)
         .setVisible(true);
-      this.restartButtonBg.setVisible(state.canRestart === true);
-      this.restartButtonLabel.setVisible(state.canRestart === true);
-      if (state.canRestart) {
-        this.restartButtonBg.setInteractive({ useHandCursor: true });
-      } else {
-        this.restartButtonBg.disableInteractive();
-      }
-    } else {
-      this.endOverlay.setVisible(false);
-      this.endText.setVisible(false);
-      this.endSubText.setVisible(false);
-      this.restartButtonBg.setVisible(false);
-      this.restartButtonLabel.setVisible(false);
-      this.restartButtonBg.disableInteractive();
     }
   }
 
