@@ -1,7 +1,38 @@
 let socket = null;
 let myPlayerId = null;
+let pendingReconnectToken = null;
+let pendingPlayerName = null;
 
-function connectControllerSocket(sessionId, name, game) {
+function storageKey(sessionId) {
+  return `teambuilding.reconnect.${sessionId}`;
+}
+
+function loadReconnectState(sessionId) {
+  try {
+    const raw = window.localStorage.getItem(storageKey(sessionId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveReconnectState(sessionId, payload) {
+  try {
+    window.localStorage.setItem(storageKey(sessionId), JSON.stringify(payload));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function clearReconnectState(sessionId) {
+  try {
+    window.localStorage.removeItem(storageKey(sessionId));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
   if (socket) {
     socket.close();
   }
@@ -9,7 +40,13 @@ function connectControllerSocket(sessionId, name, game) {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${protocol}://${window.location.host}`);
   socket.addEventListener('open', () => {
-    socket.send(JSON.stringify({ type: 'controller_join', sessionId, name }));
+    socket.send(JSON.stringify({
+      type: 'controller_join',
+      sessionId,
+      name,
+      reconnectToken,
+      requestedTrainer: Boolean(game.joinAsTrainer && !reconnectToken),
+    }));
   });
   socket.addEventListener('message', (event) => {
     game.events.emit('ws_message', JSON.parse(event.data));
@@ -23,6 +60,173 @@ function sendWs(payload) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
+}
+
+function formatDuration(ms, startedAt, endedAt, now = Date.now()) {
+  const value = typeof ms === 'number'
+    ? ms
+    : (startedAt ? ((endedAt || now) - startedAt) : 0);
+  const seconds = Math.max(0, Math.floor(value / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function getTimerRemainingMs(timer, now = Date.now()) {
+  if (!timer) {
+    return 0;
+  }
+  if (timer.status === 'running' && typeof timer.expiresAt === 'number') {
+    return Math.max(0, timer.expiresAt - now);
+  }
+  return Math.max(0, timer.remainingMs || 0);
+}
+
+function formatTimerValue(timer, now = Date.now()) {
+  return formatDuration(getTimerRemainingMs(timer, now));
+}
+
+function formatTimerStatus(timer) {
+  if (!timer) {
+    return 'Timer unavailable';
+  }
+  if (timer.status === 'running') {
+    return 'Running';
+  }
+  if (timer.status === 'stopped') {
+    return 'Paused';
+  }
+  if (timer.status === 'expired') {
+    return 'Expired';
+  }
+  return 'Ready';
+}
+
+const CLARITY_TYPES = [
+  'role_unclear',
+  'lack_of_sent_communication',
+  'lack_of_received_communication',
+  'acted_before_communicating',
+  'contradicting_instructions',
+  'silent_confusion',
+];
+
+function humanizeClarityType(value) {
+  return String(value || 'clarity_event').replace(/_/g, ' ');
+}
+
+function formatTrainerTimelineTime(entry) {
+  if (typeof entry.t === 'number') {
+    return `t+${entry.t.toFixed(1)}s`;
+  }
+  return new Date(entry.ts || Date.now()).toLocaleTimeString();
+}
+
+function formatTrainerTimelineEntry(entry) {
+  const time = formatTrainerTimelineTime(entry);
+  const baseLabel = formatEvent(entry);
+  return `${time} • ${baseLabel}`;
+}
+
+function summarizeTrainerEvent(entry) {
+  if (!entry) {
+    return 'No event selected.';
+  }
+  if (entry.event === 'hazard_hit') {
+    return `Hazard type: ${entry.hazardType || 'unknown'}${entry.position ? ` • cell ${entry.position.row + 1},${entry.position.col + 1}` : ''}`;
+  }
+  if (entry.event === 'ghost_collision') {
+    return `Ghost collision${entry.position ? ` • cell ${entry.position.row + 1},${entry.position.col + 1}` : ''}`;
+  }
+  if (entry.event === 'ghost_move') {
+    return `Ghost patrol tick (${(entry.ghostMoves || []).length} moved)`;
+  }
+  if (entry.event === 'clarity_event') {
+    return `Clarity type: ${humanizeClarityType(entry.clarityType)}`;
+  }
+  if (entry.event === 'timer_start' || entry.event === 'timer_stop' || entry.event === 'timer_reset') {
+    return `Timer context: ${formatDuration(entry.remainingMs || entry.durationMs || 0)}`;
+  }
+  if (entry.event === 'timer_expired') {
+    return `Timer duration: ${formatDuration(entry.durationMs || 0)}`;
+  }
+  if (entry.position) {
+    return `Cell ${entry.position.row + 1},${entry.position.col + 1}`;
+  }
+  return entry.reason ? `Reason: ${entry.reason}` : 'No extra details.';
+}
+
+function summarizeTrainerSnapshot(snapshot) {
+  if (!snapshot) {
+    return 'No snapshot available.';
+  }
+
+  const rolePairs = Object.entries(snapshot.roles || {}).map(([playerId, role]) => `${playerId.slice(0, 4)}:${role}`);
+  const playerPos = snapshot.maze && snapshot.maze.playerPos
+    ? `${snapshot.maze.playerPos.row + 1},${snapshot.maze.playerPos.col + 1}`
+    : 'unknown';
+  const keyCount = snapshot.maze && Array.isArray(snapshot.maze.keys)
+    ? snapshot.maze.keys.filter((key) => !key.collected).length
+    : 0;
+  const hazardCount = snapshot.maze && Array.isArray(snapshot.maze.hazards)
+    ? snapshot.maze.hazards.length
+    : 0;
+  const ghostCount = snapshot.maze && Array.isArray(snapshot.maze.ghosts)
+    ? snapshot.maze.ghosts.length
+    : 0;
+
+  return [
+    `Seed: ${snapshot.mazeMeta && snapshot.mazeMeta.seed ? snapshot.mazeMeta.seed : 'n/a'} • Variant: ${snapshot.mazeMeta && snapshot.mazeMeta.layoutVariant ? snapshot.mazeMeta.layoutVariant : 'default'}`,
+    `Pos: ${playerPos} • Hazards: ${hazardCount} • Ghosts: ${ghostCount} • Keys: ${keyCount}`,
+    `Roles: ${rolePairs.length ? rolePairs.join(', ') : 'none'}`,
+  ].join('\n');
+}
+
+function summarizeAiSuggestion(suggestion) {
+  if (!suggestion) {
+    return 'No AI suggestion selected.';
+  }
+  return `${suggestion.summary}\nStatus: ${suggestion.status}`;
+}
+
+function formatTrainerBroadcastSummary(latest) {
+  if (!latest) {
+    return 'Nothing shared yet';
+  }
+  if (latest.type === 'highlight_set') {
+    return `${latest.highlight_count || 0} highlights shared`;
+  }
+  if (latest.type === 'replay_snippet') {
+    return `Replay shared for ${latest.event || 'event'}`;
+  }
+  return 'Full session export shared';
+}
+
+function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest) {
+  const trainerEvents = roleData.trainerEvents || [];
+  const pendingSuggestions = (roleData.aiSuggestions || []).filter((item) => item.status === 'pending').length;
+  const snapshotSummary = summarizeTrainerSnapshot(selected && selected.snapshot);
+  const suggestionSummary = summarizeAiSuggestion(selectedSuggestion);
+  const mazeMeta = roleData.mazeMeta || {};
+
+  return [
+    'OVERVIEW',
+    `Keys ${summary.keysCollected || 0}/3 • Lives ${summary.livesRemaining || 0} • Resets ${summary.resets || 0}`,
+    `Timer ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`,
+    `Maze ${mazeMeta.layoutVariant || 'default'}${mazeMeta.hardMode ? ' • hard mode' : ''}`,
+    '',
+    'EVENT DETAIL',
+    selected ? formatEvent(selected) : 'No event selected',
+    summarizeTrainerEvent(selected),
+    '',
+    'REPLAY / SHARE',
+    formatTrainerBroadcastSummary(latest),
+    snapshotSummary,
+    '',
+    'NOTES / AI',
+    `Clarity ready: ${selectedClarity}`,
+    `Pending AI suggestions: ${pendingSuggestions}`,
+    suggestionSummary,
+  ].join('\n');
 }
 
 function formatEvent(entry) {
@@ -43,13 +247,35 @@ function formatEvent(entry) {
     return `Life picked up at ${entry.position.row + 1},${entry.position.col + 1}`;
   }
   if (entry.event === 'hazard_hit') {
-    return `Hazard hit at ${entry.position.row + 1},${entry.position.col + 1}`;
+    const hazardType = entry.hazardType ? ` (${entry.hazardType})` : '';
+    return `Hazard hit${hazardType} at ${entry.position.row + 1},${entry.position.col + 1}`;
+  }
+  if (entry.event === 'ghost_collision') {
+    return `Ghost collision at ${entry.position.row + 1},${entry.position.col + 1}`;
+  }
+  if (entry.event === 'ghost_move') {
+    return `Ghost patrol (${(entry.ghostMoves || []).length} moved)`;
   }
   if (entry.event === 'reset') {
     return 'Maze reset';
   }
   if (entry.event === 'session_end') {
     return `Session ${entry.outcome}`;
+  }
+  if (entry.event === 'timer_start') {
+    return `Timer started (${formatDuration(entry.remainingMs || entry.durationMs || 0)})`;
+  }
+  if (entry.event === 'timer_stop') {
+    return `Timer paused (${formatDuration(entry.remainingMs || 0)} left)`;
+  }
+  if (entry.event === 'timer_reset') {
+    return `Timer reset (${formatDuration(entry.durationMs || entry.remainingMs || 0)})`;
+  }
+  if (entry.event === 'timer_expired') {
+    return 'Timer expired';
+  }
+  if (entry.event === 'clarity_event') {
+    return `Clarity: ${humanizeClarityType(entry.clarityType)}`;
   }
   if (entry.event === 'trainer_broadcast') {
     return 'Trainer data shared';
@@ -76,6 +302,7 @@ class JoinScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+    this.game.joinAsTrainer = false;
 
     this.add.text(width / 2, 80, 'Join Session', {
       fontSize: '36px',
@@ -100,7 +327,15 @@ class JoinScene extends Phaser.Scene {
       color: '#ffffff',
     }).setOrigin(0.5);
 
-    this.statusText = this.add.text(width / 2, height / 2 + 150, '', {
+    this.rejoinBg = this.add.rectangle(width / 2, height / 2 + 146, 220, 52, 0x22aa55)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.rejoinLabel = this.add.text(width / 2, height / 2 + 146, 'Rejoin Session', {
+      fontSize: '20px',
+      color: '#ffffff',
+    }).setOrigin(0.5).setVisible(false);
+
+    this.statusText = this.add.text(width / 2, height / 2 + 218, '', {
       fontSize: '18px',
       color: '#ff5555',
       wordWrap: { width: width - 40 },
@@ -109,18 +344,58 @@ class JoinScene extends Phaser.Scene {
     joinBg.on('pointerover', () => joinBg.setFillStyle(0x5577ff));
     joinBg.on('pointerout', () => joinBg.setFillStyle(0x3355ff));
     joinBg.on('pointerup', () => this.doJoin(joinBg));
+
+    this.trainerToggleBg = this.add.rectangle(width / 2, height / 2 + 6, 220, 42, 0x3b4057)
+      .setInteractive({ useHandCursor: true });
+    this.trainerToggleLabel = this.add.text(width / 2, height / 2 + 6, 'Join as trainer: Off', {
+      fontSize: '18px',
+      color: '#ffffff',
+    }).setOrigin(0.5);
+    this.trainerToggleBg.on('pointerup', () => {
+      this.game.joinAsTrainer = !this.game.joinAsTrainer;
+      this.updateTrainerToggle();
+    });
+    this.rejoinBg.on('pointerover', () => this.rejoinBg.setFillStyle(0x44cc77));
+    this.rejoinBg.on('pointerout', () => this.rejoinBg.setFillStyle(0x22aa55));
+    this.rejoinBg.on('pointerup', () => {
+      const reconnectState = this.sessionId ? loadReconnectState(this.sessionId) : null;
+      if (reconnectState && reconnectState.reconnectToken) {
+        this.doJoin(joinBg, {
+          reconnectToken: reconnectState.reconnectToken,
+          name: reconnectState.name || 'Player',
+        });
+      }
+    });
+
+    const reconnectState = this.sessionId ? loadReconnectState(this.sessionId) : null;
+    if (reconnectState && reconnectState.reconnectToken) {
+      this.rejoinBg.setVisible(true);
+      this.rejoinLabel.setVisible(true);
+      pendingReconnectToken = reconnectState.reconnectToken;
+      pendingPlayerName = reconnectState.name || 'Player';
+      this.statusText.setText('Rejoining…');
+      this.doJoin(joinBg, {
+        reconnectToken: reconnectState.reconnectToken,
+        name: reconnectState.name || 'Player',
+      });
+    }
+
+    this.updateTrainerToggle();
   }
 
-  doJoin(btn) {
+  doJoin(btn, options = {}) {
     if (!this.sessionId) {
       this.statusText.setText('Invalid join link – missing session code.');
       return;
     }
 
-    const name = (this.nameEl.getChildByID('name-input').value || '').trim() || 'Player';
+    const name = String(options.name || this.nameEl.getChildByID('name-input').value || '').trim() || 'Player';
+    const reconnectToken = options.reconnectToken || null;
     btn.disableInteractive();
-    this.statusText.setText('Connecting…');
-    connectControllerSocket(this.sessionId, name, this.game);
+    this.statusText.setText(reconnectToken ? 'Rejoining…' : 'Connecting…');
+    pendingReconnectToken = reconnectToken;
+    pendingPlayerName = name;
+    connectControllerSocket(this.sessionId, name, this.game, reconnectToken);
 
     this.game.events.on('ws_message', this.onMessage, this);
     this.joinBtn = btn;
@@ -129,6 +404,13 @@ class JoinScene extends Phaser.Scene {
   onMessage(message) {
     if (message.type === 'client_registered') {
       myPlayerId = message.playerId || null;
+      if (message.reconnectToken) {
+        saveReconnectState(this.sessionId, {
+          playerId: message.playerId || null,
+          reconnectToken: message.reconnectToken,
+          name: pendingPlayerName || 'Player',
+        });
+      }
       this.game.events.off('ws_message', this.onMessage, this);
       this.scene.start('WaitScene');
       return;
@@ -136,11 +418,27 @@ class JoinScene extends Phaser.Scene {
 
     if (message.type === 'join_error') {
       this.game.events.off('ws_message', this.onMessage, this);
+      if (message.code === 'invalid_reconnect_token' || message.code === 'reconnect_slot_unavailable') {
+        clearReconnectState(this.sessionId);
+        pendingReconnectToken = null;
+        if (this.rejoinBg) {
+          this.rejoinBg.setVisible(false);
+        }
+        if (this.rejoinLabel) {
+          this.rejoinLabel.setVisible(false);
+        }
+      }
       this.statusText.setText(message.message || 'Unable to join session.');
       if (this.joinBtn) {
         this.joinBtn.setInteractive({ useHandCursor: true });
       }
     }
+  }
+
+  updateTrainerToggle() {
+    const selected = Boolean(this.game.joinAsTrainer);
+    this.trainerToggleBg.setFillStyle(selected ? 0x22aa55 : 0x3b4057);
+    this.trainerToggleLabel.setText(`Join as trainer: ${selected ? 'On' : 'Off'}`);
   }
 
   shutdown() {
@@ -226,7 +524,11 @@ class ControllerScene extends Phaser.Scene {
     this.roleUi = [];
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
+    this.trainerClarityIndex = 0;
+    this.trainerSuggestionIndex = 0;
+    this.lastMoveSentAt = 0;
     this.onWheel = this.onWheel.bind(this);
+    this.onVisibilitySync = this.onVisibilitySync.bind(this);
   }
 
   create() {
@@ -238,6 +540,11 @@ class ControllerScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.mazeGraphics = this.add.graphics();
+    this.timerText = this.add.text(width / 2, 60, '', {
+      fontSize: '18px',
+      color: '#99bbff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
     this.detailText = this.add.text(18, 70, '', {
       fontSize: '15px',
       color: '#dddddd',
@@ -259,6 +566,17 @@ class ControllerScene extends Phaser.Scene {
     this.game.events.on('ws_message', this.onMessage, this);
     this.game.events.on('ws_close', this.onClose, this);
     this.input.on('wheel', this.onWheel, this);
+    document.addEventListener('visibilitychange', this.onVisibilitySync);
+
+    this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        if (this.currentState) {
+          this._renderState(this.currentState);
+        }
+      },
+    });
 
     sendWs({ type: 'resync_request' });
   }
@@ -277,7 +595,7 @@ class ControllerScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     const topY = 120;
-    const bottomReserve = role === 'mover' ? 236 : 156;
+    const bottomReserve = role === 'mover' ? 236 : 172;
     const availableWidth = width - 24;
     const availableHeight = Math.max(180, height - topY - bottomReserve);
     this.mazeCS = Math.max(15, Math.floor(Math.min(availableWidth / 14, availableHeight / 14)));
@@ -291,7 +609,7 @@ class ControllerScene extends Phaser.Scene {
     const height = this.scale.height;
     const topY = 106;
     const availableWidth = width - 24;
-    const availableHeight = Math.max(140, height - topY - 370);
+    const availableHeight = Math.max(128, height - topY - 336);
     this.mazeCS = Math.max(10, Math.floor(Math.min(availableWidth / 14, availableHeight / 14)));
     const boardSize = this.mazeCS * 14;
     this.mazeOX = Math.floor((width - boardSize) / 2);
@@ -302,7 +620,7 @@ class ControllerScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    this.detailText.setPosition(18, 56);
+    this.detailText.setPosition(18, 82);
     this.detailText.setWordWrapWidth(width - 36);
 
     if (role === 'mover') {
@@ -310,7 +628,7 @@ class ControllerScene extends Phaser.Scene {
     } else if (role === 'trainer') {
       this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
     } else {
-      this.eventsText.setPosition(18, height - 112);
+      this.eventsText.setPosition(18, height - 132);
     }
     this.eventsText.setWordWrapWidth(width - 36);
   }
@@ -372,20 +690,49 @@ class ControllerScene extends Phaser.Scene {
       this._setupBoard(role);
       this._syncTextLayout(role);
       this.detailText.setText('Keys and the ball.');
-    } else if (role === 'life-keeper') {
+    } else if (role === 'navigator') {
       this._setupBoard(role);
       this._syncTextLayout(role);
-      this.detailText.setText('Lives and the ball.');
+      this.detailText.setText('Hazardous walls and the ball.');
     } else if (role === 'trainer') {
       this._setupTrainerBoard();
       this._syncTextLayout(role);
       this.detailText.setText('Trainer cockpit: monitor the full maze, scroll events, and highlight debrief points.');
-      buttons.push(
-        { label: '▲', action: 'trainer_feed_up', x: width / 2 - 124, y: baseY - 30, width: 56 },
-        { label: '▼', action: 'trainer_feed_down', x: width / 2 - 54, y: baseY - 30, width: 56 },
-        { label: 'Toggle', action: 'trainer_toggle_selected', x: width / 2 + 52, y: baseY - 30, width: 110 },
-        { label: 'Share Highlights', action: 'trainer_share_highlights', x: width / 2, y: baseY + 42, width: 220 }
-      );
+      const trainerButtonRows = [
+        [
+          { label: '▲', action: 'trainer_feed_up', width: 68 },
+          { label: '▼', action: 'trainer_feed_down', width: 68 },
+          { label: 'Toggle', action: 'trainer_toggle_selected', width: 110 },
+        ],
+        [
+          { label: 'Clarity', action: 'trainer_cycle_clarity', width: 120 },
+          { label: 'Add', action: 'trainer_add_clarity', width: 120 },
+          { label: 'Replay', action: 'trainer_share_replay', width: 96 },
+        ],
+        [
+          { label: 'Highlights', action: 'trainer_share_highlights', width: 128 },
+          { label: 'Next AI', action: 'trainer_cycle_suggestion', width: 100 },
+        ],
+        [
+          { label: 'Approve', action: 'trainer_approve_suggestion', width: 110 },
+          { label: 'Reject', action: 'trainer_reject_suggestion', width: 110 },
+        ],
+      ];
+      const startY = height - 210;
+      const rowGap = 54;
+      for (let rowIndex = 0; rowIndex < trainerButtonRows.length; rowIndex++) {
+        const row = trainerButtonRows[rowIndex];
+        const totalWidth = row.reduce((sum, item) => sum + (item.width || 96), 0) + ((row.length - 1) * 12);
+        let cursorX = (width - totalWidth) / 2;
+        for (const item of row) {
+          buttons.push({
+            ...item,
+            x: cursorX + ((item.width || 96) / 2),
+            y: startY + rowIndex * rowGap,
+          });
+          cursorX += (item.width || 96) + 12;
+        }
+      }
     } else {
       this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
@@ -434,8 +781,59 @@ class ControllerScene extends Phaser.Scene {
           sendWs({ type: 'player_input', input: { action: 'trainer_share_highlights' } });
           return;
         }
+        if (item.action === 'trainer_share_replay') {
+          const roleData = (this.currentState && this.currentState.roleData) || {};
+          const trainerEvents = roleData.trainerEvents || [];
+          const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+          const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
+          const selected = index >= 0 ? sorted[index] : null;
+          if (selected && selected.eventId) {
+            sendWs({ type: 'player_input', input: { action: 'trainer_share_replay', eventId: selected.eventId } });
+          }
+          return;
+        }
+        if (item.action === 'trainer_cycle_clarity') {
+          this.trainerClarityIndex = (this.trainerClarityIndex + 1) % CLARITY_TYPES.length;
+          this._renderState(this.currentState || {});
+          return;
+        }
+        if (item.action === 'trainer_add_clarity') {
+          sendWs({
+            type: 'player_input',
+            input: {
+              action: 'trainer_add_clarity_event',
+              clarityType: CLARITY_TYPES[this.trainerClarityIndex],
+            },
+          });
+          return;
+        }
+        if (item.action === 'trainer_cycle_suggestion') {
+          const roleData = (this.currentState && this.currentState.roleData) || {};
+          const aiSuggestions = roleData.aiSuggestions || [];
+          if (aiSuggestions.length) {
+            this.trainerSuggestionIndex = (this.trainerSuggestionIndex + 1) % aiSuggestions.length;
+            this._renderState(this.currentState || {});
+          }
+          return;
+        }
+        if (item.action === 'trainer_approve_suggestion' || item.action === 'trainer_reject_suggestion') {
+          const roleData = (this.currentState && this.currentState.roleData) || {};
+          const aiSuggestions = roleData.aiSuggestions || [];
+          const suggestion = aiSuggestions[this.trainerSuggestionIndex] || null;
+          if (suggestion) {
+            sendWs({
+              type: 'player_input',
+              input: {
+                action: 'trainer_review_suggestion',
+                suggestionId: suggestion.id,
+                decision: item.action === 'trainer_approve_suggestion' ? 'approved' : 'rejected',
+              },
+            });
+          }
+          return;
+        }
 
-        sendWs({ type: 'player_input', input: { action: 'move', dir: item.dir } });
+        this._sendMove(item.dir);
       });
       bg.on('pointerup', () => bg.setFillStyle(0x3355ff));
       bg.on('pointerout', () => bg.setFillStyle(0x3355ff));
@@ -445,39 +843,20 @@ class ControllerScene extends Phaser.Scene {
   }
 
   _drawMoverMaze(maze) {
-    const OX = this.mazeOX;
-    const OY = this.mazeOY;
+    this._drawBlankBoard();
     const CS = this.mazeCS;
 
-    this.mazeGraphics.clear();
-    this.mazeGraphics.lineStyle(2, 0x8888cc);
-
-    for (let r = 0; r < maze.height; r++) {
-      for (let c = 0; c < maze.width; c++) {
-        const x = OX + c * CS;
-        const y = OY + r * CS;
-        const walls = maze.cells[r][c].walls;
-        if (walls.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
-        if (walls.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
-        if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
-        if (walls.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
-      }
+    this.mazeGraphics.lineStyle(1, 0x4d6284, 0.7);
+    for (let r = 1; r < maze.height; r++) {
+      const y = this.mazeOY + r * CS;
+      this.mazeGraphics.lineBetween(this.mazeOX, y, this.mazeOX + maze.width * CS, y);
+    }
+    for (let c = 1; c < maze.width; c++) {
+      const x = this.mazeOX + c * CS;
+      this.mazeGraphics.lineBetween(x, this.mazeOY, x, this.mazeOY + maze.height * CS);
     }
 
-    this.mazeGraphics.fillStyle(0x22aa55);
-    this.mazeGraphics.fillRect(
-      OX + maze.goal.col * CS + 14,
-      OY + maze.goal.row * CS + 14,
-      CS - 28,
-      CS - 28
-    );
-
-    this.mazeGraphics.fillStyle(0x4488ff);
-    this.mazeGraphics.fillCircle(
-      OX + maze.playerPos.col * CS + CS / 2,
-      OY + maze.playerPos.row * CS + CS / 2,
-      Math.max(7, Math.floor(CS * 0.28))
-    );
+    this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff);
   }
 
   _drawGuideBoard(roleData) {
@@ -493,12 +872,12 @@ class ControllerScene extends Phaser.Scene {
       this.mazeGraphics.lineBetween(cx + r, cy - r, cx - r, cy + r);
     }
 
-    if (roleData.goal) {
-      this._drawMarkerSquare(roleData.goal.row, roleData.goal.col, 0x22aa55);
-    }
-
     if (roleData.playerPos) {
       this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+    }
+
+    for (const ghost of roleData.ghosts || []) {
+      this._drawMarkerCircle(ghost.row, ghost.col, 0xbb66ff, 0.18);
     }
   }
 
@@ -522,19 +901,29 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
-  _drawLifeBoard(roleData) {
-    this._drawBlankBoard();
+  _drawNavigatorBoard(roleData) {
+    const maze = roleData.maze;
+    if (!maze || !maze.cells) {
+      this._drawBlankBoard();
+      return;
+    }
 
-    const lifePickups = roleData.lifePickups || [];
-    for (const pickup of lifePickups) {
-      if (pickup.collected) {
-        continue;
+    const OX = this.mazeOX;
+    const OY = this.mazeOY;
+    const CS = this.mazeCS;
+    this.mazeGraphics.clear();
+    this.mazeGraphics.lineStyle(2, 0xff9955, 0.95);
+
+    for (let r = 0; r < maze.height; r++) {
+      for (let c = 0; c < maze.width; c++) {
+        const x = OX + c * CS;
+        const y = OY + r * CS;
+        const walls = maze.cells[r][c].walls;
+        if (walls.n) this.mazeGraphics.lineBetween(x, y, x + CS, y);
+        if (walls.s) this.mazeGraphics.lineBetween(x, y + CS, x + CS, y + CS);
+        if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + CS);
+        if (walls.e) this.mazeGraphics.lineBetween(x + CS, y, x + CS, y + CS);
       }
-
-      const cx = this.mazeOX + pickup.col * this.mazeCS + this.mazeCS / 2;
-      const cy = this.mazeOY + pickup.row * this.mazeCS + this.mazeCS / 2;
-      this.mazeGraphics.fillStyle(0xff6699);
-      this.mazeGraphics.fillCircle(cx, cy, Math.max(6, Math.floor(this.mazeCS * 0.22)));
     }
 
     if (roleData.playerPos) {
@@ -584,6 +973,10 @@ class ControllerScene extends Phaser.Scene {
       this._drawMarkerCircle(life.row, life.col, 0xff77bb, 0.18);
     }
 
+    for (const ghost of maze.ghosts || []) {
+      this._drawMarkerCircle(ghost.row, ghost.col, 0xbb66ff, 0.2);
+    }
+
     if (maze.goal) {
       this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
     }
@@ -600,23 +993,31 @@ class ControllerScene extends Phaser.Scene {
     }
 
     const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    const maxStart = Math.max(0, sorted.length - 6);
+    const maxStart = Math.max(0, sorted.length - 8);
     this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
-    const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 6);
+    const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 8);
     const lines = visible.map((entry, idx) => {
       const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
       const star = entry.highlighted ? '*' : ' ';
-      const label = formatEvent(entry);
+      const label = formatTrainerTimelineEntry(entry);
       return `${pointer}${star} ${label}`;
     });
     const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
-    const header = `Highlights: ${highlightedCount} • Scroll: ${this.trainerEventScroll}/${maxStart}`;
-    this.eventsText.setText(`${header}\n${lines.join('\n')}`);
+    const hazardCount = trainerEvents.filter((entry) => entry.event === 'hazard_hit' || entry.event === 'ghost_collision').length;
+    const clarityCount = trainerEvents.filter((entry) => entry.event === 'clarity_event').length;
+    const timerCount = trainerEvents.filter((entry) => entry.event.startsWith('timer_')).length;
+    const ghostTicks = trainerEvents.filter((entry) => entry.event === 'ghost_move').length;
+    const selectedIndex = Math.min(visible.length - 1, this.trainerSelectedOffset);
+    const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
+    const header = `TIMELINE\nHighlights: ${highlightedCount} • Hazards: ${hazardCount} • Ghost ticks: ${ghostTicks} • Clarity: ${clarityCount} • Timer: ${timerCount}`;
+    const footer = `Selected: ${selected ? formatEvent(selected) : 'None'}\n${summarizeTrainerEvent(selected)}`;
+    this.eventsText.setText(`${header}\n${lines.join('\n')}\n${footer}`);
   }
 
   _renderState(state) {
     const roleData = state.roleData || {};
     const summary = state.summary || {};
+    const timer = state.timer || null;
 
     if (this.viewerRole === 'mover' && roleData.maze) {
       this._drawMoverMaze(roleData.maze);
@@ -624,35 +1025,40 @@ class ControllerScene extends Phaser.Scene {
       this._drawGuideBoard(roleData);
     } else if (this.viewerRole === 'key-seer') {
       this._drawKeyBoard(roleData);
-    } else if (this.viewerRole === 'life-keeper') {
-      this._drawLifeBoard(roleData);
+    } else if (this.viewerRole === 'navigator') {
+      this._drawNavigatorBoard(roleData);
     } else if (this.viewerRole === 'trainer') {
       this._drawTrainerBoard(roleData);
     } else if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
 
+    this.timerText.setText(`Timer: ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`);
+    this.timerText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
+
     if (this.viewerRole === 'mover') {
-      this.detailText.setText(`Keys: ${summary.keysCollected || 0}/3`);
+      this.detailText.setText(`Grid only. Follow team guidance.\nKeys: ${summary.keysCollected || 0}/3`);
     } else if (this.viewerRole === 'guide') {
       const hazards = roleData.hazards || [];
-      this.detailText.setText(`Hazards tracked: ${hazards.length}`);
+      const ghosts = roleData.ghosts || [];
+      this.detailText.setText(`Guide view.\nHazards tracked: ${hazards.length}\nGhosts tracked: ${ghosts.length}`);
     } else if (this.viewerRole === 'key-seer') {
       const keys = roleData.keys || [];
       const visibleKeys = keys.filter((key) => !key.collected);
-      this.detailText.setText(`Objective markers: ${visibleKeys.length}`);
-    } else if (this.viewerRole === 'life-keeper') {
+      this.detailText.setText(`Key view.\nObjective markers: ${visibleKeys.length}`);
+    } else if (this.viewerRole === 'navigator') {
       const hazardLog = roleData.hazardLog || [];
-      this.detailText.setText(`Lives remaining: ${roleData.livesRemaining != null ? roleData.livesRemaining : 0}   Hazard hits: ${hazardLog.length}`);
+      const wallHits = hazardLog.filter((entry) => entry.hazardType === 'wall').length;
+      this.detailText.setText(`Navigator view.\nWall hazard hits: ${wallHits}`);
     } else if (this.viewerRole === 'trainer') {
       const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
-      if (latest && latest.type === 'highlight_set') {
-        this.detailText.setText(`Latest share: ${latest.highlight_count || 0} highlighted event(s) sent to display.`);
-      } else if (latest) {
-        this.detailText.setText('Latest share: full session export sent.');
-      } else {
-        this.detailText.setText('No trainer data shared yet.');
-      }
+      const selectedClarity = humanizeClarityType(CLARITY_TYPES[this.trainerClarityIndex]);
+      const trainerEvents = roleData.trainerEvents || [];
+      const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      const selected = sorted[Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset)] || null;
+      const aiSuggestions = roleData.aiSuggestions || [];
+      const selectedSuggestion = aiSuggestions[this.trainerSuggestionIndex] || null;
+      this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest));
     }
 
     if (this.viewerRole === 'trainer') {
@@ -727,6 +1133,7 @@ class ControllerScene extends Phaser.Scene {
   onClose() {
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
+    document.removeEventListener('visibilitychange', this.onVisibilitySync);
     this.scene.start('JoinScene');
   }
 
@@ -734,6 +1141,22 @@ class ControllerScene extends Phaser.Scene {
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
     this.input.off('wheel', this.onWheel, this);
+    document.removeEventListener('visibilitychange', this.onVisibilitySync);
+  }
+
+  _sendMove(dir) {
+    const now = Date.now();
+    if (now - this.lastMoveSentAt < 120) {
+      return;
+    }
+    this.lastMoveSentAt = now;
+    sendWs({ type: 'player_input', input: { action: 'move', dir } });
+  }
+
+  onVisibilitySync() {
+    if (document.visibilityState === 'visible') {
+      sendWs({ type: 'resync_request' });
+    }
   }
 
   onWheel(pointer, _gameObjects, _deltaX, deltaY) {

@@ -1,0 +1,9 @@
+'use strict';
+
+const HEARTBEAT_INTERVAL_MS = 4000;
+const DISCONNECT_GRACE_MS = 12000;
+
+module.exports = {
+  HEARTBEAT_INTERVAL_MS,
+  DISCONNECT_GRACE_MS,
+};
