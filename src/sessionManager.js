@@ -693,7 +693,7 @@ class SessionManager {
 
   joinController(sessionId, name, socket) {
     const session = this.sessions.get(sessionId);
-    if (!session || !session.display) {
+    if (!session) {
       sendJoinError(socket, 'Session is unavailable.', ErrorCode.SESSION_UNAVAILABLE);
       return false;
     }
@@ -707,6 +707,11 @@ class SessionManager {
       if (reconnected !== null) {
         return reconnected;
       }
+    }
+
+    if (!session.display) {
+      sendJoinError(socket, 'Session is unavailable.', ErrorCode.SESSION_UNAVAILABLE);
+      return false;
     }
 
     if (session.state.status !== GameStatus.LOBBY) {

@@ -653,6 +653,30 @@ test('controller can reconnect into the same player slot and role', (t) => {
   assert.equal(sync.state.viewerRole, latestState(originalController).viewerRole);
 });
 
+test('controller can reconnect while display is disconnected', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const originalController = findControllerByRole(controllers, MazeRole.MOVER);
+  const reconnectingController = createFakeSocket();
+  const registered = originalController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+
+  manager.beginDisconnectGrace(display, 'socket_closed', 1000);
+  manager.beginDisconnectGrace(originalController, 'socket_closed', 1000);
+  t.mock.timers.tick(1000);
+
+  assert.equal(manager.sessions.get(sessionId).display, null);
+  assert.equal(
+    manager.joinController(sessionId, { name: 'Replacement', reconnectToken: registered.reconnectToken }, reconnectingController),
+    true
+  );
+
+  const reconnectedRegistration = reconnectingController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+  assert.equal(reconnectedRegistration.playerId, registered.playerId);
+  assert.equal(reconnectedRegistration.reconnectToken, registered.reconnectToken);
+  assert.equal(reconnectedRegistration.reconnected, true);
+});
+
 test('invalid reconnect token is rejected', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
