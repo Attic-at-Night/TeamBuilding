@@ -25,13 +25,6 @@ function sendWs(payload) {
   }
 }
 
-_clearEndUi() {
-  for (const item of this.endUi) {
-    item.destroy();
-  }
-  this.endUi = [];
-}
-
 function formatEvent(entry) {
   if (!entry) {
     return '';
@@ -701,6 +694,13 @@ class ControllerScene extends Phaser.Scene {
 
   _hideEndUi() {
     this._clearEndUi();
+  }
+
+  _clearEndUi() {
+    for (const item of this.endUi) {
+      item.destroy();
+    }
+    this.endUi = [];
   }
 
   onMessage(message) {
