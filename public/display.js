@@ -601,70 +601,6 @@ class GameScene extends Phaser.Scene {
         this.restartButtonBg.disableInteractive();
       }
 
-      createTimerButton(x, y, width, label, action) {
-        const bg = this.add.rectangle(x, y, width, 42, 0x3355ff)
-          .setInteractive({ useHandCursor: true });
-        const text = this.add.text(x, y, label, {
-          fontSize: '18px',
-          color: '#ffffff',
-          fontStyle: 'bold',
-        }).setOrigin(0.5);
-
-        bg.on('pointerover', () => {
-          if (bg.getData('enabled')) {
-            bg.setFillStyle(0x5577ff);
-          }
-        });
-        bg.on('pointerout', () => {
-          bg.setFillStyle(bg.getData('enabled') ? 0x3355ff : 0x4a4f66);
-        });
-        bg.on('pointerup', () => {
-          if (!bg.getData('enabled')) {
-            return;
-          }
-          const timer = (this.currentState && this.currentState.timer) || {};
-          const durationMs = timer.durationMs || timer.remainingMs || (5 * 60 * 1000);
-          if (action === 'timer_start') {
-            sendWs({ type: 'timer_start', durationMs });
-          } else if (action === 'timer_stop') {
-            sendWs({ type: 'timer_stop' });
-          } else if (action === 'timer_reset') {
-            sendWs({ type: 'timer_reset', durationMs });
-          }
-        });
-
-        this.timerButtons.push({ bg, text, action });
-      }
-
-      updateTimerButtons(state) {
-        const timer = state.timer || {};
-        const isEnded = state.status === 'ended';
-
-        for (const button of this.timerButtons) {
-          let enabled = !isEnded;
-          let label = button.action === 'timer_start' ? 'Start' : button.text.text;
-
-          if (button.action === 'timer_start') {
-            label = timer.status === 'stopped' ? 'Resume' : 'Start';
-            enabled = enabled && timer.status !== 'running' && timer.status !== 'expired';
-          } else if (button.action === 'timer_stop') {
-            label = 'Pause';
-            enabled = enabled && timer.status === 'running';
-          } else if (button.action === 'timer_reset') {
-            label = 'Reset';
-            enabled = enabled;
-          }
-
-          button.text.setText(label);
-          button.bg.setData('enabled', enabled);
-          button.bg.setFillStyle(enabled ? 0x3355ff : 0x4a4f66);
-          if (enabled) {
-            button.bg.setInteractive({ useHandCursor: true });
-          } else {
-            button.bg.disableInteractive();
-          }
-        }
-      }
     } else {
       this.endOverlay.setVisible(false);
       this.endText.setVisible(false);
@@ -672,6 +608,71 @@ class GameScene extends Phaser.Scene {
       this.restartButtonBg.setVisible(false);
       this.restartButtonLabel.setVisible(false);
       this.restartButtonBg.disableInteractive();
+    }
+  }
+
+  createTimerButton(x, y, width, label, action) {
+    const bg = this.add.rectangle(x, y, width, 42, 0x3355ff)
+      .setInteractive({ useHandCursor: true });
+    const text = this.add.text(x, y, label, {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    bg.on('pointerover', () => {
+      if (bg.getData('enabled')) {
+        bg.setFillStyle(0x5577ff);
+      }
+    });
+    bg.on('pointerout', () => {
+      bg.setFillStyle(bg.getData('enabled') ? 0x3355ff : 0x4a4f66);
+    });
+    bg.on('pointerup', () => {
+      if (!bg.getData('enabled')) {
+        return;
+      }
+      const timer = (this.currentState && this.currentState.timer) || {};
+      const durationMs = timer.durationMs || timer.remainingMs || (5 * 60 * 1000);
+      if (action === 'timer_start') {
+        sendWs({ type: 'timer_start', durationMs });
+      } else if (action === 'timer_stop') {
+        sendWs({ type: 'timer_stop' });
+      } else if (action === 'timer_reset') {
+        sendWs({ type: 'timer_reset', durationMs });
+      }
+    });
+
+    this.timerButtons.push({ bg, text, action });
+  }
+
+  updateTimerButtons(state) {
+    const timer = state.timer || {};
+    const isEnded = state.status === 'ended';
+
+    for (const button of this.timerButtons) {
+      let enabled = !isEnded;
+      let label = button.action === 'timer_start' ? 'Start' : button.text.text;
+
+      if (button.action === 'timer_start') {
+        label = timer.status === 'stopped' ? 'Resume' : 'Start';
+        enabled = enabled && timer.status !== 'running' && timer.status !== 'expired';
+      } else if (button.action === 'timer_stop') {
+        label = 'Pause';
+        enabled = enabled && timer.status === 'running';
+      } else if (button.action === 'timer_reset') {
+        label = 'Reset';
+        enabled = enabled;
+      }
+
+      button.text.setText(label);
+      button.bg.setData('enabled', enabled);
+      button.bg.setFillStyle(enabled ? 0x3355ff : 0x4a4f66);
+      if (enabled) {
+        button.bg.setInteractive({ useHandCursor: true });
+      } else {
+        button.bg.disableInteractive();
+      }
     }
   }
 
