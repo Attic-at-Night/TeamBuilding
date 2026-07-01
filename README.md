@@ -87,12 +87,42 @@ game_start ───────→ status → playing
 | Client → Server | `controller_join` | Phone joins session as a controller |
 | Client → Server | `game_start` | Display requests game start |
 | Client → Server | `game_restart` | Display restarts an ended session |
+| Client → Server | `timer_start` | Display starts or resumes the session timer |
+| Client → Server | `timer_stop` | Display pauses the session timer |
+| Client → Server | `timer_reset` | Display resets the session timer |
 | Client → Server | `player_input` | Controller sends an action (e.g. `{ action: "buzz" }`) |
 | Client → Server | `resync_request` | Any client requests a full state re-send (reconnect) |
 | Server → Client | `client_registered` | Acknowledges display/controller registration |
 | Server → Client | `state_sync` | Authoritative game state broadcast to all clients |
 | Server → Client | `join_error` | Registration or join failure |
-| Server → Client | `session_closed` | Display disconnected; session is gone |
+| Server → Client | `session_closed` | Session was explicitly closed or became unavailable |
+
+All server-sent WebSocket messages now include protocol version `v`.
+Clients may send either the legacy flat payload format or an envelope format:
+
+```json
+{
+  "v": 1,
+  "type": "controller_join",
+  "payload": {
+    "sessionId": "ABC123",
+    "name": "Alex"
+  }
+}
+```
+
+`join_error` also includes a machine-readable `code` for reconnect/join handling.
+
+Sessions are now kept server-side across transient disconnects. A display disconnect no longer destroys the
+session immediately; connected clients receive updated state showing `displayConnected: false` until the host
+reattaches or later reconnect handling claims the session.
+
+Controllers now receive a reconnect token in `client_registered`, and the client stores it locally to support
+automatic/manual rejoin of the same player slot when the session still exists.
+
+The server also now maintains authoritative timer state with `idle`, `running`, `stopped`, and `expired`
+lifecycle states. Timer transitions are included in synchronized state and persisted session exports.
+The display exposes start / pause / reset timer controls, and controllers show compact timer status.
 
 ### Game state shape
 
@@ -135,17 +165,19 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 
 | Role | Can do | Can see |
 |------|--------|---------|
-| **Trainer** (first controller) | Observe, scroll realtime events, toggle highlights, and share either full logs or curated highlights via `trainer_share_log` / `trainer_share_highlights` | Combined mini-maze overview + full trainer event feed |
-| **Mover** (first gameplay player) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Maze walls + own position — **no hazard markers** |
-| **Guide / Key Seer / Life Keeper** (other gameplay players) | Communicate verbally (and role-specific support) | Role-specific slices of the full map |
+| **Trainer** (explicitly selected on join) | Observe, scroll realtime events, log clarity events, toggle highlights, and share either full logs or curated highlights via `trainer_share_log` / `trainer_share_highlights` | Combined mini-maze overview + full trainer event feed |
+| **Mover** (randomized gameplay role) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Grid + own position only |
+| **Guide** (randomized gameplay role) | Communicate hazards and ghost pressure | Hazard locations, ghost positions, + player position |
+| **Key Seer** (randomized gameplay role) | Communicate key objectives | Key locations + player position |
+| **Navigator** (randomized gameplay role) | Communicate wall layout and risky routes | Maze walls + player position |
 
-The display screen shows everything (walls, hazards, player position, event log) for the facilitator.
+The display screen shows everything (walls, hazards, ghosts, player position, event log) for the facilitator.
 The session log now renders as a color-coded chronological timeline with scroll support. It auto-follows
 new events during play, and facilitators can scroll back to inspect older moments.
 
 When a round ends, the display shows a restart button so the host can start a fresh round without rebuilding the session.
 
-Every move — including wall hits and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards.  When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
+Every move — including wall hits, ghost collisions, and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards. Maze resets now also rotate between layout variants and escalate into a simple hard mode that adds ghost pressure after repeated failures. When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
 
 ### Durable session log export
 

@@ -33,12 +33,46 @@ function formatDuration(ms, startedAt, endedAt, now = Date.now()) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function getTimerRemainingMs(timer, now = Date.now()) {
+  if (!timer) {
+    return 0;
+  }
+  if (timer.status === 'running' && typeof timer.expiresAt === 'number') {
+    return Math.max(0, timer.expiresAt - now);
+  }
+  return Math.max(0, timer.remainingMs || 0);
+}
+
+function formatTimerValue(timer, now = Date.now()) {
+  return formatDuration(getTimerRemainingMs(timer, now));
+}
+
+function formatTimerStatus(timer) {
+  if (!timer) {
+    return 'Timer unavailable';
+  }
+  if (timer.status === 'running') {
+    return 'Running';
+  }
+  if (timer.status === 'stopped') {
+    return 'Paused';
+  }
+  if (timer.status === 'expired') {
+    return 'Expired';
+  }
+  return 'Ready';
+}
+
 function truncateText(value, maxLength = 120) {
   const text = String(value || '');
   if (text.length <= maxLength) {
     return text;
   }
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function humanizeClarityType(value) {
+  return String(value || 'clarity_event').replace(/_/g, ' ');
 }
 
 function eventTone(entry) {
@@ -49,13 +83,16 @@ function eventTone(entry) {
   if (entry.event === 'session_end' && entry.outcome === 'success') {
     return 'success';
   }
+  if (entry.event === 'timer_start') {
+    return 'success';
+  }
   if (entry.event === 'key_pickup' || entry.event === 'life_pickup') {
     return 'success';
   }
-  if (entry.event === 'reset' || entry.event === 'goal_locked' || entry.event === 'life_change') {
+  if (entry.event === 'reset' || entry.event === 'goal_locked' || entry.event === 'life_change' || entry.event === 'timer_stop' || entry.event === 'timer_reset' || entry.event === 'clarity_event') {
     return 'warning';
   }
-  if (entry.event === 'hazard_hit' || entry.event === 'input_rejected') {
+  if (entry.event === 'hazard_hit' || entry.event === 'ghost_collision' || entry.event === 'input_rejected' || entry.event === 'timer_expired') {
     return 'danger';
   }
   if (entry.event === 'session_end' && entry.outcome !== 'success') {
@@ -117,8 +154,25 @@ function formatTimelineCard(entry) {
     const pos = entry.position ? `${entry.position.row + 1},${entry.position.col + 1}` : 'unknown';
     return {
       time,
-      summary: `Hazard hit at ${pos}`,
+      summary: `Hazard hit${entry.hazardType ? ` (${entry.hazardType})` : ''} at ${pos}`,
       detail: `Lives remaining: ${entry.livesRemaining != null ? entry.livesRemaining : '?'}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'ghost_collision') {
+    const pos = entry.position ? `${entry.position.row + 1},${entry.position.col + 1}` : 'unknown';
+    return {
+      time,
+      summary: `Ghost collision at ${pos}`,
+      detail: `Lives remaining: ${entry.livesRemaining != null ? entry.livesRemaining : '?'}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'ghost_move') {
+    return {
+      time,
+      summary: 'Ghost patrol tick',
+      detail: `${(entry.ghostMoves || []).length} ghost(s) moved`,
       tone: eventTone(entry),
     };
   }
@@ -135,6 +189,46 @@ function formatTimelineCard(entry) {
       time,
       summary: `Session ${entry.outcome || 'ended'}`,
       detail: `keys: ${entry.keys != null ? entry.keys : '?'} • lives: ${entry.lives != null ? entry.lives : '?'}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'timer_start') {
+    return {
+      time,
+      summary: 'Timer started',
+      detail: `remaining: ${formatDuration(entry.remainingMs || entry.durationMs || 0)}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'timer_stop') {
+    return {
+      time,
+      summary: 'Timer paused',
+      detail: `remaining: ${formatDuration(entry.remainingMs || 0)}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'timer_reset') {
+    return {
+      time,
+      summary: 'Timer reset',
+      detail: `duration: ${formatDuration(entry.durationMs || entry.remainingMs || 0)}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'timer_expired') {
+    return {
+      time,
+      summary: 'Timer expired',
+      detail: `duration: ${formatDuration(entry.durationMs || 0)}`,
+      tone: eventTone(entry),
+    };
+  }
+  if (entry.event === 'clarity_event') {
+    return {
+      time,
+      summary: `Clarity: ${humanizeClarityType(entry.clarityType)}`,
+      detail: entry.trainerName ? `trainer: ${entry.trainerName}` : null,
       tone: eventTone(entry),
     };
   }
@@ -347,12 +441,28 @@ class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.summaryText = this.add.text(22, 74, '', {
+    this.summaryText = this.add.text(22, 82, '', {
       fontSize: '18px',
       color: '#ffff88',
       lineSpacing: 6,
-      wordWrap: { width: Math.floor(width * 0.58) },
+      wordWrap: { width: 320 },
     });
+
+    this.timerValueText = this.add.text(width / 2, 84, '5:00', {
+      fontSize: '56px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    this.timerStatusText = this.add.text(width / 2, 134, 'Ready', {
+      fontSize: '18px',
+      color: '#99bbff',
+    }).setOrigin(0.5);
+
+    this.timerButtons = [];
+    this.createTimerButton(width / 2 - 130, 192, 110, 'Start', 'timer_start');
+    this.createTimerButton(width / 2, 192, 110, 'Pause', 'timer_stop');
+    this.createTimerButton(width / 2 + 130, 192, 110, 'Reset', 'timer_reset');
 
     this.timelineViewport = {
       x: 22,
@@ -437,7 +547,7 @@ class GameScene extends Phaser.Scene {
       delay: 1000,
       loop: true,
       callback: () => {
-        if (this.currentState && this.currentState.status === 'playing') {
+        if (this.currentState) {
           this.renderState(this.currentState);
         }
       },
@@ -459,6 +569,7 @@ class GameScene extends Phaser.Scene {
   renderState(state) {
     this.currentState = state;
     const summary = state.summary || {};
+    const timer = state.timer || null;
     const lines = [
       `Status: ${state.status}`,
       `Keys collected: ${summary.keysCollected || 0}/3`,
@@ -467,6 +578,10 @@ class GameScene extends Phaser.Scene {
       `Outcome: ${summary.outcome || 'in progress'}`,
     ];
     this.summaryText.setText(lines.join('\n'));
+    this.timerValueText.setText(formatTimerValue(timer));
+    this.timerStatusText.setText(formatTimerStatus(timer));
+    this.timerStatusText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
+    this.updateTimerButtons(state);
 
     this.renderTimeline(state.log || []);
     this.updateTimelineStatus(state);
@@ -484,6 +599,71 @@ class GameScene extends Phaser.Scene {
         this.restartButtonBg.setInteractive({ useHandCursor: true });
       } else {
         this.restartButtonBg.disableInteractive();
+      }
+
+      createTimerButton(x, y, width, label, action) {
+        const bg = this.add.rectangle(x, y, width, 42, 0x3355ff)
+          .setInteractive({ useHandCursor: true });
+        const text = this.add.text(x, y, label, {
+          fontSize: '18px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+        }).setOrigin(0.5);
+
+        bg.on('pointerover', () => {
+          if (bg.getData('enabled')) {
+            bg.setFillStyle(0x5577ff);
+          }
+        });
+        bg.on('pointerout', () => {
+          bg.setFillStyle(bg.getData('enabled') ? 0x3355ff : 0x4a4f66);
+        });
+        bg.on('pointerup', () => {
+          if (!bg.getData('enabled')) {
+            return;
+          }
+          const timer = (this.currentState && this.currentState.timer) || {};
+          const durationMs = timer.durationMs || timer.remainingMs || (5 * 60 * 1000);
+          if (action === 'timer_start') {
+            sendWs({ type: 'timer_start', durationMs });
+          } else if (action === 'timer_stop') {
+            sendWs({ type: 'timer_stop' });
+          } else if (action === 'timer_reset') {
+            sendWs({ type: 'timer_reset', durationMs });
+          }
+        });
+
+        this.timerButtons.push({ bg, text, action });
+      }
+
+      updateTimerButtons(state) {
+        const timer = state.timer || {};
+        const isEnded = state.status === 'ended';
+
+        for (const button of this.timerButtons) {
+          let enabled = !isEnded;
+          let label = button.action === 'timer_start' ? 'Start' : button.text.text;
+
+          if (button.action === 'timer_start') {
+            label = timer.status === 'stopped' ? 'Resume' : 'Start';
+            enabled = enabled && timer.status !== 'running' && timer.status !== 'expired';
+          } else if (button.action === 'timer_stop') {
+            label = 'Pause';
+            enabled = enabled && timer.status === 'running';
+          } else if (button.action === 'timer_reset') {
+            label = 'Reset';
+            enabled = enabled;
+          }
+
+          button.text.setText(label);
+          button.bg.setData('enabled', enabled);
+          button.bg.setFillStyle(enabled ? 0x3355ff : 0x4a4f66);
+          if (enabled) {
+            button.bg.setInteractive({ useHandCursor: true });
+          } else {
+            button.bg.disableInteractive();
+          }
+        }
       }
     } else {
       this.endOverlay.setVisible(false);

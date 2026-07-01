@@ -129,7 +129,11 @@ function pickDistinctCells(candidates, count) {
   return candidates.slice(0, count);
 }
 
-function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupCount = 2) {
+function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupCount = 2, options = {}) {
+  const loopFraction = typeof options.loopFraction === 'number' ? options.loopFraction : 0.35;
+  const ghostCount = typeof options.ghostCount === 'number' ? options.ghostCount : 0;
+  const layoutVariant = options.layoutVariant || 'default';
+  const hardMode = Boolean(options.hardMode);
   // Initialise all cells with every wall present.
   const cells = Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({ walls: { n: true, e: true, s: true, w: true } }))
@@ -166,7 +170,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
 
   // Add loops by removing ~35 % of remaining interior walls, creating many
   // independent cycles and guaranteeing multiple routes from start to goal.
-  addLoops(cells, height, width, 0.35);
+  addLoops(cells, height, width, loopFraction);
 
   // Find the BFS safe path from start to goal; hazards will never be placed on it.
   const safePath = findPath(cells, height, width, 0, 0, height - 1, width - 1) || [];
@@ -198,13 +202,26 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
     col: cell.col,
     collected: false,
   }));
+  const ghostCandidates = pickupCandidates.filter((cell) => {
+    return !lifePickups.some((life) => life.row === cell.row && life.col === cell.col)
+      && !(cell.row === 0 && cell.col === 0)
+      && !(cell.row === height - 1 && cell.col === width - 1);
+  });
+  const ghosts = pickDistinctCells(ghostCandidates, ghostCount).map((cell, index) => ({
+    id: `ghost-${index + 1}-${randomId()}`,
+    row: cell.row,
+    col: cell.col,
+  }));
 
   return {
     seed: randomId(),
+    layoutVariant,
+    hardMode,
     width,
     height,
     cells,
     hazards,
+    ghosts,
     keys,
     lifePickups,
     goal: { row: height - 1, col: width - 1 },
@@ -254,4 +271,35 @@ function findLifeAt(maze, row, col) {
   return maze.lifePickups.find((life) => !life.collected && life.row === row && life.col === col) || null;
 }
 
-module.exports = { generateMaze, movePlayer, findKeyAt, findLifeAt };
+function moveGhosts(maze) {
+  if (!maze || !Array.isArray(maze.ghosts) || !maze.ghosts.length) {
+    return [];
+  }
+
+  const moves = [];
+  for (const ghost of maze.ghosts) {
+    const path = findPath(
+      maze.cells,
+      maze.height,
+      maze.width,
+      ghost.row,
+      ghost.col,
+      maze.playerPos.row,
+      maze.playerPos.col
+    );
+    if (path && path.length >= 2) {
+      const next = path[1];
+      ghost.row = next.row;
+      ghost.col = next.col;
+      moves.push({ id: ghost.id, row: ghost.row, col: ghost.col });
+    }
+  }
+
+  return moves;
+}
+
+function findGhostAt(maze, row, col) {
+  return maze.ghosts.find((ghost) => ghost.row === row && ghost.col === col) || null;
+}
+
+module.exports = { generateMaze, movePlayer, moveGhosts, findKeyAt, findLifeAt, findGhostAt };

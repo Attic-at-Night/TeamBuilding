@@ -6,7 +6,9 @@ const { SessionManager } = require('./src/sessionManager');
 const { SessionLogStore } = require('./src/sessionLogStore');
 const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
-const { MessageType, ClientRole } = require('./src/protocol');
+const { MessageType, ClientRole, ErrorCode } = require('./src/protocol');
+const { normalizeIncomingMessage, encodeServerMessage } = require('./src/networking/messageEnvelope');
+const { HEARTBEAT_INTERVAL_MS, DISCONNECT_GRACE_MS } = require('./src/networking/heartbeat');
 
 const app = express();
 const logStore = new SessionLogStore();
@@ -72,7 +74,11 @@ const handlers = {
   },
 
   [MessageType.CONTROLLER_JOIN](message, socket) {
-    sessionManager.joinController(message.sessionId, message.name, socket);
+    sessionManager.joinController(message.sessionId, {
+      name: message.name,
+      reconnectToken: message.reconnectToken,
+      requestedTrainer: message.requestedTrainer,
+    }, socket);
   },
 
   [MessageType.GAME_START](_message, socket) {
@@ -86,6 +92,27 @@ const handlers = {
     const meta = socket.meta;
     if (meta?.role === ClientRole.DISPLAY) {
       sessionManager.restartGame(meta.sessionId);
+    }
+  },
+
+  [MessageType.TIMER_START](message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY) {
+      sessionManager.startTimer(meta.sessionId, message.durationMs);
+    }
+  },
+
+  [MessageType.TIMER_STOP](_message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY) {
+      sessionManager.stopTimer(meta.sessionId);
+    }
+  },
+
+  [MessageType.TIMER_RESET](message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY) {
+      sessionManager.resetTimer(meta.sessionId, message.durationMs);
     }
   },
 
@@ -105,12 +132,31 @@ const handlers = {
 };
 
 wss.on('connection', (socket) => {
+  socket.isAlive = true;
+
+  const sendJoinError = (message, code) => {
+    socket.send(JSON.stringify(encodeServerMessage({
+      type: MessageType.JOIN_ERROR,
+      message,
+      code,
+    })));
+  };
+
   socket.on('message', (rawMessage) => {
-    let message;
+    socket.isAlive = true;
+    sessionManager.cancelDisconnectGrace(socket);
+
+    let parsedMessage;
     try {
-      message = JSON.parse(String(rawMessage));
+      parsedMessage = JSON.parse(String(rawMessage));
     } catch {
-      socket.send(JSON.stringify({ type: MessageType.JOIN_ERROR, message: 'Invalid message format.' }));
+      sendJoinError('Invalid message format.', ErrorCode.INVALID_MESSAGE_FORMAT);
+      return;
+    }
+
+    const message = normalizeIncomingMessage(parsedMessage);
+    if (!message) {
+      sendJoinError('Invalid message format.', ErrorCode.INVALID_MESSAGE_FORMAT);
       return;
     }
 
@@ -120,10 +166,50 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    socket.send(JSON.stringify({ type: MessageType.JOIN_ERROR, message: 'Unknown message type.' }));
+    sendJoinError('Unknown message type.', ErrorCode.UNKNOWN_MESSAGE_TYPE);
+  });
+
+  socket.on('pong', () => {
+    socket.isAlive = true;
+    sessionManager.cancelDisconnectGrace(socket);
   });
 
   socket.on('close', () => {
-    sessionManager.removeConnection(socket);
+    sessionManager.beginDisconnectGrace(socket, 'socket_closed', DISCONNECT_GRACE_MS);
   });
+});
+
+const heartbeatInterval = setInterval(() => {
+  for (const socket of wss.clients) {
+    if (socket.isAlive === false) {
+      sessionManager.beginDisconnectGrace(socket, 'heartbeat_timeout', DISCONNECT_GRACE_MS);
+      try {
+        socket.terminate();
+      } catch {
+        // Ignore terminate failures on already-closed sockets.
+      }
+      continue;
+    }
+
+    socket.isAlive = false;
+    try {
+      socket.ping();
+    } catch {
+      sessionManager.beginDisconnectGrace(socket, 'ping_failed', DISCONNECT_GRACE_MS);
+    }
+  }
+}, HEARTBEAT_INTERVAL_MS);
+
+const timerInterval = setInterval(() => {
+  sessionManager.tickTimers();
+}, 1000);
+
+const worldInterval = setInterval(() => {
+  sessionManager.tickWorld();
+}, 1000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
+  clearInterval(timerInterval);
+  clearInterval(worldInterval);
 });
