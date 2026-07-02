@@ -135,7 +135,19 @@ function pointToArray(point) {
 }
 
 function getRoleForPlayer(state, playerId) {
-  return state.roles[playerId] || null;
+  const assigned = state.roles[playerId];
+  if (Array.isArray(assigned)) {
+    return assigned.filter((role) => typeof role === 'string' && role.length > 0);
+  }
+  if (typeof assigned === 'string' && assigned.length > 0) {
+    return [assigned];
+  }
+  return [];
+}
+
+function getPrimaryRole(roles) {
+  const ordered = [MazeRole.MOVER, MazeRole.GUIDE, MazeRole.KEY_SEER, MazeRole.NAVIGATOR];
+  return ordered.find((role) => roles.includes(role)) || null;
 }
 
 function getRecentEventsForRole(state, role) {
@@ -169,54 +181,63 @@ function buildMazeForMover(maze) {
 }
 
 function buildRoleData(state, role) {
+  const roles = Array.isArray(role) ? role : (role ? [role] : []);
   const maze = state.maze;
-
-  if (role === MazeRole.MOVER) {
-    return {
-      maze: buildMazeForMover(maze),
-      recentEvents: getRecentEventsForRole(state, role),
-    };
+  const byEventId = new Map();
+  for (const assignedRole of roles) {
+    for (const event of getRecentEventsForRole(state, assignedRole)) {
+      const key = event.eventId || `${event.ts || 0}:${event.event || 'event'}`;
+      byEventId.set(key, event);
+    }
   }
 
-  if (role === MazeRole.GUIDE) {
-    return {
-      hazards: maze ? maze.hazards : [],
-      ghosts: maze ? maze.ghosts : [],
-      playerPos: maze ? maze.playerPos : null,
-      recentEvents: getRecentEventsForRole(state, role),
-    };
-  }
+  const recentEvents = [...byEventId.values()]
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0))
+    .slice(-RECENT_EVENT_LIMIT);
 
-  if (role === MazeRole.KEY_SEER) {
-    return {
-      keys: maze ? maze.keys.map((key) => ({
-        id: key.id,
-        row: key.row,
-        col: key.col,
-        key: key.key,
-        collected: key.collected,
-      })) : [],
-      playerPos: maze ? maze.playerPos : null,
-      recentEvents: getRecentEventsForRole(state, role),
-    };
-  }
-
-  if (role === MazeRole.NAVIGATOR) {
-    return {
-      maze: maze ? {
-        width: maze.width,
-        height: maze.height,
-        cells: maze.cells,
-      } : null,
-      playerPos: maze ? maze.playerPos : null,
-      hazardLog: state.log.filter((entry) => entry.event === 'hazard_hit'),
-      recentEvents: getRecentEventsForRole(state, role),
-    };
-  }
-
-  return {
-    recentEvents: getRecentEventsForRole(state, role),
+  const roleData = {
+    assignedRoles: roles,
+    recentEvents,
   };
+
+  if (roles.includes(MazeRole.MOVER)) {
+    roleData.maze = buildMazeForMover(maze);
+  }
+
+  if (roles.includes(MazeRole.GUIDE)) {
+    roleData.hazards = maze ? maze.hazards : [];
+    roleData.ghosts = maze ? maze.ghosts : [];
+    roleData.playerPos = maze ? maze.playerPos : null;
+  }
+
+  if (roles.includes(MazeRole.KEY_SEER)) {
+    roleData.keys = maze ? maze.keys.map((key) => ({
+      id: key.id,
+      row: key.row,
+      col: key.col,
+      key: key.key,
+      collected: key.collected,
+    })) : [];
+    if (!roleData.playerPos) {
+      roleData.playerPos = maze ? maze.playerPos : null;
+    }
+  }
+
+  if (roles.includes(MazeRole.NAVIGATOR)) {
+    roleData.maze = maze ? {
+      width: maze.width,
+      height: maze.height,
+      cells: maze.cells,
+      playerPos: maze.playerPos,
+      reached: maze.reached,
+    } : null;
+    roleData.hazardLog = state.log.filter((entry) => entry.event === 'hazard_hit');
+    if (!roleData.playerPos) {
+      roleData.playerPos = maze ? maze.playerPos : null;
+    }
+  }
+
+  return roleData;
 }
 
 function buildDisplayState(state, session) {
@@ -462,7 +483,8 @@ function buildTrainerState(state, session) {
 }
 
 function buildControllerState(state, session, playerId) {
-  const role = getRoleForPlayer(state, playerId);
+  const roles = getRoleForPlayer(state, playerId);
+  const role = getPrimaryRole(roles);
   const { livesRemaining, ...controllerSummary } = state.summary;
   const mazeMeta = buildMazeMeta(state.maze);
   return {
@@ -473,7 +495,7 @@ function buildControllerState(state, session, playerId) {
     mazeMeta,
     displayConnected: Boolean(session && session.display),
     viewerRole: role,
-    roleData: buildRoleData(state, role),
+    roleData: buildRoleData(state, roles),
     trainerBroadcast: state.trainerBroadcast,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
@@ -594,7 +616,7 @@ function beginGameState(session, startedAt) {
   const randomizedPlayers = shufflePlayers(activePlayers);
 
   randomizedPlayers.forEach((player, index) => {
-    roles[player.id] = roleOrder[index];
+    roles[player.id] = roleOrder[index] || [];
   });
 
   session.state.roles = roles;
@@ -614,7 +636,10 @@ function beginGameState(session, startedAt) {
     ts: startedAt,
     event: 'game_start',
     players: activePlayers.map((player) => ({ id: player.id, name: player.name })),
-    roles: Object.entries(roles).map(([playerId, role]) => ({ playerId, role })),
+    roles: Object.entries(roles).map(([playerId, role]) => ({
+      playerId,
+      roles: Array.isArray(role) ? role : [role],
+    })),
     trainer: session.state.trainer,
   });
 }
@@ -970,7 +995,8 @@ class SessionManager {
     const { state } = session;
     const controller = session.controllers.get(playerId);
     const isTrainer = controller.isTrainer;
-    const role = getRoleForPlayer(state, playerId);
+    const roles = getRoleForPlayer(state, playerId);
+    const role = getPrimaryRole(roles);
     const ts = Date.now();
 
     appendLog(state, {
@@ -978,7 +1004,7 @@ class SessionManager {
       event: 'input',
       playerId,
       player: controller.name,
-      role: isTrainer ? 'trainer' : role,
+      role: isTrainer ? 'trainer' : (roles.length ? roles.join('+') : null),
       action: input?.action || null,
       dir: input?.dir || null,
     });
@@ -1196,7 +1222,7 @@ class SessionManager {
       return false;
     }
 
-    if (role !== MazeRole.MOVER) {
+    if (!roles.includes(MazeRole.MOVER)) {
       appendLog(state, {
         ts,
         event: 'input_rejected',

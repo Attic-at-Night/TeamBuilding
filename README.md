@@ -171,6 +171,10 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 | **Key Seer** (randomized gameplay role) | Communicate key objectives | Key locations + player position |
 | **Navigator** (randomized gameplay role) | Communicate wall layout and risky routes | Maze walls + player position |
 
+When fewer than 4 gameplay players are present, roles are merged:
+- 3 players: `mover`, `key-seer`, and `guide+navigator`
+- 2 players: `mover+key-seer` and `guide+navigator`
+
 The display screen shows everything (walls, hazards, ghosts, player position, event log) for the facilitator.
 The session log now renders as a color-coded chronological timeline with scroll support. It auto-follows
 new events during play, and facilitators can scroll back to inspect older moments.

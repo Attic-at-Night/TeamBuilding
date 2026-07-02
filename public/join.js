@@ -1,4 +1,5 @@
 let socket = null;
+let socketSequence = 0;
 let myPlayerId = null;
 let pendingReconnectToken = null;
 let pendingPlayerName = null;
@@ -32,15 +33,44 @@ function clearReconnectState(sessionId) {
   }
 }
 
+function getCurrentSessionIdFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get('session') || '').toUpperCase();
+}
+
+function trySilentReconnect(game) {
+  const sessionId = getCurrentSessionIdFromUrl();
+  if (!sessionId) {
+    return false;
+  }
+
+  const reconnectState = loadReconnectState(sessionId);
+  if (!reconnectState || !reconnectState.reconnectToken) {
+    return false;
+  }
+
+  pendingReconnectToken = reconnectState.reconnectToken;
+  pendingPlayerName = reconnectState.name || 'Player';
+  connectControllerSocket(sessionId, reconnectState.name || 'Player', game, reconnectState.reconnectToken);
+  return true;
+}
+
 function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
   if (socket) {
+    socket._superseded = true;
     socket.close();
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  socket = new WebSocket(`${protocol}://${window.location.host}`);
-  socket.addEventListener('open', () => {
-    socket.send(JSON.stringify({
+  const nextSocket = new WebSocket(`${protocol}://${window.location.host}`);
+  const sequence = ++socketSequence;
+  socket = nextSocket;
+
+  nextSocket.addEventListener('open', () => {
+    if (socket !== nextSocket || sequence !== socketSequence) {
+      return;
+    }
+    nextSocket.send(JSON.stringify({
       type: 'controller_join',
       sessionId,
       name,
@@ -48,10 +78,23 @@ function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
       requestedTrainer: Boolean(game.joinAsTrainer && !reconnectToken),
     }));
   });
-  socket.addEventListener('message', (event) => {
-    game.events.emit('ws_message', JSON.parse(event.data));
+  nextSocket.addEventListener('message', (event) => {
+    if (socket !== nextSocket || sequence !== socketSequence) {
+      return;
+    }
+    try {
+      game.events.emit('ws_message', JSON.parse(event.data));
+    } catch {
+      // Ignore malformed server payloads.
+    }
   });
-  socket.addEventListener('close', () => {
+  nextSocket.addEventListener('close', () => {
+    if (nextSocket._superseded || sequence !== socketSequence) {
+      return;
+    }
+    if (socket === nextSocket) {
+      socket = null;
+    }
     game.events.emit('ws_close');
   });
 }
@@ -498,6 +541,16 @@ class WaitScene extends Phaser.Scene {
   }
 
   onClose() {
+    if (trySilentReconnect(this.game)) {
+      if (this.dotText) {
+        this.dotText.setText('Reconnecting…');
+      }
+      this.time.delayedCall(500, () => {
+        sendWs({ type: 'resync_request' });
+      });
+      return;
+    }
+
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
     this.scene.start('JoinScene');
@@ -525,11 +578,16 @@ class ControllerScene extends Phaser.Scene {
     this.trainerSuggestionIndex = 0;
     this.trainerActiveTab = 'maze';
     this.trainerClarityType = CLARITY_TYPES[0];
-    this.trainerFeedLineHeight = 18;
+    this.trainerFeedLineHeight = 22;
     this.trainerFeedHeaderLines = 2;
+    this.trainerFeedVisibleCount = 8;
+    this.trainerFeedListStartY = 0;
+    this.trainerFeedAreaHeight = 0;
     this.trainerFeedVisibleEvents = [];
     this.trainerFeedDragged = false;
     this.trainerFeedLastY = null;
+    this.trainerFeedScrollTrack = null;
+    this.trainerFeedScrollThumb = null;
     this.lastMoveSentAt = 0;
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
@@ -579,6 +637,8 @@ class ControllerScene extends Phaser.Scene {
       item.destroy();
     }
     this.roleUi = [];
+    this.trainerFeedScrollTrack = null;
+    this.trainerFeedScrollThumb = null;
     if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
@@ -657,7 +717,7 @@ class ControllerScene extends Phaser.Scene {
   _scrollTrainerFeed(step) {
     const roleData = (this.currentState && this.currentState.roleData) || {};
     const trainerEvents = getTrainerFeedEvents(roleData);
-    const maxStart = Math.max(0, trainerEvents.length - 8);
+    const maxStart = Math.max(0, trainerEvents.length - this.trainerFeedVisibleCount);
     this.trainerEventScroll = Math.min(maxStart, Math.max(0, this.trainerEventScroll + step));
     this._renderTrainerFeed(roleData);
   }
@@ -700,6 +760,9 @@ class ControllerScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const baseY = height - 110;
     const buttons = [];
+    const roleData = (this.currentState && this.currentState.roleData) || {};
+    const assignedRoles = Array.isArray(roleData.assignedRoles) ? roleData.assignedRoles : [];
+    const hasAssignedRole = (value) => assignedRoles.includes(value);
 
     if (role === 'mover') {
       this._setupBoard(role);
@@ -710,11 +773,19 @@ class ControllerScene extends Phaser.Scene {
         { label: '←', dir: 'w', x: width / 2 - 100, y: baseY - 30 },
         { label: '→', dir: 'e', x: width / 2 + 100, y: baseY - 30 }
       );
-      this.detailText.setText('Navigate the maze. Pick up keys, avoid hazards, and reach the exit once it unlocks.');
+      this.detailText.setText(
+        hasAssignedRole('key-seer')
+          ? 'You are Mover + Key Seer. Navigate, collect keys, avoid hazards, and reach the exit once it unlocks.'
+          : 'Navigate the maze. Pick up keys, avoid hazards, and reach the exit once it unlocks.'
+      );
     } else if (role === 'guide') {
       this._setupBoard(role);
       this._syncTextLayout(role);
-      this.detailText.setText('Hazards, the ball, and the exit.');
+      this.detailText.setText(
+        hasAssignedRole('navigator')
+          ? 'You are Guide + Navigator. Track hazards/ghosts and wall layout while directing movement.'
+          : 'Hazards, the ball, and the exit.'
+      );
     } else if (role === 'key-seer') {
       this._setupBoard(role);
       this._syncTextLayout(role);
@@ -750,9 +821,17 @@ class ControllerScene extends Phaser.Scene {
 
         const feedAreaTop = this.eventsText.y - 6;
         const feedAreaHeight = Math.max(120, height - feedAreaTop - 178);
+        this.trainerFeedAreaHeight = feedAreaHeight;
+        this.trainerFeedListStartY = this.eventsText.y + (this.trainerFeedLineHeight * this.trainerFeedHeaderLines) + 2;
+
         const feedArea = this.add.rectangle(width / 2, feedAreaTop + feedAreaHeight / 2, width - 30, feedAreaHeight, 0x0b0f25, 0.35)
           .setStrokeStyle(1, 0x334477, 0.8)
           .setInteractive({ useHandCursor: true });
+
+        this.trainerFeedScrollTrack = this.add.rectangle(width - 18, feedAreaTop + feedAreaHeight / 2, 6, feedAreaHeight - 12, 0x1f2c4f, 0.75);
+        this.trainerFeedScrollThumb = this.add.rectangle(width - 18, feedAreaTop + 10, 6, Math.max(26, Math.floor(feedAreaHeight * 0.2)), 0x66a3ff, 0.95)
+          .setOrigin(0.5, 0);
+        this.roleUi.push(this.trainerFeedScrollTrack, this.trainerFeedScrollThumb);
 
         feedArea.on('pointerdown', (pointer) => {
           this.trainerFeedLastY = pointer.y;
@@ -772,9 +851,8 @@ class ControllerScene extends Phaser.Scene {
         });
         feedArea.on('pointerup', (pointer) => {
           if (!this.trainerFeedDragged) {
-            const relativeY = pointer.y - this.eventsText.y;
-            const listStart = this.trainerFeedLineHeight * this.trainerFeedHeaderLines;
-            const tappedIndex = Math.floor((relativeY - listStart) / this.trainerFeedLineHeight);
+            const relativeY = pointer.y - this.trainerFeedListStartY;
+            const tappedIndex = Math.floor(relativeY / this.trainerFeedLineHeight);
             if (tappedIndex >= 0 && tappedIndex < this.trainerFeedVisibleEvents.length) {
               this.trainerSelectedOffset = tappedIndex;
               this._renderState(this.currentState || {});
@@ -871,7 +949,12 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
-  _drawMoverMaze(maze) {
+  _drawMoverMaze(roleData) {
+    const maze = roleData.maze;
+    if (!maze) {
+      this._drawBlankBoard();
+      return;
+    }
     this._drawBlankBoard();
     const CS = this.mazeCS;
 
@@ -885,11 +968,34 @@ class ControllerScene extends Phaser.Scene {
       this.mazeGraphics.lineBetween(x, this.mazeOY, x, this.mazeOY + maze.height * CS);
     }
 
+    for (const key of roleData.keys || []) {
+      if (key.collected) {
+        continue;
+      }
+      this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
+    }
+
     this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff);
   }
 
   _drawGuideBoard(roleData) {
     this._drawBlankBoard();
+
+    if (roleData.maze && roleData.maze.cells) {
+      const maze = roleData.maze;
+      this.mazeGraphics.lineStyle(1, 0xff9955, 0.9);
+      for (let r = 0; r < maze.height; r++) {
+        for (let c = 0; c < maze.width; c++) {
+          const x = this.mazeOX + c * this.mazeCS;
+          const y = this.mazeOY + r * this.mazeCS;
+          const walls = maze.cells[r][c].walls;
+          if (walls.n) this.mazeGraphics.lineBetween(x, y, x + this.mazeCS, y);
+          if (walls.s) this.mazeGraphics.lineBetween(x, y + this.mazeCS, x + this.mazeCS, y + this.mazeCS);
+          if (walls.w) this.mazeGraphics.lineBetween(x, y, x, y + this.mazeCS);
+          if (walls.e) this.mazeGraphics.lineBetween(x + this.mazeCS, y, x + this.mazeCS, y + this.mazeCS);
+        }
+      }
+    }
 
     const hazards = roleData.hazards || [];
     for (const hazard of hazards) {
@@ -1016,22 +1122,37 @@ class ControllerScene extends Phaser.Scene {
 
   _renderTrainerFeed(roleData) {
     const trainerEvents = getTrainerFeedEvents(roleData);
+    const maxLabelLength = 52;
+    const truncateLabel = (value) => {
+      const text = String(value || '');
+      if (text.length <= maxLabelLength) {
+        return text;
+      }
+      return `${text.slice(0, maxLabelLength - 1)}…`;
+    };
+
     if (!trainerEvents.length) {
       this.eventsText.setText('No events yet.');
       this.trainerFeedVisibleEvents = [];
+      if (this.trainerFeedScrollThumb) {
+        this.trainerFeedScrollThumb.setVisible(false);
+      }
       return;
     }
 
     const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    const maxStart = Math.max(0, sorted.length - 8);
+    const maxStart = Math.max(0, sorted.length - this.trainerFeedVisibleCount);
     this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
-    this.trainerSelectedOffset = Math.min(this.trainerSelectedOffset, Math.max(0, Math.min(7, sorted.length - 1)));
-    const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 8);
+    this.trainerSelectedOffset = Math.min(
+      this.trainerSelectedOffset,
+      Math.max(0, Math.min(this.trainerFeedVisibleCount - 1, sorted.length - 1))
+    );
+    const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + this.trainerFeedVisibleCount);
     this.trainerFeedVisibleEvents = visible;
     const lines = visible.map((entry, idx) => {
       const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
       const star = entry.highlighted ? '*' : ' ';
-      const label = formatTrainerTimelineEntry(entry);
+      const label = truncateLabel(formatTrainerTimelineEntry(entry));
       return `${pointer}${star} ${label}`;
     });
     const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
@@ -1040,14 +1161,24 @@ class ControllerScene extends Phaser.Scene {
     const selectedIndex = Math.min(visible.length - 1, this.trainerSelectedOffset);
     const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
     const header = `TIMELINE\nHighlights: ${highlightedCount} • Hazards: ${hazardCount} • Clarity: ${clarityCount}`;
-    const footer = `Selected: ${selected ? formatEvent(selected) : 'None'}\n${summarizeTrainerEvent(selected)}`;
+    const footer = `Selected: ${selected ? truncateLabel(formatEvent(selected)) : 'None'}\n${truncateLabel(summarizeTrainerEvent(selected))}`;
+    this.eventsText.setWordWrapWidth(0);
     this.eventsText.setText(`${header}\n${lines.join('\n')}\n${footer}`);
-    const wrappedHeader = this.eventsText.getWrappedText(header);
-    const wrappedAll = this.eventsText.getWrappedText(this.eventsText.text || '');
-    this.trainerFeedHeaderLines = Math.max(1, wrappedHeader.length || 2);
-    this.trainerFeedLineHeight = wrappedAll.length
-      ? (this.eventsText.height / wrappedAll.length)
-      : Math.max(17, parseInt(this.eventsText.style.fontSize || '13', 10) + 4);
+    this.trainerFeedHeaderLines = 2;
+    this.trainerFeedLineHeight = 22;
+
+    if (this.trainerFeedScrollThumb && this.trainerFeedScrollTrack) {
+      const total = sorted.length;
+      const visibleCount = Math.min(this.trainerFeedVisibleCount, total);
+      const trackHeight = this.trainerFeedScrollTrack.height;
+      const thumbHeight = Math.max(24, Math.floor((visibleCount / total) * trackHeight));
+      const travel = Math.max(0, trackHeight - thumbHeight);
+      const progress = maxStart > 0 ? (this.trainerEventScroll / maxStart) : 0;
+      this.trainerFeedScrollThumb
+        .setVisible(total > visibleCount)
+        .setDisplaySize(this.trainerFeedScrollThumb.width, thumbHeight)
+        .setY((this.trainerFeedScrollTrack.y - (trackHeight / 2)) + (travel * progress));
+    }
   }
 
   _renderState(state) {
@@ -1056,7 +1187,7 @@ class ControllerScene extends Phaser.Scene {
     const timer = state.timer || null;
 
     if (this.viewerRole === 'mover' && roleData.maze) {
-      this._drawMoverMaze(roleData.maze);
+      this._drawMoverMaze(roleData);
     } else if (this.viewerRole === 'guide') {
       this._drawGuideBoard(roleData);
     } else if (this.viewerRole === 'key-seer') {
@@ -1157,6 +1288,13 @@ class ControllerScene extends Phaser.Scene {
   }
 
   onClose() {
+    if (trySilentReconnect(this.game)) {
+      this.time.delayedCall(500, () => {
+        sendWs({ type: 'resync_request' });
+      });
+      return;
+    }
+
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
     document.removeEventListener('visibilitychange', this.onVisibilitySync);

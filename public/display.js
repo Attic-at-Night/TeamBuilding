@@ -257,6 +257,56 @@ function formatTimelineCard(entry) {
   };
 }
 
+function formatTrainerDetailEntry(entry) {
+  if (!entry) {
+    return null;
+  }
+  const eventType = entry.event || entry.type || 'event';
+  const label = eventType.replace(/_/g, ' ');
+  const at = typeof entry.t === 'number'
+    ? `t+${entry.t.toFixed(1)}s`
+    : new Date(entry.ts || Date.now()).toLocaleTimeString();
+  const position = entry.position ? ` @ ${entry.position.row + 1},${entry.position.col + 1}` : '';
+  const reason = entry.reason ? ` • ${entry.reason}` : '';
+  const result = entry.result ? ` • ${entry.result}` : '';
+  return `• ${at}  ${label}${position}${result}${reason}`;
+}
+
+function formatTrainerBroadcastDetails(payload) {
+  if (!payload) {
+    return 'Trainer curation required before event timeline is shown.';
+  }
+
+  if (payload.type === 'highlight_set') {
+    const highlights = Array.isArray(payload.highlights) ? payload.highlights.slice(0, 8) : [];
+    const lines = highlights.map((entry) => formatTrainerDetailEntry(entry)).filter(Boolean);
+    return [
+      `Trainer highlights (${payload.highlight_count || highlights.length})`,
+      lines.length ? lines.join('\n') : 'No highlighted events.',
+    ].join('\n');
+  }
+
+  if (payload.type === 'replay_snippet') {
+    const replayEvents = Array.isArray(payload.replayEvents) ? payload.replayEvents.slice(0, 8) : [];
+    const lines = replayEvents.map((entry) => formatTrainerDetailEntry(entry)).filter(Boolean);
+    return [
+      `Trainer replay: ${payload.event || 'event'} (${payload.windowSeconds || 5}s window)`,
+      lines.length ? lines.join('\n') : 'No replay events.',
+    ].join('\n');
+  }
+
+  if (Array.isArray(payload.events)) {
+    const events = payload.events.slice(-8).reverse();
+    const lines = events.map((entry) => formatTrainerDetailEntry(entry)).filter(Boolean);
+    return [
+      `Trainer export (${payload.events.length} events)`,
+      lines.length ? lines.join('\n') : 'No exported events.',
+    ].join('\n');
+  }
+
+  return `Trainer payload\n${truncateText(JSON.stringify(payload), 340)}`;
+}
+
 class SetupScene extends Phaser.Scene {
   constructor() {
     super({ key: 'SetupScene' });
@@ -321,7 +371,7 @@ class LobbyScene extends Phaser.Scene {
 
     this.add.text(width / 2, 76, `Session: ${sessionId}`, {
       fontSize: '24px',
-      color: '#ffff88',
+      color: '#dde6f2',
     }).setOrigin(0.5);
 
     if (this.textures.exists('qr_code')) {
@@ -348,11 +398,6 @@ class LobbyScene extends Phaser.Scene {
     urlText.on('pointerup', () => {
       window.open(joinUrl, '_blank');
     });
-
-    if (connection && connection.ipAddress) {
-      const info = [connection.ipAddress, connection.networkName].filter(Boolean).join(' • ');
-      this.add.text(width / 2, 450, info, { fontSize: '13px', color: '#555555' }).setOrigin(0.5);
-    }
 
     const px = width * 0.75;
     this.add.text(px, 36, 'Players', { fontSize: '26px', color: '#ffffff' }).setOrigin(0.5);
@@ -471,7 +516,7 @@ class GameScene extends Phaser.Scene {
       height: height - 286,
     };
 
-    this.add.text(this.timelineViewport.x, this.timelineViewport.y - 28, 'Timeline (scroll for older events)', {
+    this.add.text(this.timelineViewport.x, this.timelineViewport.y - 28, 'Timeline (trainer-curated; scroll for older events)', {
       fontSize: '16px',
       color: '#99bbff',
     });
@@ -583,7 +628,9 @@ class GameScene extends Phaser.Scene {
     this.timerStatusText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
     this.updateTimerButtons(state);
 
-    this.renderTimeline(state.log || []);
+    const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
+    const timelineEntries = trainerPayload ? (state.log || []) : [];
+    this.renderTimeline(timelineEntries, trainerPayload);
     this.updateTimelineStatus(state);
 
     if (state.status === 'ended') {
@@ -681,7 +728,7 @@ class GameScene extends Phaser.Scene {
     this.input.off('wheel', this.onWheel, this);
   }
 
-  renderTimeline(entries) {
+  renderTimeline(entries, trainerPayload) {
     for (const item of this.timelineItems) {
       item.destroy();
     }
@@ -722,13 +769,14 @@ class GameScene extends Phaser.Scene {
     }
 
     if (!entries.length) {
-      const placeholder = this.add.text(8, 8, 'No events yet.', {
+      const placeholder = this.add.text(8, 8, trainerPayload ? 'No events yet.' : 'Timeline hidden until trainer shares debrief data.', {
         fontSize: '14px',
         color: '#9aa7b8',
+        wordWrap: { width: innerWidth - 16 },
       });
       this.timelineContainer.add(placeholder);
       this.timelineItems.push(placeholder);
-      y = 28;
+      y = 54;
     }
 
     this.timelineContentHeight = y + 8;
@@ -768,12 +816,14 @@ class GameScene extends Phaser.Scene {
     const maxScroll = this.getTimelineMaxScroll();
     const autoText = this.timelineAutoFollow ? 'ON' : 'OFF (manual scroll)';
     const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
-    let trainerLine = 'Trainer data: none';
+    let trainerLine = 'Trainer data: waiting for curation';
     if (trainerPayload) {
       if (Array.isArray(trainerPayload.events)) {
         trainerLine = `Trainer data: session export (${trainerPayload.events.length} events)`;
       } else if (trainerPayload.type === 'highlight_set') {
         trainerLine = `Trainer highlights shared: ${trainerPayload.highlight_count || 0}`;
+      } else if (trainerPayload.type === 'replay_snippet') {
+        trainerLine = `Trainer replay shared (${trainerPayload.event || 'event'})`;
       } else {
         trainerLine = `Trainer data: ${truncateText(JSON.stringify(trainerPayload), 110)}`;
       }
@@ -782,17 +832,7 @@ class GameScene extends Phaser.Scene {
       `Auto-follow: ${autoText} • Scroll ${Math.round(this.timelineScroll)}/${Math.round(maxScroll)}\n${trainerLine}`
     );
 
-    if (trainerPayload && trainerPayload.type === 'highlight_set') {
-      const list = (trainerPayload.highlights || []).slice(0, 8).map((entry, index) => {
-        const label = entry.event ? entry.event.replace(/_/g, ' ') : 'event';
-        return `${index + 1}. ${label}`;
-      });
-      this.highlightDeckText.setText(
-        `Debrief highlights (${trainerPayload.highlight_count || list.length})\n${list.join('\n')}`
-      );
-    } else {
-      this.highlightDeckText.setText('');
-    }
+    this.highlightDeckText.setText(formatTrainerBroadcastDetails(trainerPayload));
   }
 }
 

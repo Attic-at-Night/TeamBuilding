@@ -188,6 +188,42 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
   assert.ok(latestState(navigator).roleData.playerPos);
 });
 
+test('two-player sessions merge roles into mover+key-seer and guide+navigator', () => {
+  const { controllers } = bootstrapGame(2);
+  const mover = findControllerByRole(controllers, MazeRole.MOVER);
+  const guide = findControllerByRole(controllers, MazeRole.GUIDE);
+
+  assert.ok(mover);
+  assert.ok(guide);
+
+  const moverState = latestState(mover);
+  assert.deepEqual(moverState.roleData.assignedRoles, [MazeRole.MOVER, MazeRole.KEY_SEER]);
+  assert.ok(moverState.roleData.maze);
+  assert.ok(Array.isArray(moverState.roleData.keys));
+
+  const guideState = latestState(guide);
+  assert.deepEqual(guideState.roleData.assignedRoles, [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
+  assert.ok(Array.isArray(guideState.roleData.hazards));
+  assert.ok(Array.isArray(guideState.roleData.ghosts));
+  assert.ok(guideState.roleData.maze);
+  assert.ok(guideState.roleData.maze.cells);
+});
+
+test('three-player sessions merge guide+navigator only', () => {
+  const { controllers } = bootstrapGame(3);
+  const mover = findControllerByRole(controllers, MazeRole.MOVER);
+  const guide = findControllerByRole(controllers, MazeRole.GUIDE);
+  const keySeer = findControllerByRole(controllers, MazeRole.KEY_SEER);
+
+  assert.ok(mover);
+  assert.ok(guide);
+  assert.ok(keySeer);
+
+  assert.deepEqual(latestState(mover).roleData.assignedRoles, [MazeRole.MOVER]);
+  assert.deepEqual(latestState(keySeer).roleData.assignedRoles, [MazeRole.KEY_SEER]);
+  assert.deepEqual(latestState(guide).roleData.assignedRoles, [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
+});
+
 test('mover pickup updates key progress and logs the pickup', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
