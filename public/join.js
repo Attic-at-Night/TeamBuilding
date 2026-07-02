@@ -160,7 +160,6 @@ function summarizeTrainerSnapshot(snapshot) {
     return 'No snapshot available.';
   }
 
-  const rolePairs = Object.entries(snapshot.roles || {}).map(([playerId, role]) => `${playerId.slice(0, 4)}:${role}`);
   const playerPos = snapshot.maze && snapshot.maze.playerPos
     ? `${snapshot.maze.playerPos.row + 1},${snapshot.maze.playerPos.col + 1}`
     : 'unknown';
@@ -177,7 +176,6 @@ function summarizeTrainerSnapshot(snapshot) {
   return [
     `Seed: ${snapshot.mazeMeta && snapshot.mazeMeta.seed ? snapshot.mazeMeta.seed : 'n/a'} • Variant: ${snapshot.mazeMeta && snapshot.mazeMeta.layoutVariant ? snapshot.mazeMeta.layoutVariant : 'default'}`,
     `Pos: ${playerPos} • Hazards: ${hazardCount} • Ghosts: ${ghostCount} • Keys: ${keyCount}`,
-    `Roles: ${rolePairs.length ? rolePairs.join(', ') : 'none'}`,
   ].join('\n');
 }
 
@@ -222,6 +220,11 @@ function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selec
     `Type: ${selectedClarity}`,
     snapshotSummary,
   ].join('\n');
+}
+
+function getTrainerFeedEvents(roleData) {
+  const trainerEvents = roleData.trainerEvents || [];
+  return trainerEvents.filter((entry) => entry.event !== 'input');
 }
 
 function formatEvent(entry) {
@@ -608,7 +611,7 @@ class ControllerScene extends Phaser.Scene {
   _setupTrainerBoard() {
     const width = this.scale.width;
     const height = this.scale.height;
-    const topY = 106;
+    const topY = 154;
     const availableWidth = width - 24;
     const bottomReserve = this.trainerActiveTab === 'maze' ? 20 : 336;
     const availableHeight = Math.max(128, height - topY - bottomReserve);
@@ -630,7 +633,7 @@ class ControllerScene extends Phaser.Scene {
 
     this.detailText.setVisible(true);
     this.eventsText.setVisible(true);
-    this.detailText.setPosition(18, role === 'trainer' ? 128 : 82);
+    this.detailText.setPosition(18, role === 'trainer' ? 160 : 82);
     this.detailText.setWordWrapWidth(width - 36);
 
     if (role === 'mover') {
@@ -654,8 +657,7 @@ class ControllerScene extends Phaser.Scene {
   }
 
   _getTrainerSelectedEvent(roleData) {
-    const trainerEvents = roleData.trainerEvents || [];
-    const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const sorted = getTrainerFeedEvents(roleData).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
     if (!sorted.length) {
       return null;
     }
@@ -665,7 +667,7 @@ class ControllerScene extends Phaser.Scene {
 
   _scrollTrainerFeed(step) {
     const roleData = (this.currentState && this.currentState.roleData) || {};
-    const trainerEvents = roleData.trainerEvents || [];
+    const trainerEvents = getTrainerFeedEvents(roleData);
     const maxStart = Math.max(0, trainerEvents.length - 8);
     this.trainerEventScroll = Math.min(maxStart, Math.max(0, this.trainerEventScroll + step));
     this._renderTrainerFeed(roleData);
@@ -741,7 +743,7 @@ class ControllerScene extends Phaser.Scene {
           action: 'trainer_tab_maze',
           width: 120,
           x: (width / 2) - 66,
-          y: 98,
+          y: 116,
           fontSize: '20px',
         },
         {
@@ -749,7 +751,7 @@ class ControllerScene extends Phaser.Scene {
           action: 'trainer_tab_events',
           width: 120,
           x: (width / 2) + 66,
-          y: 98,
+          y: 116,
           fontSize: '20px',
         }
       );
@@ -1024,7 +1026,7 @@ class ControllerScene extends Phaser.Scene {
   }
 
   _renderTrainerFeed(roleData) {
-    const trainerEvents = roleData.trainerEvents || [];
+    const trainerEvents = getTrainerFeedEvents(roleData);
     if (!trainerEvents.length) {
       this.eventsText.setText('No events yet.');
       this.trainerFeedVisibleEvents = [];
@@ -1037,8 +1039,6 @@ class ControllerScene extends Phaser.Scene {
     this.trainerSelectedOffset = Math.min(this.trainerSelectedOffset, Math.max(0, Math.min(7, sorted.length - 1)));
     const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 8);
     this.trainerFeedVisibleEvents = visible;
-    this.trainerFeedHeaderLines = 2;
-    this.trainerFeedLineHeight = Math.max(17, parseInt(this.eventsText.style.fontSize || '13', 10) + 4);
     const lines = visible.map((entry, idx) => {
       const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
       const star = entry.highlighted ? '*' : ' ';
@@ -1048,13 +1048,17 @@ class ControllerScene extends Phaser.Scene {
     const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
     const hazardCount = trainerEvents.filter((entry) => entry.event === 'hazard_hit' || entry.event === 'ghost_collision').length;
     const clarityCount = trainerEvents.filter((entry) => entry.event === 'clarity_event').length;
-    const timerCount = trainerEvents.filter((entry) => entry.event.startsWith('timer_')).length;
-    const ghostTicks = trainerEvents.filter((entry) => entry.event === 'ghost_move').length;
     const selectedIndex = Math.min(visible.length - 1, this.trainerSelectedOffset);
     const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
-    const header = `TIMELINE\nHighlights: ${highlightedCount} • Hazards: ${hazardCount} • Ghost ticks: ${ghostTicks} • Clarity: ${clarityCount} • Timer: ${timerCount}`;
+    const header = `TIMELINE\nHighlights: ${highlightedCount} • Hazards: ${hazardCount} • Clarity: ${clarityCount}`;
     const footer = `Selected: ${selected ? formatEvent(selected) : 'None'}\n${summarizeTrainerEvent(selected)}`;
     this.eventsText.setText(`${header}\n${lines.join('\n')}\n${footer}`);
+    const wrappedHeader = this.eventsText.getWrappedText(header);
+    const wrappedAll = this.eventsText.getWrappedText(this.eventsText.text || '');
+    this.trainerFeedHeaderLines = Math.max(1, wrappedHeader.length || 2);
+    this.trainerFeedLineHeight = wrappedAll.length
+      ? (this.eventsText.height / wrappedAll.length)
+      : Math.max(17, parseInt(this.eventsText.style.fontSize || '13', 10) + 4);
   }
 
   _renderState(state) {
