@@ -537,18 +537,7 @@ class ControllerScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
-    this.add.text(width / 2, 28, 'Game', {
-      fontSize: '28px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
     this.mazeGraphics = this.add.graphics();
-    this.timerText = this.add.text(width / 2, 60, '', {
-      fontSize: '18px',
-      color: '#99bbff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
     this.detailText = this.add.text(18, 70, '', {
       fontSize: '15px',
       color: '#dddddd',
@@ -625,7 +614,7 @@ class ControllerScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    if (role === 'trainer' && this.trainerActiveTab === 'maze') {
+    if (role !== 'trainer' || this.trainerActiveTab === 'maze') {
       this.detailText.setVisible(false);
       this.eventsText.setVisible(false);
       return;
@@ -1084,24 +1073,7 @@ class ControllerScene extends Phaser.Scene {
       this.mazeGraphics.clear();
     }
 
-    this.timerText.setText(`Timer: ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`);
-    this.timerText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
-
-    if (this.viewerRole === 'mover') {
-      this.detailText.setText(`Grid only. Follow team guidance.\nKeys: ${summary.keysCollected || 0}/3`);
-    } else if (this.viewerRole === 'guide') {
-      const hazards = roleData.hazards || [];
-      const ghosts = roleData.ghosts || [];
-      this.detailText.setText(`Guide view.\nHazards tracked: ${hazards.length}\nGhosts tracked: ${ghosts.length}`);
-    } else if (this.viewerRole === 'key-seer') {
-      const keys = roleData.keys || [];
-      const visibleKeys = keys.filter((key) => !key.collected);
-      this.detailText.setText(`Key view.\nObjective markers: ${visibleKeys.length}`);
-    } else if (this.viewerRole === 'navigator') {
-      const hazardLog = roleData.hazardLog || [];
-      const wallHits = hazardLog.filter((entry) => entry.hazardType === 'wall').length;
-      this.detailText.setText(`Navigator view.\nWall hazard hits: ${wallHits}`);
-    } else if (this.viewerRole === 'trainer') {
+    if (this.viewerRole === 'trainer') {
       const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
       const selectedClarity = humanizeClarityType(this.trainerClarityType);
       const selected = this._getTrainerSelectedEvent(roleData);
@@ -1110,6 +1082,8 @@ class ControllerScene extends Phaser.Scene {
       if (this.trainerActiveTab === 'events') {
         this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest));
       }
+    } else {
+      this.detailText.setText('');
     }
 
     if (this.viewerRole === 'trainer') {
@@ -1119,10 +1093,7 @@ class ControllerScene extends Phaser.Scene {
         this.eventsText.setText('');
       }
     } else {
-      const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
-      this.eventsText.setText(recentEvents.length
-        ? recentEvents.map(formatEvent).join('\n')
-        : 'No recent updates.');
+      this.eventsText.setText('');
     }
 
     if (state.status === 'ended' && !this._shownEnd) {
