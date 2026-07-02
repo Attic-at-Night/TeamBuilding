@@ -202,10 +202,7 @@ function formatTrainerBroadcastSummary(latest) {
 }
 
 function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest) {
-  const trainerEvents = roleData.trainerEvents || [];
-  const pendingSuggestions = (roleData.aiSuggestions || []).filter((item) => item.status === 'pending').length;
   const snapshotSummary = summarizeTrainerSnapshot(selected && selected.snapshot);
-  const suggestionSummary = summarizeAiSuggestion(selectedSuggestion);
   const mazeMeta = roleData.mazeMeta || {};
 
   return [
@@ -214,18 +211,16 @@ function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selec
     `Timer ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`,
     `Maze ${mazeMeta.layoutVariant || 'default'}${mazeMeta.hardMode ? ' • hard mode' : ''}`,
     '',
-    'EVENT DETAIL',
+    'SELECTED EVENT',
     selected ? formatEvent(selected) : 'No event selected',
     summarizeTrainerEvent(selected),
     '',
-    'REPLAY / SHARE',
+    'REPLAY',
     formatTrainerBroadcastSummary(latest),
-    snapshotSummary,
     '',
-    'NOTES / AI',
-    `Clarity ready: ${selectedClarity}`,
-    `Pending AI suggestions: ${pendingSuggestions}`,
-    suggestionSummary,
+    'NEW CLARITY EVENT',
+    `Type: ${selectedClarity}`,
+    snapshotSummary,
   ].join('\n');
 }
 
@@ -524,8 +519,14 @@ class ControllerScene extends Phaser.Scene {
     this.roleUi = [];
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
-    this.trainerClarityIndex = 0;
     this.trainerSuggestionIndex = 0;
+    this.trainerActiveTab = 'maze';
+    this.trainerClarityType = CLARITY_TYPES[0];
+    this.trainerFeedLineHeight = 18;
+    this.trainerFeedHeaderLines = 2;
+    this.trainerFeedVisibleEvents = [];
+    this.trainerFeedDragged = false;
+    this.trainerFeedLastY = null;
     this.lastMoveSentAt = 0;
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
@@ -609,7 +610,8 @@ class ControllerScene extends Phaser.Scene {
     const height = this.scale.height;
     const topY = 106;
     const availableWidth = width - 24;
-    const availableHeight = Math.max(128, height - topY - 336);
+    const bottomReserve = this.trainerActiveTab === 'maze' ? 20 : 336;
+    const availableHeight = Math.max(128, height - topY - bottomReserve);
     this.mazeCS = Math.max(10, Math.floor(Math.min(availableWidth / 14, availableHeight / 14)));
     const boardSize = this.mazeCS * 14;
     this.mazeOX = Math.floor((width - boardSize) / 2);
@@ -620,17 +622,53 @@ class ControllerScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    this.detailText.setPosition(18, 82);
+    if (role === 'trainer' && this.trainerActiveTab === 'maze') {
+      this.detailText.setVisible(false);
+      this.eventsText.setVisible(false);
+      return;
+    }
+
+    this.detailText.setVisible(true);
+    this.eventsText.setVisible(true);
+    this.detailText.setPosition(18, role === 'trainer' ? 128 : 82);
     this.detailText.setWordWrapWidth(width - 36);
 
     if (role === 'mover') {
       this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
     } else if (role === 'trainer') {
-      this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * 14 + 12);
+      const controlsReserve = 170;
+      this.eventsText.setPosition(18, Math.max(344, height - controlsReserve - 250));
     } else {
       this.eventsText.setPosition(18, height - 132);
     }
     this.eventsText.setWordWrapWidth(width - 36);
+  }
+
+  _setTrainerTab(tab) {
+    if (this.viewerRole !== 'trainer' || this.trainerActiveTab === tab) {
+      return;
+    }
+    this.trainerActiveTab = tab;
+    this._buildRoleUi('trainer');
+    this._renderState(this.currentState || {});
+  }
+
+  _getTrainerSelectedEvent(roleData) {
+    const trainerEvents = roleData.trainerEvents || [];
+    const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    if (!sorted.length) {
+      return null;
+    }
+    const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
+    return sorted[index] || null;
+  }
+
+  _scrollTrainerFeed(step) {
+    const roleData = (this.currentState && this.currentState.roleData) || {};
+    const trainerEvents = roleData.trainerEvents || [];
+    const maxStart = Math.max(0, trainerEvents.length - 8);
+    this.trainerEventScroll = Math.min(maxStart, Math.max(0, this.trainerEventScroll + step));
+    this._renderTrainerFeed(roleData);
   }
 
   _drawBlankBoard() {
@@ -697,41 +735,90 @@ class ControllerScene extends Phaser.Scene {
     } else if (role === 'trainer') {
       this._setupTrainerBoard();
       this._syncTextLayout(role);
-      this.detailText.setText('Trainer cockpit: monitor the full maze, scroll events, and highlight debrief points.');
-      const trainerButtonRows = [
-        [
-          { label: '▲', action: 'trainer_feed_up', width: 68 },
-          { label: '▼', action: 'trainer_feed_down', width: 68 },
-          { label: 'Toggle', action: 'trainer_toggle_selected', width: 110 },
-        ],
-        [
-          { label: 'Clarity', action: 'trainer_cycle_clarity', width: 120 },
-          { label: 'Add', action: 'trainer_add_clarity', width: 120 },
-          { label: 'Replay', action: 'trainer_share_replay', width: 96 },
-        ],
-        [
-          { label: 'Highlights', action: 'trainer_share_highlights', width: 128 },
-          { label: 'Next AI', action: 'trainer_cycle_suggestion', width: 100 },
-        ],
-        [
-          { label: 'Approve', action: 'trainer_approve_suggestion', width: 110 },
-          { label: 'Reject', action: 'trainer_reject_suggestion', width: 110 },
-        ],
-      ];
-      const startY = height - 210;
-      const rowGap = 54;
-      for (let rowIndex = 0; rowIndex < trainerButtonRows.length; rowIndex++) {
-        const row = trainerButtonRows[rowIndex];
-        const totalWidth = row.reduce((sum, item) => sum + (item.width || 96), 0) + ((row.length - 1) * 12);
-        let cursorX = (width - totalWidth) / 2;
-        for (const item of row) {
-          buttons.push({
-            ...item,
-            x: cursorX + ((item.width || 96) / 2),
-            y: startY + rowIndex * rowGap,
-          });
-          cursorX += (item.width || 96) + 12;
+      buttons.push(
+        {
+          label: 'Maze',
+          action: 'trainer_tab_maze',
+          width: 120,
+          x: (width / 2) - 66,
+          y: 98,
+          fontSize: '20px',
+        },
+        {
+          label: 'Events',
+          action: 'trainer_tab_events',
+          width: 120,
+          x: (width / 2) + 66,
+          y: 98,
+          fontSize: '20px',
         }
+      );
+
+      if (this.trainerActiveTab === 'events') {
+        this.detailText.setText('Trainer controls: scroll or tap timeline entries, replay selected event, add clarity notes.');
+
+        const feedAreaTop = this.eventsText.y - 6;
+        const feedAreaHeight = Math.max(120, height - feedAreaTop - 178);
+        const feedArea = this.add.rectangle(width / 2, feedAreaTop + feedAreaHeight / 2, width - 30, feedAreaHeight, 0x0b0f25, 0.35)
+          .setStrokeStyle(1, 0x334477, 0.8)
+          .setInteractive({ useHandCursor: true });
+
+        feedArea.on('pointerdown', (pointer) => {
+          this.trainerFeedLastY = pointer.y;
+          this.trainerFeedDragged = false;
+        });
+        feedArea.on('pointermove', (pointer) => {
+          if (!pointer.isDown || this.trainerFeedLastY == null) {
+            return;
+          }
+          const delta = pointer.y - this.trainerFeedLastY;
+          if (Math.abs(delta) < 24) {
+            return;
+          }
+          this.trainerFeedDragged = true;
+          this._scrollTrainerFeed(delta < 0 ? 1 : -1);
+          this.trainerFeedLastY = pointer.y;
+        });
+        feedArea.on('pointerup', (pointer) => {
+          if (!this.trainerFeedDragged) {
+            const relativeY = pointer.y - this.eventsText.y;
+            const listStart = this.trainerFeedLineHeight * this.trainerFeedHeaderLines;
+            const tappedIndex = Math.floor((relativeY - listStart) / this.trainerFeedLineHeight);
+            if (tappedIndex >= 0 && tappedIndex < this.trainerFeedVisibleEvents.length) {
+              this.trainerSelectedOffset = tappedIndex;
+              this._renderState(this.currentState || {});
+            }
+          }
+          this.trainerFeedLastY = null;
+          this.trainerFeedDragged = false;
+        });
+        feedArea.on('pointerout', () => {
+          this.trainerFeedLastY = null;
+        });
+        this.roleUi.push(feedArea);
+
+        const clarityOptions = CLARITY_TYPES.map((entry) => {
+          const selected = entry === this.trainerClarityType ? ' selected' : '';
+          return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
+        }).join('');
+        const claritySelect = this.add.dom(width / 2, height - 122).createFromHTML(
+          `<select id="trainer-clarity-select" style="width:260px;height:44px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:16px;padding:8px;">
+            ${clarityOptions}
+          </select>`
+        );
+        const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
+        if (clarityEl) {
+          clarityEl.addEventListener('change', (event) => {
+            this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
+            this._renderState(this.currentState || {});
+          });
+        }
+        this.roleUi.push(claritySelect);
+
+        buttons.push(
+          { label: 'Replay', action: 'trainer_share_replay', width: 132, x: (width / 2) - 74, y: height - 58, fontSize: '22px' },
+          { label: 'Add Event', action: 'trainer_add_clarity', width: 132, x: (width / 2) + 74, y: height - 58, fontSize: '22px' }
+        );
       }
     } else {
       this._syncTextLayout(role);
@@ -740,61 +827,37 @@ class ControllerScene extends Phaser.Scene {
 
     for (const item of buttons) {
       const buttonWidth = item.width || 96;
-      const bg = this.add.rectangle(item.x, item.y, buttonWidth, 64, 0x3355ff)
+      const activeTabColor = this.viewerRole === 'trainer'
+        && ((item.action === 'trainer_tab_maze' && this.trainerActiveTab === 'maze')
+          || (item.action === 'trainer_tab_events' && this.trainerActiveTab === 'events'));
+      const baseButtonColor = activeTabColor ? 0x22aa55 : 0x3355ff;
+      const bg = this.add.rectangle(item.x, item.y, buttonWidth, 64, baseButtonColor)
         .setInteractive({ useHandCursor: true });
       const label = this.add.text(item.x, item.y, item.label, {
-        fontSize: item.action ? '24px' : '34px',
+        fontSize: item.fontSize || (item.action ? '24px' : '34px'),
         color: '#ffffff',
       }).setOrigin(0.5);
 
       bg.on('pointerdown', () => {
-        bg.setFillStyle(0x5577ff);
+        bg.setFillStyle(activeTabColor ? 0x33cc66 : 0x5577ff);
         if (item.action === 'trainer_share_log') {
           sendWs({ type: 'player_input', input: { action: 'trainer_share_log' } });
           return;
         }
-        if (item.action === 'trainer_feed_up') {
-          this.trainerEventScroll = Math.max(0, this.trainerEventScroll - 1);
-          this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
+        if (item.action === 'trainer_tab_maze') {
+          this._setTrainerTab('maze');
           return;
         }
-        if (item.action === 'trainer_feed_down') {
-          this.trainerEventScroll += 1;
-          this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
-          return;
-        }
-        if (item.action === 'trainer_toggle_selected') {
-          const roleData = (this.currentState && this.currentState.roleData) || {};
-          const trainerEvents = roleData.trainerEvents || [];
-          const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
-          const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
-          const selected = index >= 0 ? sorted[index] : null;
-          if (selected && selected.eventId) {
-            sendWs({
-              type: 'player_input',
-              input: { action: 'trainer_toggle_highlight', eventId: selected.eventId },
-            });
-          }
-          return;
-        }
-        if (item.action === 'trainer_share_highlights') {
-          sendWs({ type: 'player_input', input: { action: 'trainer_share_highlights' } });
+        if (item.action === 'trainer_tab_events') {
+          this._setTrainerTab('events');
           return;
         }
         if (item.action === 'trainer_share_replay') {
           const roleData = (this.currentState && this.currentState.roleData) || {};
-          const trainerEvents = roleData.trainerEvents || [];
-          const sorted = trainerEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
-          const index = Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset);
-          const selected = index >= 0 ? sorted[index] : null;
+          const selected = this._getTrainerSelectedEvent(roleData);
           if (selected && selected.eventId) {
             sendWs({ type: 'player_input', input: { action: 'trainer_share_replay', eventId: selected.eventId } });
           }
-          return;
-        }
-        if (item.action === 'trainer_cycle_clarity') {
-          this.trainerClarityIndex = (this.trainerClarityIndex + 1) % CLARITY_TYPES.length;
-          this._renderState(this.currentState || {});
           return;
         }
         if (item.action === 'trainer_add_clarity') {
@@ -802,41 +865,16 @@ class ControllerScene extends Phaser.Scene {
             type: 'player_input',
             input: {
               action: 'trainer_add_clarity_event',
-              clarityType: CLARITY_TYPES[this.trainerClarityIndex],
+              clarityType: this.trainerClarityType,
             },
           });
-          return;
-        }
-        if (item.action === 'trainer_cycle_suggestion') {
-          const roleData = (this.currentState && this.currentState.roleData) || {};
-          const aiSuggestions = roleData.aiSuggestions || [];
-          if (aiSuggestions.length) {
-            this.trainerSuggestionIndex = (this.trainerSuggestionIndex + 1) % aiSuggestions.length;
-            this._renderState(this.currentState || {});
-          }
-          return;
-        }
-        if (item.action === 'trainer_approve_suggestion' || item.action === 'trainer_reject_suggestion') {
-          const roleData = (this.currentState && this.currentState.roleData) || {};
-          const aiSuggestions = roleData.aiSuggestions || [];
-          const suggestion = aiSuggestions[this.trainerSuggestionIndex] || null;
-          if (suggestion) {
-            sendWs({
-              type: 'player_input',
-              input: {
-                action: 'trainer_review_suggestion',
-                suggestionId: suggestion.id,
-                decision: item.action === 'trainer_approve_suggestion' ? 'approved' : 'rejected',
-              },
-            });
-          }
           return;
         }
 
         this._sendMove(item.dir);
       });
-      bg.on('pointerup', () => bg.setFillStyle(0x3355ff));
-      bg.on('pointerout', () => bg.setFillStyle(0x3355ff));
+      bg.on('pointerup', () => bg.setFillStyle(baseButtonColor));
+      bg.on('pointerout', () => bg.setFillStyle(baseButtonColor));
 
       this.roleUi.push(bg, label);
     }
@@ -989,13 +1027,18 @@ class ControllerScene extends Phaser.Scene {
     const trainerEvents = roleData.trainerEvents || [];
     if (!trainerEvents.length) {
       this.eventsText.setText('No events yet.');
+      this.trainerFeedVisibleEvents = [];
       return;
     }
 
     const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
     const maxStart = Math.max(0, sorted.length - 8);
     this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
+    this.trainerSelectedOffset = Math.min(this.trainerSelectedOffset, Math.max(0, Math.min(7, sorted.length - 1)));
     const visible = sorted.slice(this.trainerEventScroll, this.trainerEventScroll + 8);
+    this.trainerFeedVisibleEvents = visible;
+    this.trainerFeedHeaderLines = 2;
+    this.trainerFeedLineHeight = Math.max(17, parseInt(this.eventsText.style.fontSize || '13', 10) + 4);
     const lines = visible.map((entry, idx) => {
       const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
       const star = entry.highlighted ? '*' : ' ';
@@ -1028,7 +1071,11 @@ class ControllerScene extends Phaser.Scene {
     } else if (this.viewerRole === 'navigator') {
       this._drawNavigatorBoard(roleData);
     } else if (this.viewerRole === 'trainer') {
-      this._drawTrainerBoard(roleData);
+      if (this.trainerActiveTab === 'maze') {
+        this._drawTrainerBoard(roleData);
+      } else if (this.mazeGraphics) {
+        this.mazeGraphics.clear();
+      }
     } else if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
@@ -1052,17 +1099,21 @@ class ControllerScene extends Phaser.Scene {
       this.detailText.setText(`Navigator view.\nWall hazard hits: ${wallHits}`);
     } else if (this.viewerRole === 'trainer') {
       const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
-      const selectedClarity = humanizeClarityType(CLARITY_TYPES[this.trainerClarityIndex]);
-      const trainerEvents = roleData.trainerEvents || [];
-      const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      const selected = sorted[Math.min(sorted.length - 1, this.trainerEventScroll + this.trainerSelectedOffset)] || null;
+      const selectedClarity = humanizeClarityType(this.trainerClarityType);
+      const selected = this._getTrainerSelectedEvent(roleData);
       const aiSuggestions = roleData.aiSuggestions || [];
       const selectedSuggestion = aiSuggestions[this.trainerSuggestionIndex] || null;
-      this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest));
+      if (this.trainerActiveTab === 'events') {
+        this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest));
+      }
     }
 
     if (this.viewerRole === 'trainer') {
-      this._renderTrainerFeed(roleData);
+      if (this.trainerActiveTab === 'events') {
+        this._renderTrainerFeed(roleData);
+      } else {
+        this.eventsText.setText('');
+      }
     } else {
       const recentEvents = (roleData.recentEvents || []).slice(-4).reverse();
       this.eventsText.setText(recentEvents.length
@@ -1160,15 +1211,13 @@ class ControllerScene extends Phaser.Scene {
   }
 
   onWheel(pointer, _gameObjects, _deltaX, deltaY) {
-    if (this.viewerRole !== 'trainer') {
+    if (this.viewerRole !== 'trainer' || this.trainerActiveTab !== 'events') {
       return;
     }
     if (pointer.y < this.eventsText.y - 10) {
       return;
     }
-    const step = Math.sign(deltaY);
-    this.trainerEventScroll = Math.max(0, this.trainerEventScroll + step);
-    this._renderTrainerFeed((this.currentState && this.currentState.roleData) || {});
+    this._scrollTrainerFeed(Math.sign(deltaY));
   }
 }
 
