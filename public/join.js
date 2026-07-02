@@ -539,10 +539,10 @@ class ControllerScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.mazeGraphics = this.add.graphics();
     this.detailText = this.add.text(18, 70, '', {
-      fontSize: '15px',
+      fontSize: '13px',
       color: '#dddddd',
       wordWrap: { width: width - 36 },
-      lineSpacing: 2,
+      lineSpacing: 1,
     });
     this.eventsText = this.add.text(18, height - 170, '', {
       fontSize: '13px',

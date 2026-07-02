@@ -160,6 +160,7 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
   assert.equal(typeof display.sent.at(-1).state.mazeMeta.seed, 'string');
   assert.equal(trainer.sent.at(-1).state.viewerRole, 'trainer');
   assert.equal(typeof trainer.sent.at(-1).state.roleData.mazeMeta.seed, 'string');
+  assert.equal((trainer.sent.at(-1).state.roleData.trainerMaze.lifePickups || []).length, 0);
 
   const mover = findControllerByRole(controllers, MazeRole.MOVER);
   const guide = findControllerByRole(controllers, MazeRole.GUIDE);
