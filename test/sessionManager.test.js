@@ -258,109 +258,162 @@ test('mover pickup updates lives and logs the life pickup', () => {
 });
 
 test('hazard hit decrements life and triggers a reset', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-  });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+    });
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
-  const sync = display.sent.at(-1);
-  const liveState = manager.sessions.get(sessionId).state;
-  assert.equal(sync.state.summary.livesRemaining, 2);
-  assert.equal(sync.state.summary.resets, 1);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'grid'));
-  assert.ok(sync.state.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'grid'));
-  assert.deepEqual(liveState.maze.playerPos, { row: 0, col: 0 });
+    // Immediately after: lives reduced, pendingReset set, but maze not yet reset
+    const feedbackSync = display.sent.at(-1);
+    assert.equal(feedbackSync.state.summary.livesRemaining, 2);
+    assert.ok(feedbackSync.state.pendingReset != null, 'pendingReset should be set');
+    assert.ok(feedbackSync.state.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'grid'));
+
+    // Advance timers to trigger the actual reset
+    mock.timers.tick(5000);
+
+    const sync = display.sent.at(-1);
+    const liveState = manager.sessions.get(sessionId).state;
+    assert.equal(sync.state.summary.livesRemaining, 2);
+    assert.equal(sync.state.summary.resets, 1);
+    assert.ok(sync.state.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'grid'));
+    assert.ok(sync.state.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'grid'));
+    assert.deepEqual(liveState.maze.playerPos, { row: 0, col: 0 });
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('wall collision counts as a wall hazard and triggers a reset', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze();
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze();
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'n' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'n' }), true);
 
-  const sync = display.sent.at(-1);
-  const liveState = manager.sessions.get(sessionId).state;
-  assert.equal(sync.state.summary.livesRemaining, 2);
-  assert.equal(sync.state.summary.resets, 1);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'wall'));
-  assert.ok(sync.state.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'wall'));
-  assert.deepEqual(liveState.maze.playerPos, { row: 0, col: 0 });
+    const feedbackSync = display.sent.at(-1);
+    assert.equal(feedbackSync.state.summary.livesRemaining, 2);
+    assert.ok(feedbackSync.state.pendingReset != null, 'pendingReset should be set');
+
+    mock.timers.tick(5000);
+
+    const sync = display.sent.at(-1);
+    const liveState = manager.sessions.get(sessionId).state;
+    assert.equal(sync.state.summary.livesRemaining, 2);
+    assert.equal(sync.state.summary.resets, 1);
+    assert.ok(sync.state.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'wall'));
+    assert.ok(sync.state.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'wall'));
+    assert.deepEqual(liveState.maze.playerPos, { row: 0, col: 0 });
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('reset regenerates maze seed and exposes it in synced state and export', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    seed: 'seed-before-reset',
-    hazards: [{ row: 0, col: 1 }],
-  });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      seed: 'seed-before-reset',
+      hazards: [{ row: 0, col: 1 }],
+    });
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
-  const syncedState = display.sent.at(-1).state;
-  assert.notEqual(syncedState.mazeMeta.seed, 'seed-before-reset');
-  assert.equal(syncedState.log.at(-1).event, 'reset');
-  assert.equal(syncedState.log.at(-1).mazeSeed, syncedState.mazeMeta.seed);
+    // Advance past feedback window to trigger the reset
+    mock.timers.tick(5000);
 
-  const exported = manager.getSessionExport(sessionId);
-  assert.equal(exported.maze_seed, syncedState.mazeMeta.seed);
-  assert.equal(exported.maze_meta.seed, syncedState.mazeMeta.seed);
+    const syncedState = display.sent.at(-1).state;
+    assert.notEqual(syncedState.mazeMeta.seed, 'seed-before-reset');
+    assert.equal(syncedState.log.at(-1).event, 'reset');
+    assert.equal(syncedState.log.at(-1).mazeSeed, syncedState.mazeMeta.seed);
+
+    const exported = manager.getSessionExport(sessionId);
+    assert.equal(exported.maze_seed, syncedState.mazeMeta.seed);
+    assert.equal(exported.maze_meta.seed, syncedState.mazeMeta.seed);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('ghost tick moves ghosts for guide and ghost collision triggers a reset', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    ghosts: [{ id: 'ghost-1', row: 0, col: 1 }],
-  });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      ghosts: [{ id: 'ghost-1', row: 0, col: 1 }],
+    });
 
-  manager.broadcastState(sessionId);
-  const guide = findControllerByRole(controllers, MazeRole.GUIDE);
-  assert.equal(latestState(guide).roleData.ghosts.length, 1);
-  assert.deepEqual(latestState(guide).roleData.ghosts[0], { id: 'ghost-1', row: 0, col: 1 });
+    manager.broadcastState(sessionId);
+    const guide = findControllerByRole(controllers, MazeRole.GUIDE);
+    assert.equal(latestState(guide).roleData.ghosts.length, 1);
+    assert.deepEqual(latestState(guide).roleData.ghosts[0], { id: 'ghost-1', row: 0, col: 1 });
 
-  assert.equal(manager.tickWorld(), 1);
+    assert.equal(manager.tickWorld(), 1);
 
-  const sync = display.sent.at(-1).state;
-  assert.equal(sync.summary.livesRemaining, 2);
-  assert.equal(sync.summary.resets, 1);
-  assert.ok(sync.log.some((entry) => entry.event === 'ghost_move'));
-  assert.ok(sync.log.some((entry) => entry.event === 'ghost_collision'));
-  assert.ok(sync.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'ghost'));
-  assert.ok(sync.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'ghost'));
+    // Immediately: lives reduced, pendingReset set
+    const feedbackSync = display.sent.at(-1).state;
+    assert.equal(feedbackSync.summary.livesRemaining, 2);
+    assert.ok(feedbackSync.pendingReset != null, 'pendingReset should be set after ghost collision');
+    assert.ok(feedbackSync.log.some((entry) => entry.event === 'ghost_move'));
+    assert.ok(feedbackSync.log.some((entry) => entry.event === 'ghost_collision'));
+    assert.ok(feedbackSync.log.some((entry) => entry.event === 'hazard_hit' && entry.hazardType === 'ghost'));
+
+    // Advance past feedback window
+    mock.timers.tick(5000);
+
+    const sync = display.sent.at(-1).state;
+    assert.equal(sync.summary.livesRemaining, 2);
+    assert.equal(sync.summary.resets, 1);
+    assert.ok(sync.log.some((entry) => entry.event === 'reset' && entry.hazardType === 'ghost'));
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('repeated resets advance maze variant into hard mode with ghosts', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
 
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-  });
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  const firstResetState = display.sent.at(-1).state;
-  assert.equal(firstResetState.summary.resets, 1);
-  assert.equal(firstResetState.mazeMeta.layoutVariant, 'tight-corners');
-  assert.equal(firstResetState.mazeMeta.hardMode, false);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+    });
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    mock.timers.tick(5000);
+    const firstResetState = display.sent.at(-1).state;
+    assert.equal(firstResetState.summary.resets, 1);
+    assert.equal(firstResetState.mazeMeta.layoutVariant, 'tight-corners');
+    assert.equal(firstResetState.mazeMeta.hardMode, false);
 
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-    playerPos: { row: 0, col: 0 },
-  });
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  const secondResetState = display.sent.at(-1).state;
-  assert.equal(secondResetState.summary.resets, 2);
-  assert.equal(secondResetState.mazeMeta.layoutVariant, 'hard-mode');
-  assert.equal(secondResetState.mazeMeta.hardMode, true);
-  assert.equal(secondResetState.mazeMeta.ghostCount, 1);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+      playerPos: { row: 0, col: 0 },
+    });
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    mock.timers.tick(5000);
+    const secondResetState = display.sent.at(-1).state;
+    assert.equal(secondResetState.summary.resets, 2);
+    assert.equal(secondResetState.mazeMeta.layoutVariant, 'hard-mode');
+    assert.equal(secondResetState.mazeMeta.hardMode, true);
+    assert.equal(secondResetState.mazeMeta.ghostCount, 1);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('goal unlocks only after three keys are collected', () => {
