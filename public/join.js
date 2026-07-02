@@ -519,7 +519,6 @@ class ControllerScene extends Phaser.Scene {
     this.roleUi = [];
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
-    this.trainerClarityIndex = 0;
     this.trainerSuggestionIndex = 0;
     this.trainerActiveTab = 'maze';
     this.trainerClarityType = CLARITY_TYPES[0];
