@@ -1,4 +1,5 @@
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { SessionManager } = require('../src/sessionManager');
 const { MessageType, GameStatus, ClientRole, MazeRole } = require('../src/protocol');

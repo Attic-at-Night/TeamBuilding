@@ -17,6 +17,7 @@ const KEY_COUNT = 3;
 const LIFE_PICKUP_COUNT = 0;
 const RECENT_EVENT_LIMIT = 10;
 const DEFAULT_TIMER_DURATION_MS = 5 * 60 * 1000;
+const RESET_FEEDBACK_MS = 5000;
 
 function makeSessionId() {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -52,6 +53,7 @@ function makeInitialState() {
     aiSuggestionDecisions: {},
     summary: createSummaryState(START_LIVES),
     timer: createTimerState(),
+    pendingReset: null,
   };
 }
 
@@ -254,6 +256,7 @@ function buildDisplayState(state, session) {
     ready: state.players.length >= MIN_PLAYERS,
     canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
+    pendingReset: state.pendingReset || null,
   };
 }
 
@@ -499,6 +502,7 @@ function buildControllerState(state, session, playerId) {
     trainerBroadcast: state.trainerBroadcast,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
+    pendingReset: state.pendingReset || null,
   };
 }
 
@@ -585,9 +589,10 @@ function applyHazardOutcome(state, controller, playerId, input, hazardType, posi
 
   if (state.summary.livesRemaining <= 0) {
     finishGame(state, 'fail', `${hazardType}_hazard`);
-  } else {
-    resetRound(state, 'hazard_hit', { hazardType });
+    return false;
   }
+
+  return true;
 }
 
 function applyGhostHazard(state, ghost) {
@@ -598,7 +603,7 @@ function applyGhostHazard(state, ghost) {
     ghostId: ghost.id,
     position: { row: ghost.row, col: ghost.col },
   });
-  applyHazardOutcome(
+  return applyHazardOutcome(
     state,
     { name: 'Ghost' },
     'ghost',
@@ -625,6 +630,7 @@ function beginGameState(session, startedAt) {
   session.state.nextEventId = 1;
   session.state.trainerBroadcast = null;
   session.state.trainerHighlightEventIds = [];
+  session.state.pendingReset = null;
   session.state.summary = {
     ...createSummaryState(START_LIVES),
     startedAt,
@@ -960,7 +966,7 @@ class SessionManager {
 
     for (const [sessionId, session] of this.sessions.entries()) {
       const { state } = session;
-      if (state.status !== GameStatus.PLAYING || !state.maze) {
+      if (state.status !== GameStatus.PLAYING || !state.maze || state.pendingReset) {
         continue;
       }
 
@@ -976,7 +982,12 @@ class SessionManager {
 
       const ghostAtPlayer = findGhostAt(state.maze, state.maze.playerPos.row, state.maze.playerPos.col);
       if (ghostAtPlayer) {
-        applyGhostHazard(state, ghostAtPlayer);
+        const needsReset = applyGhostHazard(state, ghostAtPlayer);
+        if (needsReset) {
+          this._applyResetFeedback(sessionId, 'ghost', { row: ghostAtPlayer.row, col: ghostAtPlayer.col });
+          changed += 1;
+          continue;
+        }
       }
 
       this.broadcastState(sessionId);
@@ -1211,6 +1222,17 @@ class SessionManager {
       return false;
     }
 
+    if (state.pendingReset && !isTrainer) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'reset_pending',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
     if (isTrainer) {
       appendLog(state, {
         ts,
@@ -1274,15 +1296,13 @@ class SessionManager {
     }
 
     if (moveResult.result === 'wall') {
-      applyHazardOutcome(
-        state,
-        controller,
-        playerId,
-        input,
-        'wall',
-        clonePoint(moveResult.from || maze.playerPos)
-      );
-      this.broadcastState(sessionId);
+      const wallPos = clonePoint(moveResult.from || maze.playerPos);
+      const needsReset = applyHazardOutcome(state, controller, playerId, input, 'wall', wallPos);
+      if (needsReset) {
+        this._applyResetFeedback(sessionId, 'wall', wallPos);
+      } else {
+        this.broadcastState(sessionId);
+      }
       return true;
     }
 
@@ -1331,8 +1351,12 @@ class SessionManager {
       : false;
 
     if (hitHazard) {
-      applyHazardOutcome(state, controller, playerId, input, 'grid', position);
-      this.broadcastState(sessionId);
+      const needsReset = applyHazardOutcome(state, controller, playerId, input, 'grid', position);
+      if (needsReset) {
+        this._applyResetFeedback(sessionId, 'grid', position);
+      } else {
+        this.broadcastState(sessionId);
+      }
       return true;
     }
 
@@ -1463,6 +1487,39 @@ class SessionManager {
         state: this._buildStateForSocket(session, controller.socket.meta || {}),
       });
     }
+  }
+
+  _applyResetFeedback(sessionId, hazardType, position) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    const message = hazardType === 'wall'
+      ? 'You walked into a wall!'
+      : hazardType === 'ghost'
+        ? 'A ghost found you!'
+        : 'You stepped on a hazard!';
+
+    session.state.pendingReset = {
+      cause: hazardType,
+      hazardType,
+      position: position || null,
+      message,
+      expiresAt: Date.now() + RESET_FEEDBACK_MS,
+    };
+
+    this.broadcastState(sessionId);
+
+    setTimeout(() => {
+      const s = this.sessions.get(sessionId);
+      if (!s || !s.state.pendingReset) {
+        return;
+      }
+      s.state.pendingReset = null;
+      resetRound(s.state, 'hazard_hit', { hazardType });
+      this.broadcastState(sessionId);
+    }, RESET_FEEDBACK_MS);
   }
 
   getSessionExport(sessionId) {

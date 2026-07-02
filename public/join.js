@@ -573,6 +573,9 @@ class ControllerScene extends Phaser.Scene {
     this._shownEnd = false;
     this.endUi = [];
     this.roleUi = [];
+    this.resetFeedbackUi = null;
+    this._resetFeedbackCountdownText = null;
+    this._lastPendingResetCause = null;
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
     this.trainerSuggestionIndex = 0;
@@ -1234,6 +1237,24 @@ class ControllerScene extends Phaser.Scene {
       this._shownEnd = false;
       this._hideEndUi();
     }
+
+    const pendingReset = state.pendingReset || null;
+    if (pendingReset) {
+      if (pendingReset.cause !== this._lastPendingResetCause) {
+        this._lastPendingResetCause = pendingReset.cause;
+        this._showResetFeedback(pendingReset);
+      } else if (this._resetFeedbackCountdownText) {
+        const secsLeft = pendingReset.expiresAt
+          ? Math.max(0, Math.ceil((pendingReset.expiresAt - Date.now()) / 1000))
+          : 5;
+        this._resetFeedbackCountdownText.setText(`Resetting in ${secsLeft}…`);
+      }
+    } else {
+      if (this._lastPendingResetCause !== null) {
+        this._lastPendingResetCause = null;
+        this._hideResetFeedback();
+      }
+    }
   }
 
   _showEnd(state) {
@@ -1253,6 +1274,48 @@ class ControllerScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(11);
 
     this.endUi = [overlay, title, subtitle];
+  }
+
+  _showResetFeedback(pendingReset) {
+    this._clearResetFeedbackUi();
+    const { width, height } = this.scale;
+    const icon = pendingReset.cause === 'wall' ? '🧱' : pendingReset.cause === 'ghost' ? '👻' : '✖';
+    const secsLeft = pendingReset.expiresAt
+      ? Math.max(0, Math.ceil((pendingReset.expiresAt - Date.now()) / 1000))
+      : 5;
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.78).setDepth(14);
+    const iconText = this.add.text(width / 2, height / 2 - 90, icon, {
+      fontSize: '72px',
+    }).setOrigin(0.5).setDepth(15);
+    const titleText = this.add.text(width / 2, height / 2 + 10, pendingReset.message || 'Reset!', {
+      fontSize: '28px',
+      color: '#ff6666',
+      fontStyle: 'bold',
+      wordWrap: { width: width - 40 },
+    }).setOrigin(0.5).setDepth(15);
+    const countdownText = this.add.text(width / 2, height / 2 + 68, `Resetting in ${secsLeft}…`, {
+      fontSize: '18px',
+      color: '#999999',
+    }).setOrigin(0.5).setDepth(15);
+
+    this.resetFeedbackUi = [overlay, iconText, titleText, countdownText];
+    this._resetFeedbackCountdownText = countdownText;
+  }
+
+  _hideResetFeedback() {
+    this._clearResetFeedbackUi();
+  }
+
+  _clearResetFeedbackUi() {
+    if (!this.resetFeedbackUi) {
+      return;
+    }
+    for (const item of this.resetFeedbackUi) {
+      item.destroy();
+    }
+    this.resetFeedbackUi = null;
+    this._resetFeedbackCountdownText = null;
   }
 
   _hideEndUi() {
@@ -1306,6 +1369,7 @@ class ControllerScene extends Phaser.Scene {
     this.game.events.off('ws_close', this.onClose, this);
     this.input.off('wheel', this.onWheel, this);
     document.removeEventListener('visibilitychange', this.onVisibilitySync);
+    this._clearResetFeedbackUi();
   }
 
   _sendMove(dir) {

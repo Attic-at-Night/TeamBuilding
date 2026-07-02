@@ -585,6 +585,22 @@ class GameScene extends Phaser.Scene {
     });
     this.restartButtonBg.disableInteractive();
 
+    this.resetFeedbackOverlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.72)
+      .setDepth(20)
+      .setVisible(false);
+    this.resetFeedbackIcon = this.add.text(width / 2, height / 2 - 80, '', {
+      fontSize: '72px',
+    }).setOrigin(0.5).setDepth(21).setVisible(false);
+    this.resetFeedbackTitle = this.add.text(width / 2, height / 2 + 20, '', {
+      fontSize: '36px',
+      color: '#ff6666',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(21).setVisible(false);
+    this.resetFeedbackCountdown = this.add.text(width / 2, height / 2 + 76, '', {
+      fontSize: '22px',
+      color: '#aaaaaa',
+    }).setOrigin(0.5).setDepth(21).setVisible(false);
+
     this.game.events.on('ws_message', this.onMessage, this);
     this.input.on('wheel', this.onWheel, this);
 
@@ -632,6 +648,26 @@ class GameScene extends Phaser.Scene {
     const timelineEntries = trainerPayload ? (state.log || []) : [];
     this.renderTimeline(timelineEntries, trainerPayload);
     this.updateTimelineStatus(state);
+
+    if (state.pendingReset) {
+      const pr = state.pendingReset;
+      const icon = pr.cause === 'wall' ? '🧱' : pr.cause === 'ghost' ? '👻' : '✖';
+      const secsLeft = pr.expiresAt
+        ? Math.max(0, Math.ceil((pr.expiresAt - Date.now()) / 1000))
+        : 5;
+      this.resetFeedbackIcon.setText(icon);
+      this.resetFeedbackTitle.setText(pr.message || 'Reset!');
+      this.resetFeedbackCountdown.setText(`Resetting in ${secsLeft}…`);
+      this.resetFeedbackOverlay.setVisible(true);
+      this.resetFeedbackIcon.setVisible(true);
+      this.resetFeedbackTitle.setVisible(true);
+      this.resetFeedbackCountdown.setVisible(true);
+    } else {
+      this.resetFeedbackOverlay.setVisible(false);
+      this.resetFeedbackIcon.setVisible(false);
+      this.resetFeedbackTitle.setVisible(false);
+      this.resetFeedbackCountdown.setVisible(false);
+    }
 
     if (state.status === 'ended') {
       this.endOverlay.setVisible(true);
