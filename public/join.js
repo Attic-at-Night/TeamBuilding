@@ -105,6 +105,49 @@ function sendWs(payload) {
   }
 }
 
+function requestResyncWhenReady(delayMs = 0) {
+  if (delayMs > 0) {
+    window.setTimeout(() => requestResyncWhenReady(0), delayMs);
+    return;
+  }
+
+  if (!socket) {
+    return;
+  }
+
+  if (socket.readyState === WebSocket.OPEN) {
+    requestResyncWhenReady();
+    return;
+  }
+
+  if (socket.readyState !== WebSocket.CONNECTING) {
+    return;
+  }
+
+  const targetSocket = socket;
+  const onOpen = () => {
+    if (socket !== targetSocket || targetSocket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    sendWs({ type: 'resync_request' });
+  };
+  targetSocket.addEventListener('open', onOpen, { once: true });
+}
+
+function ensureConnectedAndResync(game) {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    requestResyncWhenReady();
+    return true;
+  }
+
+  if (trySilentReconnect(game)) {
+    requestResyncWhenReady(500);
+    return true;
+  }
+
+  return false;
+}
+
 function formatDuration(ms, startedAt, endedAt, now = Date.now()) {
   const value = typeof ms === 'number'
     ? ms
@@ -541,13 +584,10 @@ class WaitScene extends Phaser.Scene {
   }
 
   onClose() {
-    if (trySilentReconnect(this.game)) {
+    if (ensureConnectedAndResync(this.game)) {
       if (this.dotText) {
         this.dotText.setText('Reconnecting…');
       }
-      this.time.delayedCall(500, () => {
-        sendWs({ type: 'resync_request' });
-      });
       return;
     }
 
@@ -592,8 +632,11 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedScrollTrack = null;
     this.trainerFeedScrollThumb = null;
     this.lastMoveSentAt = 0;
+    this.connectionUi = null;
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
+    this.onConnectionWake = this.onConnectionWake.bind(this);
+    this.onManualReconnect = this.onManualReconnect.bind(this);
   }
 
   create() {
@@ -613,6 +656,7 @@ class ControllerScene extends Phaser.Scene {
     });
 
     this._buildRoleUi(this.viewerRole);
+    this._createConnectionUi();
     if (this.currentState) {
       this._renderState(this.currentState);
     }
@@ -621,6 +665,8 @@ class ControllerScene extends Phaser.Scene {
     this.game.events.on('ws_close', this.onClose, this);
     this.input.on('wheel', this.onWheel, this);
     document.addEventListener('visibilitychange', this.onVisibilitySync);
+    window.addEventListener('pageshow', this.onConnectionWake);
+    window.addEventListener('online', this.onConnectionWake);
 
     this.time.addEvent({
       delay: 1000,
@@ -632,7 +678,75 @@ class ControllerScene extends Phaser.Scene {
       },
     });
 
-    sendWs({ type: 'resync_request' });
+    requestResyncWhenReady();
+  }
+
+  _createConnectionUi() {
+    const { width, height } = this.scale;
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.74)
+      .setDepth(40)
+      .setVisible(false);
+    const title = this.add.text(width / 2, height / 2 - 56, 'Disconnected', {
+      fontSize: '28px',
+      color: '#ffdddd',
+      fontStyle: 'bold',
+      align: 'center',
+    }).setOrigin(0.5).setDepth(41).setVisible(false);
+    const detail = this.add.text(width / 2, height / 2 - 12, 'Trying to reconnect…', {
+      fontSize: '16px',
+      color: '#dddddd',
+      align: 'center',
+      wordWrap: { width: Math.max(220, width - 44) },
+    }).setOrigin(0.5).setDepth(41).setVisible(false);
+    const resetBg = this.add.rectangle(width / 2, height / 2 + 56, 214, 46, 0x2f7de1, 0.96)
+      .setDepth(41)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true });
+    const resetLabel = this.add.text(width / 2, height / 2 + 56, 'Reset connection', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(42).setVisible(false);
+
+    resetBg.on('pointerup', this.onManualReconnect);
+    resetBg.on('pointerover', () => resetBg.setFillStyle(0x4b94f2, 1));
+    resetBg.on('pointerout', () => resetBg.setFillStyle(0x2f7de1, 0.96));
+
+    this.connectionUi = {
+      overlay,
+      title,
+      detail,
+      resetBg,
+      resetLabel,
+    };
+  }
+
+  _showConnectionUi(title, detail, showReset = true) {
+    if (!this.connectionUi) {
+      return;
+    }
+    this.connectionUi.overlay.setVisible(true);
+    this.connectionUi.title.setText(title || 'Disconnected').setVisible(true);
+    this.connectionUi.detail.setText(detail || 'Trying to reconnect…').setVisible(true);
+    this.connectionUi.resetBg.setVisible(showReset);
+    this.connectionUi.resetLabel.setVisible(showReset);
+    if (showReset) {
+      this.connectionUi.resetBg.setInteractive({ useHandCursor: true });
+    } else {
+      this.connectionUi.resetBg.disableInteractive();
+    }
+  }
+
+  _hideConnectionUi() {
+    if (!this.connectionUi) {
+      return;
+    }
+    this.connectionUi.overlay.setVisible(false);
+    this.connectionUi.title.setVisible(false);
+    this.connectionUi.detail.setVisible(false);
+    this.connectionUi.resetBg.setVisible(false);
+    this.connectionUi.resetBg.disableInteractive();
+    this.connectionUi.resetLabel.setVisible(false);
   }
 
   _clearRoleUi() {
@@ -1343,6 +1457,7 @@ class ControllerScene extends Phaser.Scene {
 
       this.currentState = message.state;
       this._renderState(message.state);
+      this._hideConnectionUi();
     }
 
     if (message.type === 'session_closed') {
@@ -1351,17 +1466,11 @@ class ControllerScene extends Phaser.Scene {
   }
 
   onClose() {
-    if (trySilentReconnect(this.game)) {
-      this.time.delayedCall(500, () => {
-        sendWs({ type: 'resync_request' });
-      });
+    if (ensureConnectedAndResync(this.game)) {
+      this._showConnectionUi('Connection lost', 'Trying to reconnect…', true);
       return;
     }
-
-    this.game.events.off('ws_message', this.onMessage, this);
-    this.game.events.off('ws_close', this.onClose, this);
-    document.removeEventListener('visibilitychange', this.onVisibilitySync);
-    this.scene.start('JoinScene');
+    this._showConnectionUi('Disconnected', 'Tap reset connection to try again.', true);
   }
 
   shutdown() {
@@ -1369,7 +1478,10 @@ class ControllerScene extends Phaser.Scene {
     this.game.events.off('ws_close', this.onClose, this);
     this.input.off('wheel', this.onWheel, this);
     document.removeEventListener('visibilitychange', this.onVisibilitySync);
+    window.removeEventListener('pageshow', this.onConnectionWake);
+    window.removeEventListener('online', this.onConnectionWake);
     this._clearResetFeedbackUi();
+    this._hideConnectionUi();
   }
 
   _sendMove(dir) {
@@ -1383,8 +1495,40 @@ class ControllerScene extends Phaser.Scene {
 
   onVisibilitySync() {
     if (document.visibilityState === 'visible') {
-      sendWs({ type: 'resync_request' });
+      this.onConnectionWake();
     }
+  }
+
+  onConnectionWake() {
+    if (ensureConnectedAndResync(this.game)) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        this._hideConnectionUi();
+      } else {
+        this._showConnectionUi('Reconnecting', 'Trying to restore the session…', true);
+      }
+      return;
+    }
+    this._showConnectionUi('Disconnected', 'Tap reset connection to try again.', true);
+  }
+
+  onManualReconnect() {
+    this._showConnectionUi('Resetting connection', 'Starting a fresh reconnect…', false);
+    if (socket) {
+      socket._superseded = true;
+      socket.close();
+      socket = null;
+    }
+
+    if (!ensureConnectedAndResync(this.game)) {
+      this.scene.start('JoinScene');
+      return;
+    }
+
+    this.time.delayedCall(2000, () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        this._showConnectionUi('Still reconnecting', 'Keep this page active, then try reset again.', true);
+      }
+    });
   }
 
   onWheel(pointer, _gameObjects, _deltaX, deltaY) {

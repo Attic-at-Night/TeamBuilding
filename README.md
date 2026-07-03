@@ -26,6 +26,20 @@ PUBLIC_ORIGIN=https://your-app.example.com npm start
 
 When running locally on `localhost`, the server still falls back to your LAN IP so phones on the same network can join.
 
+### Mobile connection reliability tuning
+
+The WebSocket heartbeat/grace window is configurable for mobile-heavy sessions:
+
+- `WS_HEARTBEAT_INTERVAL_MS` – ping cadence (default: `4000`)
+- `WS_DISCONNECT_GRACE_MS` – how long to keep a disconnected socket before cleanup (default: `60000`)
+
+Recommended starting point for mobile devices that may sleep/lock:
+
+```bash
+WS_HEARTBEAT_INTERVAL_MS=4000
+WS_DISCONNECT_GRACE_MS=60000
+```
+
 ## Deploy with GitHub Actions
 
 This repository includes a CI/CD workflow at `.github/workflows/deploy.yml`.
