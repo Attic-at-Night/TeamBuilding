@@ -3,6 +3,8 @@ let socketSequence = 0;
 let myPlayerId = null;
 let pendingReconnectToken = null;
 let pendingPlayerName = null;
+const CONNECTION_PROBE_INTERVAL_MS = 12000;
+const CONNECTION_PROBE_TIMEOUT_MS = 3500;
 
 function storageKey(sessionId) {
   return `teambuilding.reconnect.${sessionId}`;
@@ -38,6 +40,22 @@ function getCurrentSessionIdFromUrl() {
   return (params.get('session') || '').toUpperCase();
 }
 
+function getConnectionWarningMessage(reason) {
+  if (reason === 'offline') {
+    return 'Device appears offline.';
+  }
+  if (reason === 'backgrounded') {
+    return 'Keep this page active to avoid mobile disconnects.';
+  }
+  if (reason === 'slow_response') {
+    return 'Server response is delayed. Reconnect may start soon.';
+  }
+  if (reason === 'socket_error') {
+    return 'Connection looks unstable.';
+  }
+  return '';
+}
+
 function trySilentReconnect(game) {
   const sessionId = getCurrentSessionIdFromUrl();
   if (!sessionId) {
@@ -70,6 +88,7 @@ function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
     if (socket !== nextSocket || sequence !== socketSequence) {
       return;
     }
+    game.events.emit('ws_open');
     nextSocket.send(JSON.stringify({
       type: 'controller_join',
       sessionId,
@@ -87,6 +106,12 @@ function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
     } catch {
       // Ignore malformed server payloads.
     }
+  });
+  nextSocket.addEventListener('error', () => {
+    if (socket !== nextSocket || sequence !== socketSequence) {
+      return;
+    }
+    game.events.emit('ws_error');
   });
   nextSocket.addEventListener('close', () => {
     if (nextSocket._superseded || sequence !== socketSequence) {
@@ -655,7 +680,14 @@ class ControllerScene extends Phaser.Scene {
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
     this.onConnectionWake = this.onConnectionWake.bind(this);
+    this.onConnectionRisk = this.onConnectionRisk.bind(this);
     this.onManualReconnect = this.onManualReconnect.bind(this);
+    this.onSocketOpen = this.onSocketOpen.bind(this);
+    this.onSocketError = this.onSocketError.bind(this);
+    this.connectionWarningUi = null;
+    this.connectionProbeEvent = null;
+    this.pendingProbeId = 0;
+    this.pendingProbeReason = null;
   }
 
   create() {
@@ -676,16 +708,20 @@ class ControllerScene extends Phaser.Scene {
 
     this._buildRoleUi(this.viewerRole);
     this._createConnectionUi();
+    this._createConnectionWarningUi();
     if (this.currentState) {
       this._renderState(this.currentState);
     }
 
     this.game.events.on('ws_message', this.onMessage, this);
     this.game.events.on('ws_close', this.onClose, this);
+    this.game.events.on('ws_open', this.onSocketOpen, this);
+    this.game.events.on('ws_error', this.onSocketError, this);
     this.input.on('wheel', this.onWheel, this);
     document.addEventListener('visibilitychange', this.onVisibilitySync);
     window.addEventListener('pageshow', this.onConnectionWake);
     window.addEventListener('online', this.onConnectionWake);
+    window.addEventListener('offline', this.onConnectionRisk);
 
     this.time.addEvent({
       delay: 1000,
@@ -696,8 +732,30 @@ class ControllerScene extends Phaser.Scene {
         }
       },
     });
+    this.connectionProbeEvent = this.time.addEvent({
+      delay: CONNECTION_PROBE_INTERVAL_MS,
+      loop: true,
+      callback: () => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        const probeId = Date.now();
+        this.pendingProbeId = probeId;
+        sendWs({ type: 'resync_request' });
+        this.time.delayedCall(CONNECTION_PROBE_TIMEOUT_MS, () => {
+          if (this.pendingProbeId !== probeId) {
+            return;
+          }
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          this._showConnectionWarning('slow_response');
+        });
+      },
+    });
 
     requestResyncWhenReady();
+    this._syncConnectionWarning();
   }
 
   _createConnectionUi() {
@@ -766,6 +824,63 @@ class ControllerScene extends Phaser.Scene {
     this.connectionUi.resetBg.setVisible(false);
     this.connectionUi.resetBg.disableInteractive();
     this.connectionUi.resetLabel.setVisible(false);
+  }
+
+  _createConnectionWarningUi() {
+    const { width } = this.scale;
+    const bg = this.add.rectangle(width - 90, 34, 146, 34, 0xe58b1f, 0.96)
+      .setDepth(39)
+      .setStrokeStyle(2, 0xffd59b, 0.95)
+      .setVisible(false)
+      .setOrigin(0.5);
+    const label = this.add.text(width - 90, 34, 'Wi-Fi !', {
+      fontSize: '16px',
+      color: '#fff6e8',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(40).setVisible(false);
+    const detail = this.add.text(width - 18, 56, '', {
+      fontSize: '11px',
+      color: '#ffdfb3',
+      align: 'right',
+      wordWrap: { width: 200 },
+    }).setOrigin(1, 0).setDepth(40).setVisible(false);
+    this.connectionWarningUi = { bg, label, detail };
+  }
+
+  _showConnectionWarning(reason) {
+    this.pendingProbeReason = reason;
+    if (!this.connectionWarningUi) {
+      return;
+    }
+    this.connectionWarningUi.bg.setVisible(true);
+    this.connectionWarningUi.label.setVisible(true);
+    this.connectionWarningUi.detail.setText(getConnectionWarningMessage(reason)).setVisible(true);
+  }
+
+  _hideConnectionWarning() {
+    this.pendingProbeReason = null;
+    if (!this.connectionWarningUi) {
+      return;
+    }
+    this.connectionWarningUi.bg.setVisible(false);
+    this.connectionWarningUi.label.setVisible(false);
+    this.connectionWarningUi.detail.setVisible(false);
+  }
+
+  _syncConnectionWarning() {
+    if (!navigator.onLine) {
+      this._showConnectionWarning('offline');
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      this._showConnectionWarning('backgrounded');
+      return;
+    }
+    if (this.pendingProbeReason === 'slow_response' || this.pendingProbeReason === 'socket_error') {
+      this._showConnectionWarning(this.pendingProbeReason);
+      return;
+    }
+    this._hideConnectionWarning();
   }
 
   _clearRoleUi() {
@@ -1615,8 +1730,13 @@ class ControllerScene extends Phaser.Scene {
       }
 
       this.currentState = message.state;
+      this.pendingProbeId = 0;
+      if (this.pendingProbeReason === 'slow_response' || this.pendingProbeReason === 'socket_error') {
+        this.pendingProbeReason = null;
+      }
       this._renderState(message.state);
       this._hideConnectionUi();
+      this._syncConnectionWarning();
       return;
     }
 
@@ -1643,15 +1763,38 @@ class ControllerScene extends Phaser.Scene {
     this._showConnectionUi('Disconnected', 'Tap reset connection to try again.', true);
   }
 
+  onSocketOpen() {
+    this.pendingProbeId = 0;
+    if (this.pendingProbeReason === 'slow_response' || this.pendingProbeReason === 'socket_error') {
+      this.pendingProbeReason = null;
+    }
+    this._syncConnectionWarning();
+  }
+
+  onSocketError() {
+    if (socket && socket.readyState === WebSocket.CLOSING) {
+      return;
+    }
+    this._showConnectionWarning('socket_error');
+  }
+
   shutdown() {
     this.game.events.off('ws_message', this.onMessage, this);
     this.game.events.off('ws_close', this.onClose, this);
+    this.game.events.off('ws_open', this.onSocketOpen, this);
+    this.game.events.off('ws_error', this.onSocketError, this);
     this.input.off('wheel', this.onWheel, this);
     document.removeEventListener('visibilitychange', this.onVisibilitySync);
     window.removeEventListener('pageshow', this.onConnectionWake);
     window.removeEventListener('online', this.onConnectionWake);
+    window.removeEventListener('offline', this.onConnectionRisk);
+    if (this.connectionProbeEvent) {
+      this.connectionProbeEvent.remove(false);
+      this.connectionProbeEvent = null;
+    }
     this._clearResetFeedbackUi();
     this._hideConnectionUi();
+    this._hideConnectionWarning();
   }
 
   _sendMove(dir) {
@@ -1666,19 +1809,30 @@ class ControllerScene extends Phaser.Scene {
   onVisibilitySync() {
     if (document.visibilityState === 'visible') {
       this.onConnectionWake();
+      return;
     }
+    this.onConnectionRisk();
   }
 
   onConnectionWake() {
+    if (this.pendingProbeReason === 'backgrounded' || this.pendingProbeReason === 'offline') {
+      this.pendingProbeReason = null;
+    }
     if (ensureConnectedAndResync(this.game)) {
       if (socket && socket.readyState === WebSocket.OPEN) {
         this._hideConnectionUi();
       } else {
         this._showConnectionUi('Reconnecting', 'Trying to restore the session…', true);
       }
+      this._syncConnectionWarning();
       return;
     }
+    this._syncConnectionWarning();
     this._showConnectionUi('Disconnected', 'Tap reset connection to try again.', true);
+  }
+
+  onConnectionRisk() {
+    this._syncConnectionWarning();
   }
 
   onManualReconnect() {

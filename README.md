@@ -31,12 +31,14 @@ When running locally on `localhost`, the server still falls back to your LAN IP 
 The WebSocket heartbeat/grace window is configurable for mobile-heavy sessions:
 
 - `WS_HEARTBEAT_INTERVAL_MS` – ping cadence (default: `4000`)
+- `WS_MAX_MISSED_HEARTBEATS` – consecutive missed heartbeats before the server terminates the socket (default: `3`)
 - `WS_DISCONNECT_GRACE_MS` – how long to keep a disconnected socket before cleanup (default: `60000`)
 
 Recommended starting point for mobile devices that may sleep/lock:
 
 ```bash
 WS_HEARTBEAT_INTERVAL_MS=4000
+WS_MAX_MISSED_HEARTBEATS=3
 WS_DISCONNECT_GRACE_MS=60000
 ```
 
@@ -131,6 +133,10 @@ Sessions are now kept server-side across transient disconnects. A display discon
 session immediately; connected clients receive updated state showing `displayConnected: false` until the host
 reattaches or later reconnect handling claims the session.
 
+Abandoned sessions no longer live forever. If a session has no connected display and no connected controllers,
+the server automatically closes it after 10 minutes. A returning display or controller reconnect cancels that
+pending cleanup window.
+
 Controllers now receive a reconnect token in `client_registered`, and the client stores it locally to support
 automatic/manual rejoin of the same player slot when the session still exists.
 
@@ -203,6 +209,9 @@ Session logs are also persisted to `session-logs/<SESSION_ID>.json` on the serve
 You can fetch the current/persisted export JSON with:
 
 `GET /api/session/:sessionId/log`
+
+Operational lifecycle diagnostics (session creation, joins, reconnects, disconnect grace windows, WebSocket
+close/error cases, and abandoned-session cleanup) are emitted to the normal server logs / `pm2 logs`.
 
 ## Project structure
 

@@ -18,6 +18,7 @@ const LIFE_PICKUP_COUNT = 0;
 const RECENT_EVENT_LIMIT = 10;
 const DEFAULT_TIMER_DURATION_MS = 5 * 60 * 1000;
 const RESET_FEEDBACK_MS = 5000;
+const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 
 function makeSessionId() {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -37,6 +38,13 @@ function sendJson(socket, payload) {
 
 function sendJoinError(socket, message, code) {
   sendJson(socket, { type: MessageType.JOIN_ERROR, message, code });
+}
+
+function normalizeCleanupTimeoutMs(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_ABANDONED_SESSION_TIMEOUT_MS;
+  }
+  return Math.max(1000, Math.floor(value));
 }
 
 function makeInitialState() {
@@ -680,6 +688,8 @@ class SessionManager {
   constructor(options = {}) {
     this.sessions = new Map();
     this.logStore = options.logStore || null;
+    this.logger = options.logger || null;
+    this.abandonedSessionTimeoutMs = normalizeCleanupTimeoutMs(options.abandonedSessionTimeoutMs);
   }
 
   createSession(origin) {
@@ -696,9 +706,12 @@ class SessionManager {
       participants: new Map(),
       reconnectTokens: new Map(),
       state: makeInitialState(),
+      cleanupTimer: null,
     });
 
     this._persistSession(sessionId);
+    this._log('info', 'Session created.', { sessionId, origin });
+    this._scheduleAbandonedSessionCleanup(sessionId, 'session_created');
     return { sessionId, joinUrl };
   }
 
@@ -709,6 +722,7 @@ class SessionManager {
       return false;
     }
 
+    this._cancelAbandonedSessionCleanup(sessionId, 'display_registered');
     const wasDisconnected = !session.display;
     session.display = socket;
     socket.meta = { role: ClientRole.DISPLAY, sessionId };
@@ -718,6 +732,14 @@ class SessionManager {
         event: 'display_connected',
       });
     }
+
+    this._log('info', 'Display registered.', {
+      sessionId,
+      reattached: !wasDisconnected,
+      controllerCount: session.controllers.size,
+      participantCount: session.participants.size,
+      status: session.state.status,
+    });
 
     sendJson(socket, {
       type: MessageType.CLIENT_REGISTERED,
@@ -732,6 +754,7 @@ class SessionManager {
   joinController(sessionId, name, socket) {
     const session = this.sessions.get(sessionId);
     if (!session) {
+      this._log('warn', 'Rejected controller join for missing session.', { sessionId });
       sendJoinError(socket, 'Session is unavailable.', ErrorCode.SESSION_UNAVAILABLE);
       return false;
     }
@@ -748,6 +771,11 @@ class SessionManager {
     }
 
     if (!session.display) {
+      this._log('warn', 'Rejected controller join because display is disconnected.', {
+        sessionId,
+        requestedTrainer,
+        status: session.state.status,
+      });
       sendJoinError(socket, 'Session is unavailable.', ErrorCode.SESSION_UNAVAILABLE);
       return false;
     }
@@ -756,12 +784,24 @@ class SessionManager {
     if (!isTrainer) {
       if (session.state.status === GameStatus.LOBBY) {
         if (this._getGameplayControllers(session).length >= MAX_PLAYERS) {
+          this._log('warn', 'Rejected controller join because session is full.', {
+            sessionId,
+            requestedTrainer,
+            status: session.state.status,
+            controllerCount: session.controllers.size,
+          });
           sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
           return false;
         }
       } else {
         const openSlot = this._findOpenGameplaySlot(session);
         if (!openSlot) {
+          this._log('warn', 'Rejected controller join because no gameplay slot is available.', {
+            sessionId,
+            requestedTrainer,
+            status: session.state.status,
+            controllerCount: session.controllers.size,
+          });
           sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
           return false;
         }
@@ -776,6 +816,15 @@ class SessionManager {
         session.reconnectTokens.set(reconnectTokenForPlayer, openSlot.id);
         session.controllers.set(openSlot.id, { socket, ...openSlot });
         socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId: openSlot.id, isTrainer: false };
+        this._cancelAbandonedSessionCleanup(sessionId, 'controller_joined');
+        this._log('info', 'Controller claimed disconnected gameplay slot.', {
+          sessionId,
+          playerId: openSlot.id,
+          playerName,
+          controllerCount: session.controllers.size,
+          participantCount: session.participants.size,
+          status: session.state.status,
+        });
 
         sendJson(socket, {
           type: MessageType.CLIENT_REGISTERED,
@@ -812,6 +861,16 @@ class SessionManager {
     }
 
     socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId, isTrainer };
+    this._cancelAbandonedSessionCleanup(sessionId, 'controller_joined');
+    this._log('info', 'Controller joined session.', {
+      sessionId,
+      playerId,
+      playerName,
+      isTrainer,
+      controllerCount: session.controllers.size,
+      participantCount: session.participants.size,
+      status: session.state.status,
+    });
 
     sendJson(socket, {
       type: MessageType.CLIENT_REGISTERED,
@@ -1430,6 +1489,14 @@ class SessionManager {
     }
 
     socket._disconnectReason = reason;
+    this._log('info', 'Started disconnect grace window.', {
+      sessionId: meta.sessionId,
+      role: meta.role,
+      playerId: meta.playerId || null,
+      isTrainer: Boolean(meta.isTrainer),
+      reason,
+      delayMs,
+    });
     socket._disconnectTimer = setTimeout(() => {
       socket._disconnectTimer = null;
       this._finalizeDisconnect(socket, socket._disconnectReason || reason);
@@ -1446,6 +1513,13 @@ class SessionManager {
     clearTimeout(socket._disconnectTimer);
     socket._disconnectTimer = null;
     socket._disconnectReason = null;
+    const meta = socket.meta || {};
+    this._log('info', 'Cancelled disconnect grace window.', {
+      sessionId: meta.sessionId || null,
+      role: meta.role || null,
+      playerId: meta.playerId || null,
+      isTrainer: Boolean(meta.isTrainer),
+    });
     return true;
   }
 
@@ -1474,6 +1548,14 @@ class SessionManager {
       });
       this._persistSession(meta.sessionId);
       this.broadcastState(meta.sessionId);
+      this._log('warn', 'Display disconnected.', {
+        sessionId: meta.sessionId,
+        reason,
+        controllerCount: session.controllers.size,
+        participantCount: session.participants.size,
+        status: session.state.status,
+      });
+      this._scheduleAbandonedSessionCleanup(meta.sessionId, 'display_disconnected');
       return;
     }
 
@@ -1490,6 +1572,16 @@ class SessionManager {
       }
       session.state.players = this._getPlayers(session);
       this.broadcastState(meta.sessionId);
+      this._log('warn', 'Controller disconnected.', {
+        sessionId: meta.sessionId,
+        reason,
+        playerId: meta.playerId,
+        isTrainer: Boolean(meta.isTrainer),
+        controllerCount: session.controllers.size,
+        participantCount: session.participants.size,
+        status: session.state.status,
+      });
+      this._scheduleAbandonedSessionCleanup(meta.sessionId, 'controller_disconnected');
     }
   }
 
@@ -1619,12 +1711,17 @@ class SessionManager {
   _reconnectController(sessionId, session, socket, reconnectToken) {
     const existingPlayerId = session.reconnectTokens.get(reconnectToken);
     if (!existingPlayerId) {
+      this._log('warn', 'Rejected reconnect with invalid token.', { sessionId });
       sendJoinError(socket, 'Reconnect token is invalid.', ErrorCode.INVALID_RECONNECT_TOKEN);
       return false;
     }
 
     const participant = session.participants.get(existingPlayerId);
     if (!participant) {
+      this._log('warn', 'Rejected reconnect because slot is unavailable.', {
+        sessionId,
+        playerId: existingPlayerId,
+      });
       sendJoinError(socket, 'Reconnect slot is unavailable.', ErrorCode.RECONNECT_SLOT_UNAVAILABLE);
       return false;
     }
@@ -1646,6 +1743,7 @@ class SessionManager {
       }
     }
 
+    this._cancelAbandonedSessionCleanup(sessionId, 'controller_reconnected');
     session.controllers.set(existingPlayerId, { socket, ...participant });
     socket.meta = {
       role: ClientRole.CONTROLLER,
@@ -1670,8 +1768,97 @@ class SessionManager {
     });
 
     session.state.players = this._getPlayers(session);
+    this._log('info', 'Controller reconnected to session.', {
+      sessionId,
+      playerId: existingPlayerId,
+      isTrainer: participant.isTrainer,
+      controllerCount: session.controllers.size,
+      participantCount: session.participants.size,
+      status: session.state.status,
+    });
     this.broadcastState(sessionId);
     return true;
+  }
+
+  _scheduleAbandonedSessionCleanup(sessionId, trigger) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.display || session.controllers.size > 0 || session.cleanupTimer) {
+      return false;
+    }
+
+    this._log('info', 'Scheduled abandoned session cleanup.', {
+      sessionId,
+      trigger,
+      timeoutMs: this.abandonedSessionTimeoutMs,
+      participantCount: session.participants.size,
+      status: session.state.status,
+    });
+
+    session.cleanupTimer = setTimeout(() => {
+      const currentSession = this.sessions.get(sessionId);
+      if (!currentSession) {
+        return;
+      }
+      currentSession.cleanupTimer = null;
+      if (currentSession.display || currentSession.controllers.size > 0) {
+        this._log('info', 'Skipped abandoned session cleanup because clients reconnected.', {
+          sessionId,
+          controllerCount: currentSession.controllers.size,
+          participantCount: currentSession.participants.size,
+          status: currentSession.state.status,
+        });
+        return;
+      }
+
+      appendLog(currentSession.state, {
+        event: 'session_closed',
+        reason: 'abandoned_timeout',
+        captureSnapshot: false,
+      });
+      this._persistSession(sessionId);
+      this.sessions.delete(sessionId);
+      this._log('warn', 'Closed abandoned session.', {
+        sessionId,
+        participantCount: currentSession.participants.size,
+        status: currentSession.state.status,
+      });
+    }, this.abandonedSessionTimeoutMs);
+    if (typeof session.cleanupTimer.unref === 'function') {
+      session.cleanupTimer.unref();
+    }
+    return true;
+  }
+
+  _cancelAbandonedSessionCleanup(sessionId, trigger) {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.cleanupTimer) {
+      return false;
+    }
+
+    clearTimeout(session.cleanupTimer);
+    session.cleanupTimer = null;
+    this._log('info', 'Cancelled abandoned session cleanup.', { sessionId, trigger });
+    return true;
+  }
+
+  _log(level, message, metadata = null) {
+    if (!this.logger) {
+      return;
+    }
+
+    const method = typeof this.logger[level] === 'function'
+      ? level
+      : (typeof this.logger.log === 'function' ? 'log' : null);
+    if (!method) {
+      return;
+    }
+
+    if (metadata && Object.keys(metadata).length > 0) {
+      this.logger[method](`[session-manager] ${message}`, metadata);
+      return;
+    }
+
+    this.logger[method](`[session-manager] ${message}`);
   }
 
   _buildSessionExport(sessionId, state) {

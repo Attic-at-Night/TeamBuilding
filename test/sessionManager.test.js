@@ -1008,6 +1008,64 @@ test('session remains persisted even after all sockets disconnect', (t) => {
   assert.equal(manager.sessions.get(sessionId).controllers.size, 0);
 });
 
+test('unused session expires after the abandoned timeout', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const manager = new SessionManager({ abandonedSessionTimeoutMs: 2000 });
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  t.mock.timers.tick(1999);
+  assert.ok(manager.sessions.has(sessionId));
+
+  t.mock.timers.tick(1);
+  assert.equal(manager.sessions.has(sessionId), false);
+});
+
+test('session is deleted after the abandoned timeout once everyone disconnects', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const manager = new SessionManager({ abandonedSessionTimeoutMs: 2000 });
+  const display = createFakeSocket();
+  const trainer = createFakeSocket();
+  const controller = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer);
+  manager.joinController(sessionId, 'P1', controller);
+
+  manager.beginDisconnectGrace(display, 'socket_closed', 1000);
+  manager.beginDisconnectGrace(trainer, 'socket_closed', 1000);
+  manager.beginDisconnectGrace(controller, 'socket_closed', 1000);
+  t.mock.timers.tick(1000);
+  t.mock.timers.tick(1999);
+
+  assert.ok(manager.sessions.has(sessionId));
+
+  t.mock.timers.tick(1);
+  assert.equal(manager.sessions.has(sessionId), false);
+});
+
+test('display reattach cancels abandoned session cleanup', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const manager = new SessionManager({ abandonedSessionTimeoutMs: 2000 });
+  const display = createFakeSocket();
+  const replacementDisplay = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  manager.beginDisconnectGrace(display, 'socket_closed', 1000);
+  t.mock.timers.tick(1000);
+
+  assert.equal(manager.sessions.get(sessionId).display, null);
+  assert.equal(manager.registerDisplay(sessionId, replacementDisplay), true);
+
+  t.mock.timers.tick(2000);
+  assert.ok(manager.sessions.has(sessionId));
+  assert.equal(manager.sessions.get(sessionId).display, replacementDisplay);
+});
+
 test('persisted session can reattach a display without losing state', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
 

@@ -8,11 +8,11 @@ const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
 const { MessageType, ClientRole, ErrorCode } = require('./src/protocol');
 const { normalizeIncomingMessage, encodeServerMessage } = require('./src/networking/messageEnvelope');
-const { HEARTBEAT_INTERVAL_MS, DISCONNECT_GRACE_MS } = require('./src/networking/heartbeat');
+const { HEARTBEAT_INTERVAL_MS, DISCONNECT_GRACE_MS, MAX_MISSED_HEARTBEATS } = require('./src/networking/heartbeat');
 
 const app = express();
 const logStore = new SessionLogStore();
-const sessionManager = new SessionManager({ logStore });
+const sessionManager = new SessionManager({ logStore, logger: console });
 
 app.set('trust proxy', true);
 app.use(express.json());
@@ -62,8 +62,18 @@ app.get('/api/session/:sessionId/log', (req, res) => {
 });
 
 const server = app.listen(process.env.PORT || 3000, () => {
+  const address = server.address();
+  const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
   // eslint-disable-next-line no-console
-  console.log(`Server running on http://localhost:${server.address().port}`);
+  console.log(`Server running on http://localhost:${port}`);
+});
+
+server.on('error', (error) => {
+  // eslint-disable-next-line no-console
+  console.error('HTTP server error', {
+    message: error.message,
+    code: error.code || null,
+  });
 });
 
 const wss = new WebSocketServer({ server });
@@ -131,8 +141,29 @@ const handlers = {
   },
 };
 
+function socketLogMeta(socket) {
+  return {
+    sessionId: socket.meta?.sessionId || null,
+    role: socket.meta?.role || null,
+    playerId: socket.meta?.playerId || null,
+  };
+}
+
+function markSocketResponsive(socket) {
+  if ((socket._missedHeartbeats || 0) > 0) {
+    // eslint-disable-next-line no-console
+    console.info('WebSocket heartbeat recovered.', {
+      ...socketLogMeta(socket),
+      missedHeartbeats: socket._missedHeartbeats,
+    });
+  }
+  socket.isAlive = true;
+  socket._missedHeartbeats = 0;
+}
+
 wss.on('connection', (socket) => {
   socket.isAlive = true;
+  socket._missedHeartbeats = 0;
 
   const sendJoinError = (message, code) => {
     socket.send(JSON.stringify(encodeServerMessage({
@@ -143,19 +174,29 @@ wss.on('connection', (socket) => {
   };
 
   socket.on('message', (rawMessage) => {
-    socket.isAlive = true;
+    markSocketResponsive(socket);
     sessionManager.cancelDisconnectGrace(socket);
 
     let parsedMessage;
     try {
       parsedMessage = JSON.parse(String(rawMessage));
     } catch {
+      // eslint-disable-next-line no-console
+      console.warn('Received malformed websocket payload.', {
+        sessionId: socket.meta?.sessionId || null,
+        role: socket.meta?.role || null,
+      });
       sendJoinError('Invalid message format.', ErrorCode.INVALID_MESSAGE_FORMAT);
       return;
     }
 
     const message = normalizeIncomingMessage(parsedMessage);
     if (!message) {
+      // eslint-disable-next-line no-console
+      console.warn('Rejected websocket payload with invalid envelope.', {
+        sessionId: socket.meta?.sessionId || null,
+        role: socket.meta?.role || null,
+      });
       sendJoinError('Invalid message format.', ErrorCode.INVALID_MESSAGE_FORMAT);
       return;
     }
@@ -166,15 +207,40 @@ wss.on('connection', (socket) => {
       return;
     }
 
+    // eslint-disable-next-line no-console
+    console.warn('Received unknown websocket message type.', {
+      sessionId: socket.meta?.sessionId || null,
+      role: socket.meta?.role || null,
+      type: message.type,
+    });
     sendJoinError('Unknown message type.', ErrorCode.UNKNOWN_MESSAGE_TYPE);
   });
 
   socket.on('pong', () => {
-    socket.isAlive = true;
+    markSocketResponsive(socket);
     sessionManager.cancelDisconnectGrace(socket);
   });
 
-  socket.on('close', () => {
+  socket.on('error', (error) => {
+    // eslint-disable-next-line no-console
+    console.warn('WebSocket transport error.', {
+      sessionId: socket.meta?.sessionId || null,
+      role: socket.meta?.role || null,
+      playerId: socket.meta?.playerId || null,
+      message: error.message,
+    });
+  });
+
+  socket.on('close', (code, reasonBuffer) => {
+    const reason = reasonBuffer ? String(reasonBuffer) : '';
+    // eslint-disable-next-line no-console
+    console.warn('WebSocket closed.', {
+      sessionId: socket.meta?.sessionId || null,
+      role: socket.meta?.role || null,
+      playerId: socket.meta?.playerId || null,
+      code,
+      reason: reason || null,
+    });
     sessionManager.beginDisconnectGrace(socket, 'socket_closed', DISCONNECT_GRACE_MS);
   });
 });
@@ -182,13 +248,24 @@ wss.on('connection', (socket) => {
 const heartbeatInterval = setInterval(() => {
   for (const socket of wss.clients) {
     if (socket.isAlive === false) {
-      sessionManager.beginDisconnectGrace(socket, 'heartbeat_timeout', DISCONNECT_GRACE_MS);
-      try {
-        socket.terminate();
-      } catch {
-        // Ignore terminate failures on already-closed sockets.
+      socket._missedHeartbeats = (socket._missedHeartbeats || 0) + 1;
+      // eslint-disable-next-line no-console
+      console.warn('Missed websocket heartbeat.', {
+        ...socketLogMeta(socket),
+        missedHeartbeats: socket._missedHeartbeats,
+        maxMissedHeartbeats: MAX_MISSED_HEARTBEATS,
+      });
+      if (socket._missedHeartbeats >= MAX_MISSED_HEARTBEATS) {
+        sessionManager.beginDisconnectGrace(socket, 'heartbeat_timeout', DISCONNECT_GRACE_MS);
+        try {
+          socket.terminate();
+        } catch {
+          // Ignore terminate failures on already-closed sockets.
+        }
+        continue;
       }
-      continue;
+    } else {
+      socket._missedHeartbeats = 0;
     }
 
     socket.isAlive = false;
@@ -196,6 +273,11 @@ const heartbeatInterval = setInterval(() => {
       socket.ping();
     } catch {
       sessionManager.beginDisconnectGrace(socket, 'ping_failed', DISCONNECT_GRACE_MS);
+      try {
+        socket.terminate();
+      } catch {
+        // Ignore terminate failures on already-closed sockets.
+      }
     }
   }
 }, HEARTBEAT_INTERVAL_MS);
