@@ -194,6 +194,11 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
   assert.equal(display.sent.at(-1).type, MessageType.STATE_SYNC);
   assert.equal(display.sent.at(-1).state.status, GameStatus.PLAYING);
   assert.equal(typeof display.sent.at(-1).state.mazeMeta.seed, 'string');
+  assert.equal(display.sent.at(-1).state.mazeMeta.width, 8);
+  assert.equal(display.sent.at(-1).state.mazeMeta.height, 8);
+  assert.equal(display.sent.at(-1).state.mazeMeta.hazardCount, 5);
+  assert.equal(display.sent.at(-1).state.mazeMeta.ghostCount, 0);
+  assert.equal(display.sent.at(-1).state.mazeMeta.keyCount, 3);
   assert.equal(trainer.sent.at(-1).state.viewerRole, 'trainer');
   assert.equal(typeof trainer.sent.at(-1).state.roleData.mazeMeta.seed, 'string');
   assert.equal((trainer.sent.at(-1).state.roleData.trainerMaze.lifePickups || []).length, 0);
@@ -274,6 +279,22 @@ test('mover pickup updates key progress and logs the pickup', () => {
   const sync = display.sent.at(-1);
   assert.equal(sync.state.summary.keysCollected, 1);
   assert.ok(sync.state.log.some((entry) => entry.event === 'key_pickup'));
+});
+
+test('guide and navigator receive key pickup events in recent timeline', () => {
+  const { manager, controllers, sessionId } = bootstrapGame(4);
+  const mover = findControllerByRole(controllers, MazeRole.MOVER);
+  const guide = findControllerByRole(controllers, MazeRole.GUIDE);
+  const navigator = findControllerByRole(controllers, MazeRole.NAVIGATOR);
+  const moverId = registerPlayerId(mover);
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeOpenMaze({
+    keys: [{ id: 'key-1', key: 1, row: 0, col: 1, collected: false }],
+  });
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.ok(latestState(guide).roleData.recentEvents.some((entry) => entry.event === 'key_pickup'));
+  assert.ok(latestState(navigator).roleData.recentEvents.some((entry) => entry.event === 'key_pickup'));
 });
 
 test('mover pickup updates lives and logs the life pickup', () => {
@@ -437,7 +458,7 @@ test('ghost tick moves ghosts for guide and ghost collision triggers a reset', (
   }
 });
 
-test('repeated resets advance maze variant into hard mode with ghosts', () => {
+test('repeated resets advance maze variant into hard mode without ghosts', () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
     const { manager, display, controllers, sessionId } = bootstrapGame(2);
@@ -453,7 +474,7 @@ test('repeated resets advance maze variant into hard mode with ghosts', () => {
     assert.equal(firstResetState.summary.resets, 1);
     assert.equal(firstResetState.mazeMeta.layoutVariant, 'tight-corners');
     assert.equal(firstResetState.mazeMeta.hardMode, false);
-    assert.equal(firstResetState.mazeMeta.ghostCount, 1);
+    assert.equal(firstResetState.mazeMeta.ghostCount, 0);
 
     session.state.maze = makeOpenMaze({
       hazards: [{ row: 0, col: 1 }],
@@ -465,7 +486,7 @@ test('repeated resets advance maze variant into hard mode with ghosts', () => {
     assert.equal(secondResetState.summary.resets, 2);
     assert.equal(secondResetState.mazeMeta.layoutVariant, 'hard-mode');
     assert.equal(secondResetState.mazeMeta.hardMode, true);
-    assert.equal(secondResetState.mazeMeta.ghostCount, 1);
+    assert.equal(secondResetState.mazeMeta.ghostCount, 0);
   } finally {
     mock.timers.reset();
   }

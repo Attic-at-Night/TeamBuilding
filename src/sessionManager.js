@@ -10,9 +10,9 @@ const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 const START_LIVES = 3;
 const MAX_LIVES = 5;
-const MAZE_WIDTH = 14;
-const MAZE_HEIGHT = 14;
-const HAZARD_COUNT = 12;
+const MAZE_WIDTH = 8;
+const MAZE_HEIGHT = 8;
+const HAZARD_COUNT = 5;
 const KEY_COUNT = 3;
 const LIFE_PICKUP_COUNT = 0;
 const RECENT_EVENT_LIMIT = 10;
@@ -163,15 +163,15 @@ function getPrimaryRole(roles) {
 function getRecentEventsForRole(state, role) {
   const relevantEvents = state.log.filter((entry) => {
     if (role === MazeRole.NAVIGATOR) {
-      return ['move', 'hazard_hit', 'reset', 'session_end', 'game_start'].includes(entry.event);
+      return ['move', 'hazard_hit', 'key_pickup', 'reset', 'session_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.KEY_SEER) {
       return ['key_pickup', 'reset', 'session_end', 'game_start'].includes(entry.event);
     }
     if (role === MazeRole.GUIDE) {
-      return ['hazard_hit', 'reset', 'session_end', 'game_start'].includes(entry.event);
+      return ['hazard_hit', 'key_pickup', 'reset', 'session_end', 'game_start'].includes(entry.event);
     }
-    return ['move', 'hazard_hit', 'reset', 'goal_locked', 'session_end', 'game_start'].includes(entry.event);
+    return ['move', 'hazard_hit', 'key_pickup', 'reset', 'goal_locked', 'session_end', 'game_start'].includes(entry.event);
   });
 
   return relevantEvents.slice(-RECENT_EVENT_LIMIT);
@@ -546,8 +546,8 @@ function createRoundMazeForState(state) {
   const resets = state.summary && typeof state.summary.resets === 'number' ? state.summary.resets : 0;
   const hardMode = resets >= 2;
   const loopFraction = hardMode ? 0.15 : (resets % 2 === 1 ? 0.28 : 0.42);
-  const ghostCount = 1;
-  const hazardCount = hardMode ? HAZARD_COUNT + 2 : HAZARD_COUNT;
+  const ghostCount = 0;
+  const hazardCount = hardMode ? HAZARD_COUNT + 1 : HAZARD_COUNT;
   const layoutVariant = hardMode ? 'hard-mode' : (resets % 2 === 1 ? 'tight-corners' : 'open-loops');
 
   return generateMaze(
