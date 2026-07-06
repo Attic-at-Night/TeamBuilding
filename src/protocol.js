@@ -75,6 +75,7 @@ const ErrorCode = {
   TRAINER_ROLE_TAKEN: 'trainer_role_taken',
   INVALID_RECONNECT_TOKEN: 'invalid_reconnect_token',
   RECONNECT_SLOT_UNAVAILABLE: 'reconnect_slot_unavailable',
+  RECONNECT_REPLACED: 'reconnect_replaced',
 };
 
 module.exports = { MessageType, GameStatus, ClientRole, MazeRole, ErrorCode, PROTOCOL_VERSION };

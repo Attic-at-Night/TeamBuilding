@@ -502,7 +502,7 @@ class JoinScene extends Phaser.Scene {
 
     if (message.type === 'join_error') {
       this.game.events.off('ws_message', this.onMessage, this);
-      if (message.code === 'invalid_reconnect_token') {
+      if (message.code === 'invalid_reconnect_token' || message.code === 'reconnect_replaced') {
         clearReconnectState(this.sessionId);
         pendingReconnectToken = null;
         if (this.rejoinBg) {
@@ -575,6 +575,18 @@ class WaitScene extends Phaser.Scene {
       this.game.events.off('ws_message', this.onMessage, this);
       this.game.events.off('ws_close', this.onClose, this);
       this.scene.start('ControllerScene', { initialState: message.state });
+      return;
+    }
+
+    if (message.type === 'join_error' && message.code === 'reconnect_replaced') {
+      const sessionId = getCurrentSessionIdFromUrl();
+      if (sessionId) {
+        clearReconnectState(sessionId);
+      }
+      pendingReconnectToken = null;
+      this.game.events.off('ws_message', this.onMessage, this);
+      this.game.events.off('ws_close', this.onClose, this);
+      this.scene.start('JoinScene');
       return;
     }
 
@@ -1458,6 +1470,17 @@ class ControllerScene extends Phaser.Scene {
       this.currentState = message.state;
       this._renderState(message.state);
       this._hideConnectionUi();
+      return;
+    }
+
+    if (message.type === 'join_error' && message.code === 'reconnect_replaced') {
+      const sessionId = getCurrentSessionIdFromUrl();
+      if (sessionId) {
+        clearReconnectState(sessionId);
+      }
+      pendingReconnectToken = null;
+      this.scene.start('JoinScene');
+      return;
     }
 
     if (message.type === 'session_closed') {

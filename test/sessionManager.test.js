@@ -763,6 +763,8 @@ test('controller reconnect token can take over before old socket cleanup', () =>
   const reconnectedRegistration = reconnectingController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
   assert.equal(reconnectedRegistration.playerId, registered.playerId);
   assert.equal(reconnectedRegistration.reconnected, true);
+  assert.equal(originalController.sent.at(-1).type, MessageType.JOIN_ERROR);
+  assert.equal(originalController.sent.at(-1).code, 'reconnect_replaced');
   assert.equal(originalController.closed, true);
 });
 

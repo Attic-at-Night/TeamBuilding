@@ -1633,6 +1633,11 @@ class SessionManager {
     const existingController = session.controllers.get(existingPlayerId);
     if (existingController && existingController.socket && existingController.socket !== socket) {
       this.cancelDisconnectGrace(existingController.socket);
+      sendJoinError(
+        existingController.socket,
+        'This player joined from another device.',
+        ErrorCode.RECONNECT_REPLACED
+      );
       existingController.socket._disconnectFinalized = true;
       existingController.socket.meta = null;
       try {
