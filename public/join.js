@@ -1039,8 +1039,14 @@ class ControllerScene extends Phaser.Scene {
     const fontScale = typeof options.fontScale === 'number' ? options.fontScale : 0.62;
     const alpha = typeof options.alpha === 'number' ? options.alpha : 1;
     const depth = typeof options.depth === 'number' ? options.depth : 9;
-    const icon = this.add.text(x, y, emoji, {
+    const yOffset = Math.max(1, Math.floor(this.mazeCS * 0.08));
+    const icon = this.add.text(x, y + yOffset, emoji, {
       fontSize: `${Math.max(14, Math.floor(this.mazeCS * fontScale))}px`,
+      fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif',
+      padding: {
+        top: Math.max(2, Math.floor(this.mazeCS * 0.14)),
+        bottom: Math.max(1, Math.floor(this.mazeCS * 0.08)),
+      },
     }).setOrigin(0.5).setAlpha(alpha).setDepth(depth);
     this.boardIcons.push(icon);
     return icon;
@@ -1058,8 +1064,14 @@ class ControllerScene extends Phaser.Scene {
       return;
     }
     const { x, y } = this._getCellCenter(position.row, position.col);
-    const marker = this.add.text(x, y, '🗝️', {
+    const yOffset = Math.max(1, Math.floor(this.mazeCS * 0.08));
+    const marker = this.add.text(x, y + yOffset, '🗝️', {
       fontSize: `${Math.max(18, Math.floor(this.mazeCS * 0.8))}px`,
+      fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif',
+      padding: {
+        top: Math.max(2, Math.floor(this.mazeCS * 0.14)),
+        bottom: Math.max(1, Math.floor(this.mazeCS * 0.08)),
+      },
     }).setOrigin(0.5).setDepth(22).setScale(0.6);
 
     this.tweens.add({
