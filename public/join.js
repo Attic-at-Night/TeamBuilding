@@ -651,6 +651,7 @@ class ControllerScene extends Phaser.Scene {
       targetRow: null,
       targetCol: null,
     };
+    this.ghostMarkerAnim = new Map();
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
     this.onConnectionWake = this.onConnectionWake.bind(this);
@@ -896,6 +897,10 @@ class ControllerScene extends Phaser.Scene {
     this.playerMarkerAnim.targetCol = null;
   }
 
+  _resetGhostMarkerAnimation() {
+    this.ghostMarkerAnim.clear();
+  }
+
   _setPlayerMarkerTarget(row, col) {
     if (typeof row !== 'number' || typeof col !== 'number') {
       return;
@@ -938,6 +943,45 @@ class ControllerScene extends Phaser.Scene {
     return true;
   }
 
+  _setGhostMarkerTarget(id, row, col) {
+    if (!id || typeof row !== 'number' || typeof col !== 'number') {
+      return;
+    }
+    const marker = this.ghostMarkerAnim.get(id) || {
+      currentRow: row,
+      currentCol: col,
+      targetRow: row,
+      targetCol: col,
+    };
+    marker.targetRow = row;
+    marker.targetCol = col;
+    this.ghostMarkerAnim.set(id, marker);
+  }
+
+  _stepGhostMarkerAnimation(deltaMs) {
+    if (!this.ghostMarkerAnim.size) {
+      return false;
+    }
+
+    let changed = false;
+    for (const marker of this.ghostMarkerAnim.values()) {
+      const rowDelta = marker.targetRow - marker.currentRow;
+      const colDelta = marker.targetCol - marker.currentCol;
+      if (Math.abs(rowDelta) < 0.0006 && Math.abs(colDelta) < 0.0006) {
+        marker.currentRow = marker.targetRow;
+        marker.currentCol = marker.targetCol;
+        continue;
+      }
+
+      const factor = 1 - Math.exp(-Math.max(0, deltaMs) * 0.018);
+      marker.currentRow = Phaser.Math.Linear(marker.currentRow, marker.targetRow, factor);
+      marker.currentCol = Phaser.Math.Linear(marker.currentCol, marker.targetCol, factor);
+      changed = true;
+    }
+
+    return changed;
+  }
+
   _drawPlayerMarker(row, col, color = 0x4488ff, radiusScale = 0.28) {
     this._setPlayerMarkerTarget(row, col);
     const drawRow = this.playerMarkerAnim.currentRow == null ? row : this.playerMarkerAnim.currentRow;
@@ -945,9 +989,32 @@ class ControllerScene extends Phaser.Scene {
     this._drawMarkerCircle(drawRow, drawCol, color, radiusScale);
   }
 
+  _drawGhostMarkers(ghosts, color = 0xbb66ff, radiusScale = 0.2) {
+    const seenGhostIds = new Set();
+    for (const ghost of ghosts || []) {
+      if (!ghost || typeof ghost.row !== 'number' || typeof ghost.col !== 'number') {
+        continue;
+      }
+      const ghostId = ghost.id || `ghost-${ghost.row}-${ghost.col}`;
+      seenGhostIds.add(ghostId);
+      this._setGhostMarkerTarget(ghostId, ghost.row, ghost.col);
+      const marker = this.ghostMarkerAnim.get(ghostId);
+      const drawRow = marker ? marker.currentRow : ghost.row;
+      const drawCol = marker ? marker.currentCol : ghost.col;
+      this._drawMarkerCircle(drawRow, drawCol, color, radiusScale);
+    }
+
+    for (const ghostId of this.ghostMarkerAnim.keys()) {
+      if (!seenGhostIds.has(ghostId)) {
+        this.ghostMarkerAnim.delete(ghostId);
+      }
+    }
+  }
+
   _buildRoleUi(role) {
     this._clearRoleUi();
     this._resetPlayerMarkerAnimation();
+    this._resetGhostMarkerAnimation();
 
     const { width, height } = this.scale;
     const baseY = height - 110;
@@ -1203,9 +1270,7 @@ class ControllerScene extends Phaser.Scene {
       this._drawPlayerMarker(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }
 
-    for (const ghost of roleData.ghosts || []) {
-      this._drawMarkerCircle(ghost.row, ghost.col, 0xbb66ff, 0.18);
-    }
+    this._drawGhostMarkers(roleData.ghosts || [], 0xbb66ff, 0.18);
   }
 
   _drawKeyBoard(roleData) {
@@ -1300,9 +1365,7 @@ class ControllerScene extends Phaser.Scene {
       this._drawMarkerCircle(life.row, life.col, 0xff77bb, 0.18);
     }
 
-    for (const ghost of maze.ghosts || []) {
-      this._drawMarkerCircle(ghost.row, ghost.col, 0xbb66ff, 0.2);
-    }
+    this._drawGhostMarkers(maze.ghosts || [], 0xbb66ff, 0.2);
 
     if (maze.goal) {
       this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
@@ -1454,7 +1517,7 @@ class ControllerScene extends Phaser.Scene {
     if (!this.currentState) {
       return;
     }
-    if (this._stepPlayerMarkerAnimation(delta)) {
+    if (this._stepPlayerMarkerAnimation(delta) || this._stepGhostMarkerAnimation(delta)) {
       this._renderBoard(this.currentState.roleData || {});
     }
   }

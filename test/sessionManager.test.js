@@ -45,6 +45,36 @@ function makeOpenMaze(overrides = {}) {
   };
 }
 
+function makeLinearMaze(width, overrides = {}) {
+  const cells = [
+    Array.from({ length: width }, (_value, col) => ({
+      walls: {
+        n: true,
+        e: col === width - 1,
+        s: true,
+        w: col === 0,
+      },
+    })),
+  ];
+
+  return {
+    seed: overrides.seed || 'linear-seed',
+    layoutVariant: overrides.layoutVariant || 'linear-layout',
+    hardMode: overrides.hardMode || false,
+    width,
+    height: 1,
+    cells,
+    hazards: overrides.hazards || [],
+    ghosts: overrides.ghosts || [],
+    keys: overrides.keys || [],
+    lifePickups: overrides.lifePickups || [],
+    goal: overrides.goal || { row: 0, col: width - 1 },
+    playerPos: overrides.playerPos || { row: 0, col: 0 },
+    reached: overrides.reached || false,
+    hitHazards: overrides.hitHazards || 0,
+  };
+}
+
 function registerPlayerId(socket) {
   return socket.sent.find((message) => message.type === MessageType.CLIENT_REGISTERED).playerId;
 }
@@ -352,6 +382,24 @@ test('reset regenerates maze seed and exposes it in synced state and export', ()
   }
 });
 
+test('ghost roams when player is out of chase range', () => {
+  const { manager, sessionId } = bootstrapGame(2);
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeLinearMaze(9, {
+    ghosts: [{ id: 'ghost-1', row: 0, col: 8 }],
+    playerPos: { row: 0, col: 0 },
+  });
+
+  manager.broadcastState(sessionId);
+  assert.equal(manager.tickWorld(), 1);
+
+  const stateAfterTick = session.state;
+  const ghost = stateAfterTick.maze.ghosts.find((entry) => entry.id === 'ghost-1');
+  assert.ok(ghost);
+  assert.equal(ghost.col, 7);
+  assert.ok(stateAfterTick.log.some((entry) => entry.event === 'ghost_move'));
+});
+
 test('ghost tick moves ghosts for guide and ghost collision triggers a reset', () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -404,6 +452,7 @@ test('repeated resets advance maze variant into hard mode with ghosts', () => {
     assert.equal(firstResetState.summary.resets, 1);
     assert.equal(firstResetState.mazeMeta.layoutVariant, 'tight-corners');
     assert.equal(firstResetState.mazeMeta.hardMode, false);
+    assert.equal(firstResetState.mazeMeta.ghostCount, 1);
 
     session.state.maze = makeOpenMaze({
       hazards: [{ row: 0, col: 1 }],

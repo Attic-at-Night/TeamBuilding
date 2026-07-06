@@ -537,7 +537,7 @@ function createRoundMazeForState(state) {
   const resets = state.summary && typeof state.summary.resets === 'number' ? state.summary.resets : 0;
   const hardMode = resets >= 2;
   const loopFraction = hardMode ? 0.15 : (resets % 2 === 1 ? 0.28 : 0.42);
-  const ghostCount = hardMode ? 1 : 0;
+  const ghostCount = 1;
   const hazardCount = hardMode ? HAZARD_COUNT + 2 : HAZARD_COUNT;
   const layoutVariant = hardMode ? 'hard-mode' : (resets % 2 === 1 ? 'tight-corners' : 'open-loops');
 

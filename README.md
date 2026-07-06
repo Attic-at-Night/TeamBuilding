@@ -195,7 +195,7 @@ new events during play, and facilitators can scroll back to inspect older moment
 
 When a round ends, the display shows a restart button so the host can start a fresh round without rebuilding the session.
 
-Every move — including wall hits, ghost collisions, and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards. Maze resets now also rotate between layout variants and escalate into a simple hard mode that adds ghost pressure after repeated failures. When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
+Every move — including wall hits, ghost collisions, and hazard encounters — is appended to `state.log` so the session can be debriefed afterwards. A ghost now spawns every round, layout variants still rotate on resets, and hard mode increases hazard pressure after repeated failures. When `state.status` becomes `"ended"`, the log contains the complete play-through including `hitHazards` count.
 
 ### Durable session log export
 

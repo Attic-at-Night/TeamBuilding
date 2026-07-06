@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' };
 const DELTA = { n: [-1, 0], s: [1, 0], e: [0, 1], w: [0, -1] };
 const DIRS = ['n', 'e', 's', 'w'];
+const GHOST_CHASE_RANGE_CELLS = 7;
 
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -288,6 +289,20 @@ function moveGhosts(maze) {
       maze.playerPos.col
     );
     if (path && path.length >= 2) {
+      const distanceToPlayer = path.length - 1;
+      if (distanceToPlayer > GHOST_CHASE_RANGE_CELLS) {
+        const roamDirs = shuffle([...DIRS]).filter((dir) => !maze.cells[ghost.row][ghost.col].walls[dir]);
+        if (!roamDirs.length) {
+          continue;
+        }
+        const [dr, dc] = DELTA[roamDirs[0]];
+        const nextRow = ghost.row + dr;
+        const nextCol = ghost.col + dc;
+        ghost.row = nextRow;
+        ghost.col = nextCol;
+        moves.push({ id: ghost.id, row: ghost.row, col: ghost.col });
+        continue;
+      }
       const next = path[1];
       ghost.row = next.row;
       ghost.col = next.col;
