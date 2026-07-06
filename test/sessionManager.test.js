@@ -7,8 +7,12 @@ const { MessageType, GameStatus, ClientRole, MazeRole } = require('../src/protoc
 function createFakeSocket() {
   return {
     sent: [],
+    closed: false,
     send(message) {
       this.sent.push(JSON.parse(message));
+    },
+    close() {
+      this.closed = true;
     },
   };
 }
@@ -743,6 +747,23 @@ test('controller can reconnect into the same player slot and role', (t) => {
   const sync = reconnectingController.sent.at(-1);
   assert.equal(sync.type, MessageType.STATE_SYNC);
   assert.equal(sync.state.viewerRole, latestState(originalController).viewerRole);
+});
+
+test('controller reconnect token can take over before old socket cleanup', () => {
+  const { manager, controllers, sessionId } = bootstrapGame(2);
+  const originalController = findControllerByRole(controllers, MazeRole.MOVER);
+  const reconnectingController = createFakeSocket();
+  const registered = originalController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+
+  assert.equal(
+    manager.joinController(sessionId, { name: 'Replacement', reconnectToken: registered.reconnectToken }, reconnectingController),
+    true
+  );
+
+  const reconnectedRegistration = reconnectingController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+  assert.equal(reconnectedRegistration.playerId, registered.playerId);
+  assert.equal(reconnectedRegistration.reconnected, true);
+  assert.equal(originalController.closed, true);
 });
 
 test('controller can reconnect while display is disconnected', (t) => {

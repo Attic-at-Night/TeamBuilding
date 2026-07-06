@@ -1625,9 +1625,21 @@ class SessionManager {
     }
 
     const participant = session.participants.get(existingPlayerId);
-    if (!participant || session.controllers.has(existingPlayerId)) {
+    if (!participant) {
       sendJoinError(socket, 'Reconnect slot is unavailable.', ErrorCode.RECONNECT_SLOT_UNAVAILABLE);
       return false;
+    }
+
+    const existingController = session.controllers.get(existingPlayerId);
+    if (existingController && existingController.socket && existingController.socket !== socket) {
+      this.cancelDisconnectGrace(existingController.socket);
+      existingController.socket._disconnectFinalized = true;
+      existingController.socket.meta = null;
+      try {
+        existingController.socket.close();
+      } catch {
+        // Ignore close failures on stale sockets.
+      }
     }
 
     session.controllers.set(existingPlayerId, { socket, ...participant });

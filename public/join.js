@@ -502,7 +502,7 @@ class JoinScene extends Phaser.Scene {
 
     if (message.type === 'join_error') {
       this.game.events.off('ws_message', this.onMessage, this);
-      if (message.code === 'invalid_reconnect_token' || message.code === 'reconnect_slot_unavailable') {
+      if (message.code === 'invalid_reconnect_token') {
         clearReconnectState(this.sessionId);
         pendingReconnectToken = null;
         if (this.rejoinBg) {
