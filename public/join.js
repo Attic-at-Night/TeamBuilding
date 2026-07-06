@@ -645,6 +645,12 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedScrollThumb = null;
     this.lastMoveSentAt = 0;
     this.connectionUi = null;
+    this.playerMarkerAnim = {
+      currentRow: null,
+      currentCol: null,
+      targetRow: null,
+      targetCol: null,
+    };
     this.onWheel = this.onWheel.bind(this);
     this.onVisibilitySync = this.onVisibilitySync.bind(this);
     this.onConnectionWake = this.onConnectionWake.bind(this);
@@ -883,8 +889,65 @@ class ControllerScene extends Phaser.Scene {
     );
   }
 
+  _resetPlayerMarkerAnimation() {
+    this.playerMarkerAnim.currentRow = null;
+    this.playerMarkerAnim.currentCol = null;
+    this.playerMarkerAnim.targetRow = null;
+    this.playerMarkerAnim.targetCol = null;
+  }
+
+  _setPlayerMarkerTarget(row, col) {
+    if (typeof row !== 'number' || typeof col !== 'number') {
+      return;
+    }
+    if (this.playerMarkerAnim.currentRow == null || this.playerMarkerAnim.currentCol == null) {
+      this.playerMarkerAnim.currentRow = row;
+      this.playerMarkerAnim.currentCol = col;
+    }
+    this.playerMarkerAnim.targetRow = row;
+    this.playerMarkerAnim.targetCol = col;
+  }
+
+  _stepPlayerMarkerAnimation(deltaMs) {
+    if (this.playerMarkerAnim.currentRow == null || this.playerMarkerAnim.currentCol == null) {
+      return false;
+    }
+    if (this.playerMarkerAnim.targetRow == null || this.playerMarkerAnim.targetCol == null) {
+      return false;
+    }
+
+    const rowDelta = this.playerMarkerAnim.targetRow - this.playerMarkerAnim.currentRow;
+    const colDelta = this.playerMarkerAnim.targetCol - this.playerMarkerAnim.currentCol;
+    if (Math.abs(rowDelta) < 0.0006 && Math.abs(colDelta) < 0.0006) {
+      this.playerMarkerAnim.currentRow = this.playerMarkerAnim.targetRow;
+      this.playerMarkerAnim.currentCol = this.playerMarkerAnim.targetCol;
+      return false;
+    }
+
+    const factor = 1 - Math.exp(-Math.max(0, deltaMs) * 0.018);
+    this.playerMarkerAnim.currentRow = Phaser.Math.Linear(
+      this.playerMarkerAnim.currentRow,
+      this.playerMarkerAnim.targetRow,
+      factor
+    );
+    this.playerMarkerAnim.currentCol = Phaser.Math.Linear(
+      this.playerMarkerAnim.currentCol,
+      this.playerMarkerAnim.targetCol,
+      factor
+    );
+    return true;
+  }
+
+  _drawPlayerMarker(row, col, color = 0x4488ff, radiusScale = 0.28) {
+    this._setPlayerMarkerTarget(row, col);
+    const drawRow = this.playerMarkerAnim.currentRow == null ? row : this.playerMarkerAnim.currentRow;
+    const drawCol = this.playerMarkerAnim.currentCol == null ? col : this.playerMarkerAnim.currentCol;
+    this._drawMarkerCircle(drawRow, drawCol, color, radiusScale);
+  }
+
   _buildRoleUi(role) {
     this._clearRoleUi();
+    this._resetPlayerMarkerAnimation();
 
     const { width, height } = this.scale;
     const baseY = height - 110;
@@ -1104,7 +1167,7 @@ class ControllerScene extends Phaser.Scene {
       this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
     }
 
-    this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff);
+    this._drawPlayerMarker(maze.playerPos.row, maze.playerPos.col, 0x4488ff);
   }
 
   _drawGuideBoard(roleData) {
@@ -1137,7 +1200,7 @@ class ControllerScene extends Phaser.Scene {
     }
 
     if (roleData.playerPos) {
-      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+      this._drawPlayerMarker(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }
 
     for (const ghost of roleData.ghosts || []) {
@@ -1161,7 +1224,7 @@ class ControllerScene extends Phaser.Scene {
     }
 
     if (roleData.playerPos) {
-      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+      this._drawPlayerMarker(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }
   }
 
@@ -1191,7 +1254,7 @@ class ControllerScene extends Phaser.Scene {
     }
 
     if (roleData.playerPos) {
-      this._drawMarkerCircle(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
+      this._drawPlayerMarker(roleData.playerPos.row, roleData.playerPos.col, 0x4488ff);
     }
   }
 
@@ -1245,7 +1308,27 @@ class ControllerScene extends Phaser.Scene {
       this._drawMarkerSquare(maze.goal.row, maze.goal.col, 0x22aa55, 0.9);
     }
     if (maze.playerPos) {
-      this._drawMarkerCircle(maze.playerPos.row, maze.playerPos.col, 0x4488ff, 0.24);
+      this._drawPlayerMarker(maze.playerPos.row, maze.playerPos.col, 0x4488ff, 0.24);
+    }
+  }
+
+  _renderBoard(roleData) {
+    if (this.viewerRole === 'mover' && roleData.maze) {
+      this._drawMoverMaze(roleData);
+    } else if (this.viewerRole === 'guide') {
+      this._drawGuideBoard(roleData);
+    } else if (this.viewerRole === 'key-seer') {
+      this._drawKeyBoard(roleData);
+    } else if (this.viewerRole === 'navigator') {
+      this._drawNavigatorBoard(roleData);
+    } else if (this.viewerRole === 'trainer') {
+      if (this.trainerActiveTab === 'maze') {
+        this._drawTrainerBoard(roleData);
+      } else if (this.mazeGraphics) {
+        this.mazeGraphics.clear();
+      }
+    } else if (this.mazeGraphics) {
+      this.mazeGraphics.clear();
     }
   }
 
@@ -1315,23 +1398,7 @@ class ControllerScene extends Phaser.Scene {
     const summary = state.summary || {};
     const timer = state.timer || null;
 
-    if (this.viewerRole === 'mover' && roleData.maze) {
-      this._drawMoverMaze(roleData);
-    } else if (this.viewerRole === 'guide') {
-      this._drawGuideBoard(roleData);
-    } else if (this.viewerRole === 'key-seer') {
-      this._drawKeyBoard(roleData);
-    } else if (this.viewerRole === 'navigator') {
-      this._drawNavigatorBoard(roleData);
-    } else if (this.viewerRole === 'trainer') {
-      if (this.trainerActiveTab === 'maze') {
-        this._drawTrainerBoard(roleData);
-      } else if (this.mazeGraphics) {
-        this.mazeGraphics.clear();
-      }
-    } else if (this.mazeGraphics) {
-      this.mazeGraphics.clear();
-    }
+    this._renderBoard(roleData);
 
     if (this.viewerRole === 'trainer') {
       const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
@@ -1380,6 +1447,15 @@ class ControllerScene extends Phaser.Scene {
         this._lastPendingResetCause = null;
         this._hideResetFeedback();
       }
+    }
+  }
+
+  update(_time, delta) {
+    if (!this.currentState) {
+      return;
+    }
+    if (this._stepPlayerMarkerAnimation(delta)) {
+      this._renderBoard(this.currentState.roleData || {});
     }
   }
 
