@@ -407,6 +407,14 @@ class LobbyScene extends Phaser.Scene {
       color: '#888888',
     }).setOrigin(0.5);
 
+    const tx = width * 0.25;
+    this.add.text(tx, 36, 'Trainers', { fontSize: '26px', color: '#ffffff' }).setOrigin(0.5);
+    this.trainerGroup = this.add.group();
+    this.trainerStatusText = this.add.text(tx, height - 160, 'No trainer connected.', {
+      fontSize: '16px',
+      color: '#888888',
+    }).setOrigin(0.5);
+
     this.startBg = this.add.rectangle(px, height - 90, 240, 68, 0x22aa55)
       .setInteractive({ useHandCursor: true }).setVisible(false);
     this.startLabel = this.add.text(px, height - 90, 'Start Game', {
@@ -429,8 +437,10 @@ class LobbyScene extends Phaser.Scene {
     const { width } = this.scale;
     const { state } = message;
     const players = state.players || [];
+    const trainers = state.trainers || [];
     const summary = state.summary || {};
     const px = width * 0.75;
+    const tx = width * 0.25;
 
     this.playerGroup.clear(true, true);
     players.forEach((p, i) => {
@@ -441,6 +451,17 @@ class LobbyScene extends Phaser.Scene {
         }).setOrigin(0.5)
       );
     });
+
+    this.trainerGroup.clear(true, true);
+    trainers.forEach((t, i) => {
+      this.trainerGroup.add(
+        this.add.text(tx, 80 + i * 36, `• ${t.name}`, {
+          fontSize: '20px',
+          color: '#aaddff',
+        }).setOrigin(0.5)
+      );
+    });
+    this.trainerStatusText.setText(trainers.length ? '' : 'No trainer connected.');
 
     const canStart = state.ready && state.status === 'lobby';
     this.startBg.setVisible(canStart);

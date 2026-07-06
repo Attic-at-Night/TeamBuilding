@@ -243,12 +243,15 @@ function buildRoleData(state, role) {
 }
 
 function buildDisplayState(state, session) {
-  const trainerConnected = Boolean(
-    session && [...session.controllers.values()].some((controller) => controller.isTrainer)
-  );
+  const trainerControllers = session
+    ? [...session.controllers.values()].filter((controller) => controller.isTrainer)
+    : [];
+  const trainerConnected = trainerControllers.length > 0;
+  const trainers = trainerControllers.map(({ id, name }) => ({ id, name }));
   return {
     status: state.status,
     players: state.players,
+    trainers,
     summary: state.summary,
     timer: state.timer,
     mazeMeta: buildMazeMeta(state.maze),
