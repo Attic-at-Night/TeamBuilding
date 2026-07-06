@@ -5,6 +5,8 @@ let pendingReconnectToken = null;
 let pendingPlayerName = null;
 const CONNECTION_PROBE_INTERVAL_MS = 12000;
 const CONNECTION_PROBE_TIMEOUT_MS = 3500;
+const CONNECTION_WARNING_LATENCY_MS = 1200;
+const CONNECTION_WARNING_LATENCY_STREAK = 2;
 
 function storageKey(sessionId) {
   return `teambuilding.reconnect.${sessionId}`;
@@ -687,7 +689,9 @@ class ControllerScene extends Phaser.Scene {
     this.connectionWarningUi = null;
     this.connectionProbeEvent = null;
     this.pendingProbeId = 0;
+    this.pendingProbeSentAt = 0;
     this.pendingProbeReason = null;
+    this.latencyWarningStreak = 0;
   }
 
   create() {
@@ -741,6 +745,7 @@ class ControllerScene extends Phaser.Scene {
         }
         const probeId = Date.now();
         this.pendingProbeId = probeId;
+        this.pendingProbeSentAt = Date.now();
         sendWs({ type: 'resync_request' });
         this.time.delayedCall(CONNECTION_PROBE_TIMEOUT_MS, () => {
           if (this.pendingProbeId !== probeId) {
@@ -847,14 +852,15 @@ class ControllerScene extends Phaser.Scene {
     this.connectionWarningUi = { bg, label, detail };
   }
 
-  _showConnectionWarning(reason) {
+  _showConnectionWarning(reason, detailOverride = null) {
     this.pendingProbeReason = reason;
     if (!this.connectionWarningUi) {
       return;
     }
+    const detail = detailOverride || getConnectionWarningMessage(reason);
     this.connectionWarningUi.bg.setVisible(true);
     this.connectionWarningUi.label.setVisible(true);
-    this.connectionWarningUi.detail.setText(getConnectionWarningMessage(reason)).setVisible(true);
+    this.connectionWarningUi.detail.setText(detail).setVisible(true);
   }
 
   _hideConnectionWarning() {
@@ -1730,9 +1736,23 @@ class ControllerScene extends Phaser.Scene {
       }
 
       this.currentState = message.state;
+      if (this.pendingProbeId) {
+        const latencyMs = Math.max(0, Date.now() - (this.pendingProbeSentAt || Date.now()));
+        if (latencyMs >= CONNECTION_WARNING_LATENCY_MS) {
+          this.latencyWarningStreak += 1;
+          if (this.latencyWarningStreak >= CONNECTION_WARNING_LATENCY_STREAK) {
+            this._showConnectionWarning('slow_response', `High latency (${latencyMs}ms)`);
+          }
+        } else {
+          this.latencyWarningStreak = 0;
+        }
+      }
       this.pendingProbeId = 0;
+      this.pendingProbeSentAt = 0;
       if (this.pendingProbeReason === 'slow_response' || this.pendingProbeReason === 'socket_error') {
-        this.pendingProbeReason = null;
+        if (this.latencyWarningStreak === 0) {
+          this.pendingProbeReason = null;
+        }
       }
       this._renderState(message.state);
       this._hideConnectionUi();
@@ -1765,9 +1785,11 @@ class ControllerScene extends Phaser.Scene {
 
   onSocketOpen() {
     this.pendingProbeId = 0;
+    this.pendingProbeSentAt = 0;
     if (this.pendingProbeReason === 'slow_response' || this.pendingProbeReason === 'socket_error') {
       this.pendingProbeReason = null;
     }
+    this.latencyWarningStreak = 0;
     this._syncConnectionWarning();
   }
 
@@ -1792,6 +1814,9 @@ class ControllerScene extends Phaser.Scene {
       this.connectionProbeEvent.remove(false);
       this.connectionProbeEvent = null;
     }
+    this.pendingProbeId = 0;
+    this.pendingProbeSentAt = 0;
+    this.latencyWarningStreak = 0;
     this._clearResetFeedbackUi();
     this._hideConnectionUi();
     this._hideConnectionWarning();
