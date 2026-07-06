@@ -1234,6 +1234,10 @@ class ControllerScene extends Phaser.Scene {
       this._drawMarkerCircle(key.row, key.col, 0xffcc33, 0.2);
     }
 
+    if (roleData.goal) {
+      this._drawMarkerSquare(roleData.goal.row, roleData.goal.col, 0x22aa55, 0.9);
+    }
+
     this._drawPlayerMarker(maze.playerPos.row, maze.playerPos.col, 0x4488ff);
   }
 
@@ -1286,6 +1290,10 @@ class ControllerScene extends Phaser.Scene {
       const cy = this.mazeOY + key.row * this.mazeCS + this.mazeCS / 2;
       this.mazeGraphics.fillStyle(0xffcc33);
       this.mazeGraphics.fillCircle(cx, cy, Math.max(6, Math.floor(this.mazeCS * 0.2)));
+    }
+
+    if (roleData.goal) {
+      this._drawMarkerSquare(roleData.goal.row, roleData.goal.col, 0x22aa55, 0.9);
     }
 
     if (roleData.playerPos) {

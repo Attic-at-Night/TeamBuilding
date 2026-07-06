@@ -220,6 +220,7 @@ function buildRoleData(state, role) {
       key: key.key,
       collected: key.collected,
     })) : [];
+    roleData.goal = maze && state.summary.keysCollected >= KEY_COUNT ? maze.goal : null;
     if (!roleData.playerPos) {
       roleData.playerPos = maze ? maze.playerPos : null;
     }
@@ -1310,13 +1311,15 @@ class SessionManager {
     }
 
     const moveResult = movePlayer(maze, input.dir);
+    const exitUnlocked = state.summary.keysCollected >= KEY_COUNT;
+    const moveResultLabel = moveResult.result === 'goal' && !exitUnlocked ? 'ok' : moveResult.result;
     appendLog(state, {
       ts,
       event: 'move',
       playerId,
       player: controller.name,
       dir: input.dir,
-      result: moveResult.result,
+      result: moveResultLabel,
       from: moveResult.from || null,
       to: moveResult.to || null,
     });
@@ -1392,17 +1395,10 @@ class SessionManager {
     }
 
     if (maze.reached) {
-      if (state.summary.keysCollected >= KEY_COUNT) {
+      if (exitUnlocked) {
         finishGame(state, 'success', 'goal_reached');
       } else {
         maze.reached = false;
-        appendLog(state, {
-          ts,
-          event: 'goal_locked',
-          playerId,
-          player: controller.name,
-          keysCollected: state.summary.keysCollected,
-        });
       }
     }
 

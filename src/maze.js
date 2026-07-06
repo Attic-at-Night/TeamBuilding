@@ -130,6 +130,13 @@ function pickDistinctCells(candidates, count) {
   return candidates.slice(0, count);
 }
 
+function pickRandomCell(candidates, fallback) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return fallback;
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupCount = 2, options = {}) {
   const loopFraction = typeof options.loopFraction === 'number' ? options.loopFraction : 0.35;
   const ghostCount = typeof options.ghostCount === 'number' ? options.ghostCount : 0;
@@ -173,8 +180,20 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
   // independent cycles and guaranteeing multiple routes from start to goal.
   addLoops(cells, height, width, loopFraction);
 
-  // Find the BFS safe path from start to goal; hazards will never be placed on it.
-  const safePath = findPath(cells, height, width, 0, 0, height - 1, width - 1) || [];
+  const goalCandidates = [];
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (r === 0 && c === 0) {
+        continue;
+      }
+      goalCandidates.push({ row: r, col: c });
+    }
+  }
+  const goal = pickRandomCell(goalCandidates, { row: height - 1, col: width - 1 });
+
+  // Find the BFS safe path from start to the selected goal; hazards will never
+  // be placed on this path so the round is always completable.
+  const safePath = findPath(cells, height, width, 0, 0, goal.row, goal.col) || [];
   const safeSet  = new Set(safePath.map(p => `${p.row},${p.col}`));
 
   // Place hazards on cells that are not on the safe path.
@@ -206,7 +225,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
   const ghostCandidates = pickupCandidates.filter((cell) => {
     return !lifePickups.some((life) => life.row === cell.row && life.col === cell.col)
       && !(cell.row === 0 && cell.col === 0)
-      && !(cell.row === height - 1 && cell.col === width - 1);
+      && !(cell.row === goal.row && cell.col === goal.col);
   });
   const ghosts = pickDistinctCells(ghostCandidates, ghostCount).map((cell, index) => ({
     id: `ghost-${index + 1}-${randomId()}`,
@@ -225,7 +244,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
     ghosts,
     keys,
     lifePickups,
-    goal: { row: height - 1, col: width - 1 },
+    goal,
     playerPos: { row: 0, col: 0 },
     reached: false,
     hitHazards: 0,

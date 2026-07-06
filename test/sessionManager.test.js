@@ -218,6 +218,7 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
 
   assert.ok(Array.isArray(latestState(keySeer).roleData.keys));
   assert.ok(latestState(keySeer).roleData.playerPos);
+  assert.equal(latestState(keySeer).roleData.goal, null);
 
   assert.ok(latestState(navigator).roleData.maze);
   assert.ok(latestState(navigator).roleData.maze.cells);
@@ -487,7 +488,7 @@ test('goal unlocks only after three keys are collected', () => {
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
 });
 
-test('goal remains locked until three keys are collected', () => {
+test('hidden exit behaves like a normal cell until three keys are collected', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
   const session = manager.sessions.get(sessionId);
@@ -501,7 +502,23 @@ test('goal remains locked until three keys are collected', () => {
   const liveState = manager.sessions.get(sessionId).state;
   assert.equal(sync.state.status, GameStatus.PLAYING);
   assert.equal(liveState.maze.reached, false);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'goal_locked'));
+  assert.equal(sync.state.log.some((entry) => entry.event === 'goal_locked'), false);
+  assert.equal(sync.state.log.at(-1).event, 'move');
+  assert.equal(sync.state.log.at(-1).result, 'ok');
+});
+
+test('key-seer only sees exit after collecting all keys', () => {
+  const { manager, controllers, sessionId } = bootstrapGame(4);
+  const keySeer = findControllerByRole(controllers, MazeRole.KEY_SEER);
+  const session = manager.sessions.get(sessionId);
+
+  assert.ok(keySeer);
+  assert.equal(latestState(keySeer).roleData.goal, null);
+
+  session.state.summary.keysCollected = 3;
+  manager.broadcastState(sessionId);
+
+  assert.deepEqual(latestState(keySeer).roleData.goal, session.state.maze.goal);
 });
 
 test('lives reaching zero ends the session as a failure', () => {
