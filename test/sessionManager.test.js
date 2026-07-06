@@ -106,7 +106,7 @@ test('trainer must be explicitly selected in lobby', () => {
   assert.equal(player.sent.at(-1).state.players.length, 1);
 });
 
-test('session rejects a second explicit trainer claim', () => {
+test('session allows multiple explicit trainer joins', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
   const trainer = createFakeSocket();
@@ -115,8 +115,9 @@ test('session rejects a second explicit trainer claim', () => {
 
   manager.registerDisplay(sessionId, display);
   assert.equal(manager.joinController(sessionId, { name: 'Alex', requestedTrainer: true }, trainer), true);
-  assert.equal(manager.joinController(sessionId, { name: 'Sam', requestedTrainer: true }, secondTrainer), false);
-  assert.equal(secondTrainer.sent.at(-1).code, 'trainer_role_taken');
+  assert.equal(manager.joinController(sessionId, { name: 'Sam', requestedTrainer: true }, secondTrainer), true);
+  assert.equal(latestState(trainer).viewerRole, 'trainer');
+  assert.equal(latestState(secondTrainer).viewerRole, 'trainer');
 });
 
 test('session rejects joins after four players', () => {
@@ -766,6 +767,38 @@ test('controller can reconnect while display is disconnected', (t) => {
   assert.equal(reconnectedRegistration.playerId, registered.playerId);
   assert.equal(reconnectedRegistration.reconnectToken, registered.reconnectToken);
   assert.equal(reconnectedRegistration.reconnected, true);
+});
+
+test('controller can replace a disconnected gameplay slot after game start', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const { manager, controllers, sessionId } = bootstrapGame(2);
+  const originalController = findControllerByRole(controllers, MazeRole.MOVER);
+  const replacementController = createFakeSocket();
+  const registered = originalController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+
+  manager.beginDisconnectGrace(originalController, 'socket_closed', 1000);
+  t.mock.timers.tick(1000);
+
+  assert.equal(manager.joinController(sessionId, { name: 'Replacement' }, replacementController), true);
+
+  const replacementRegistration = replacementController.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED);
+  assert.equal(replacementRegistration.playerId, registered.playerId);
+  assert.equal(replacementRegistration.reconnected, false);
+  assert.ok(typeof replacementRegistration.reconnectToken === 'string');
+  assert.notEqual(replacementRegistration.reconnectToken, registered.reconnectToken);
+
+  const sync = replacementController.sent.at(-1);
+  assert.equal(sync.type, MessageType.STATE_SYNC);
+  assert.equal(sync.state.viewerRole, latestState(originalController).viewerRole);
+});
+
+test('trainer can join while game is already in progress', () => {
+  const { manager, sessionId } = bootstrapGame(2);
+  const secondTrainer = createFakeSocket();
+
+  assert.equal(manager.joinController(sessionId, { name: 'Observer 2', requestedTrainer: true }, secondTrainer), true);
+  assert.equal(latestState(secondTrainer).viewerRole, 'trainer');
 });
 
 test('invalid reconnect token is rejected', () => {

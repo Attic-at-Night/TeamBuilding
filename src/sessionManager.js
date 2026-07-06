@@ -243,6 +243,9 @@ function buildRoleData(state, role) {
 }
 
 function buildDisplayState(state, session) {
+  const trainerConnected = Boolean(
+    session && [...session.controllers.values()].some((controller) => controller.isTrainer)
+  );
   return {
     status: state.status,
     players: state.players,
@@ -252,7 +255,7 @@ function buildDisplayState(state, session) {
     log: state.log,
     trainerBroadcast: state.trainerBroadcast,
     displayConnected: Boolean(session && session.display),
-    trainerConnected: Boolean(session && session.trainerId && session.controllers.has(session.trainerId)),
+    trainerConnected,
     ready: state.players.length >= MIN_PLAYERS,
     canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
@@ -745,20 +748,45 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.LOBBY) {
-      sendJoinError(socket, 'Game already started.', ErrorCode.GAME_ALREADY_STARTED);
-      return false;
-    }
-
-    if (requestedTrainer && session.trainerId !== null) {
-      sendJoinError(socket, 'Trainer role is already taken.', ErrorCode.TRAINER_ROLE_TAKEN);
-      return false;
-    }
-
     const isTrainer = requestedTrainer;
-    if (!isTrainer && this._getGameplayControllers(session).length >= MAX_PLAYERS) {
-      sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
-      return false;
+    if (!isTrainer) {
+      if (session.state.status === GameStatus.LOBBY) {
+        if (this._getGameplayControllers(session).length >= MAX_PLAYERS) {
+          sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
+          return false;
+        }
+      } else {
+        const openSlot = this._findOpenGameplaySlot(session);
+        if (!openSlot) {
+          sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
+          return false;
+        }
+
+        const playerName = String(playerNameInput || 'Player').trim() || 'Player';
+        const reconnectTokenForPlayer = makeReconnectToken();
+        if (openSlot.reconnectToken) {
+          session.reconnectTokens.delete(openSlot.reconnectToken);
+        }
+        openSlot.name = playerName;
+        openSlot.reconnectToken = reconnectTokenForPlayer;
+        session.reconnectTokens.set(reconnectTokenForPlayer, openSlot.id);
+        session.controllers.set(openSlot.id, { socket, ...openSlot });
+        socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId: openSlot.id, isTrainer: false };
+
+        sendJson(socket, {
+          type: MessageType.CLIENT_REGISTERED,
+          role: ClientRole.CONTROLLER,
+          sessionId,
+          playerId: openSlot.id,
+          isTrainer: false,
+          reconnectToken: reconnectTokenForPlayer,
+          reconnected: false,
+        });
+
+        session.state.players = this._getPlayers(session);
+        this.broadcastState(sessionId);
+        return true;
+      }
     }
 
     const playerId = crypto.randomUUID();
@@ -1575,6 +1603,18 @@ class SessionManager {
     if (participant.reconnectToken) {
       session.reconnectTokens.delete(participant.reconnectToken);
     }
+  }
+
+  _findOpenGameplaySlot(session) {
+    for (const participant of session.participants.values()) {
+      if (participant.isTrainer) {
+        continue;
+      }
+      if (!session.controllers.has(participant.id)) {
+        return participant;
+      }
+    }
+    return null;
   }
 
   _reconnectController(sessionId, session, socket, reconnectToken) {

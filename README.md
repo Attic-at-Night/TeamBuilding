@@ -179,7 +179,7 @@ The first minigame uses **asymmetric information** to surface clarity issues in 
 
 | Role | Can do | Can see |
 |------|--------|---------|
-| **Trainer** (explicitly selected on join) | Observe, scroll realtime events, log clarity events, toggle highlights, and share either full logs or curated highlights via `trainer_share_log` / `trainer_share_highlights` | Combined mini-maze overview + full trainer event feed |
+| **Trainer** (explicitly selected on join; unlimited seats) | Observe, scroll realtime events, log clarity events, toggle highlights, and share either full logs or curated highlights via `trainer_share_log` / `trainer_share_highlights` | Combined mini-maze overview + full trainer event feed |
 | **Mover** (randomized gameplay role) | Send `player_input` with `{ action: "move", dir: "n|e|s|w" }` | Grid + own position only |
 | **Guide** (randomized gameplay role) | Communicate hazards and ghost pressure | Hazard locations, ghost positions, + player position |
 | **Key Seer** (randomized gameplay role) | Communicate key objectives | Key locations + player position |
