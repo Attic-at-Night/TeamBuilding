@@ -116,7 +116,7 @@ function requestResyncWhenReady(delayMs = 0) {
   }
 
   if (socket.readyState === WebSocket.OPEN) {
-    requestResyncWhenReady();
+    sendWs({ type: 'resync_request' });
     return;
   }
 
