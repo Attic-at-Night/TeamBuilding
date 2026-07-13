@@ -561,7 +561,7 @@ test('lives reaching zero ends the session as a failure', () => {
 });
 
 test('ended sessions can restart into a fresh round', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const { manager, display, trainer, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
   const session = manager.sessions.get(sessionId);
   session.state.maze = makeOpenMaze({
@@ -570,6 +570,7 @@ test('ended sessions can restart into a fresh round', () => {
   session.state.summary.keysCollected = 3;
 
   assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(latestState(trainer).canRestart, true);
   assert.equal(manager.restartGame(sessionId), true);
 
   const sync = display.sent.at(-1);
@@ -684,11 +685,22 @@ test('trainer state includes combined maze and event ids', () => {
   const { trainer } = bootstrapGame(2);
   const sync = trainer.sent.at(-1);
   assert.equal(sync.state.viewerRole, 'trainer');
+  assert.ok(Array.isArray(sync.state.trainerRoleViews));
+  assert.equal(sync.state.trainerRoleViews.length, 2);
   assert.ok(sync.state.roleData.trainerMaze);
   assert.ok(Array.isArray(sync.state.roleData.trainerEvents));
+  assert.ok(Array.isArray(sync.state.roleData.trainerRoleViews));
   assert.ok(Array.isArray(sync.state.roleData.observerSignals));
   assert.ok(sync.state.roleData.trainerEvents.every((entry) => typeof entry.eventId === 'string'));
   assert.ok(sync.state.roleData.trainerEvents.every((entry) => entry.snapshot && entry.snapshot.mazeMeta));
+  const moverView = sync.state.trainerRoleViews.find((view) => view.viewerRole === MazeRole.MOVER);
+  const guideView = sync.state.trainerRoleViews.find((view) => view.viewerRole === MazeRole.GUIDE);
+  assert.deepEqual(moverView.assignedRoles, [MazeRole.MOVER, MazeRole.KEY_SEER]);
+  assert.deepEqual(guideView.assignedRoles, [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
+  assert.ok(moverView.roleData.maze);
+  assert.ok(Array.isArray(moverView.roleData.keys));
+  assert.ok(Array.isArray(guideView.roleData.hazards));
+  assert.ok(guideView.roleData.maze && guideView.roleData.maze.cells);
 });
 
 test('trainer can toggle highlights and share highlight set', () => {

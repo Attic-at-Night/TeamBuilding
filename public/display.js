@@ -290,8 +290,8 @@ function formatTrainerBroadcastDetails(payload) {
     const replayEvents = Array.isArray(payload.replayEvents) ? payload.replayEvents.slice(0, 8) : [];
     const lines = replayEvents.map((entry) => formatTrainerDetailEntry(entry)).filter(Boolean);
     return [
-      `Trainer replay: ${payload.event || 'event'} (${payload.windowSeconds || 5}s window)`,
-      lines.length ? lines.join('\n') : 'No replay events.',
+      `Trainer share: ${payload.event || 'event'} (${payload.windowSeconds || 5}s window)`,
+      lines.length ? lines.join('\n') : 'No shared events.',
     ].join('\n');
   }
 
@@ -880,7 +880,7 @@ class GameScene extends Phaser.Scene {
       } else if (trainerPayload.type === 'highlight_set') {
         trainerLine = `Trainer highlights shared: ${trainerPayload.highlight_count || 0}`;
       } else if (trainerPayload.type === 'replay_snippet') {
-        trainerLine = `Trainer replay shared (${trainerPayload.event || 'event'})`;
+        trainerLine = `Trainer share (${trainerPayload.event || 'event'})`;
       } else {
         trainerLine = `Trainer data: ${truncateText(JSON.stringify(trainerPayload), 110)}`;
       }

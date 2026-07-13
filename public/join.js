@@ -307,9 +307,59 @@ function formatTrainerBroadcastSummary(latest) {
     return `${latest.highlight_count || 0} highlights shared`;
   }
   if (latest.type === 'replay_snippet') {
-    return `Replay shared for ${latest.event || 'event'}`;
+    return `Shared focus for ${latest.event || 'event'}`;
   }
   return 'Full session export shared';
+}
+
+function formatAssignedRoles(roles) {
+  const assigned = Array.isArray(roles) ? roles : [];
+  if (!assigned.length) {
+    return 'Observer';
+  }
+  return assigned.map((role) => String(role || '').replace(/-/g, ' ')).join(' + ');
+}
+
+function getTrainerPerspectiveOptions(state) {
+  const roleViews = Array.isArray(state && state.trainerRoleViews)
+    ? state.trainerRoleViews
+    : Array.isArray(state && state.roleData && state.roleData.trainerRoleViews)
+      ? state.roleData.trainerRoleViews
+      : [];
+  return [
+    {
+      type: 'overview',
+      label: 'All roles',
+      viewerRole: 'trainer',
+      roleData: state && state.roleData ? state.roleData : {},
+    },
+    ...roleViews.map((view) => ({
+      type: 'player',
+      label: `${view.playerName || 'Player'} • ${formatAssignedRoles(view.assignedRoles)}`,
+      viewerRole: view.viewerRole,
+      roleData: view.roleData || {},
+      assignedRoles: view.assignedRoles || [],
+      playerId: view.playerId || null,
+      playerName: view.playerName || 'Player',
+    })),
+  ];
+}
+
+function getTrainerPerspectiveView(state, index) {
+  const options = getTrainerPerspectiveOptions(state);
+  if (!options.length) {
+    return {
+      index: 0,
+      total: 0,
+      option: null,
+    };
+  }
+  const normalizedIndex = Phaser.Math.Wrap(index || 0, 0, options.length);
+  return {
+    index: normalizedIndex,
+    total: options.length,
+    option: options[normalizedIndex],
+  };
 }
 
 function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest) {
@@ -326,7 +376,7 @@ function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selec
     selected ? formatEvent(selected) : 'No event selected',
     summarizeTrainerEvent(selected),
     '',
-    'REPLAY',
+    'SHARE',
     formatTrainerBroadcastSummary(latest),
     '',
     'NEW CLARITY EVENT',
@@ -396,6 +446,9 @@ function formatEvent(entry) {
   }
   if (entry.event === 'trainer_highlights_shared') {
     return `Shared ${entry.highlightCount || 0} highlights`;
+  }
+  if (entry.event === 'trainer_replay_shared') {
+    return 'Shared selected event';
   }
 
   return entry.event.replace(/_/g, ' ');
@@ -659,6 +712,7 @@ class ControllerScene extends Phaser.Scene {
     this.trainerSelectedOffset = 0;
     this.trainerSuggestionIndex = 0;
     this.trainerActiveTab = 'maze';
+    this.trainerPerspectiveIndex = 0;
     this.trainerClarityType = CLARITY_TYPES[0];
     this.trainerFeedLineHeight = 22;
     this.trainerFeedHeaderLines = 2;
@@ -670,6 +724,8 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedLastY = null;
     this.trainerFeedScrollTrack = null;
     this.trainerFeedScrollThumb = null;
+    this.trainerTimerButtons = [];
+    this.trainerTimerStatusText = null;
     this.lastMoveSentAt = 0;
     this.connectionUi = null;
     this.playerMarkerAnim = {
@@ -901,6 +957,8 @@ class ControllerScene extends Phaser.Scene {
     this._clearBoardIcons();
     this.trainerFeedScrollTrack = null;
     this.trainerFeedScrollThumb = null;
+    this.trainerTimerButtons = [];
+    this.trainerTimerStatusText = null;
     if (this.mazeGraphics) {
       this.mazeGraphics.clear();
     }
@@ -947,20 +1005,45 @@ class ControllerScene extends Phaser.Scene {
     this.mazeOY = topY;
   }
 
-  _setupTrainerBoard(roleData = {}, state = this.currentState) {
+  _setupTrainerBoard(roleData = {}, state = this.currentState, trainerPerspective = null) {
     const width = this.scale.width;
     const height = this.scale.height;
     const topY = 154;
     const availableWidth = width - 24;
-    const bottomReserve = this.trainerActiveTab === 'maze' ? 20 : 336;
+    const bottomReserve = this.trainerActiveTab === 'maze' ? 220 : 336;
     const availableHeight = Math.max(128, height - topY - bottomReserve);
-    const board = this._getBoardDimensions('trainer', roleData, state);
+    const previewRole = trainerPerspective && trainerPerspective.viewerRole !== 'trainer'
+      ? trainerPerspective.viewerRole
+      : 'trainer';
+    const previewRoleData = trainerPerspective && trainerPerspective.roleData
+      ? trainerPerspective.roleData
+      : roleData;
+    const board = this._getBoardDimensions(previewRole, previewRoleData, state);
     this.boardCols = board.cols;
     this.boardRows = board.rows;
     this.mazeCS = Math.max(10, Math.floor(Math.min(availableWidth / this.boardCols, availableHeight / this.boardRows)));
     const boardWidth = this.mazeCS * this.boardCols;
     this.mazeOX = Math.floor((width - boardWidth) / 2);
     this.mazeOY = topY;
+  }
+
+  _getTrainerPerspectiveView(state = this.currentState) {
+    const perspective = getTrainerPerspectiveView(state, this.trainerPerspectiveIndex);
+    this.trainerPerspectiveIndex = perspective.index;
+    return perspective;
+  }
+
+  _cycleTrainerPerspective(step) {
+    if (this.viewerRole !== 'trainer') {
+      return;
+    }
+    const perspective = this._getTrainerPerspectiveView(this.currentState || {});
+    if (perspective.total <= 1) {
+      return;
+    }
+    this.trainerPerspectiveIndex = Phaser.Math.Wrap(perspective.index + step, 0, perspective.total);
+    this._buildRoleUi('trainer');
+    this._renderState(this.currentState || {});
   }
 
   _syncTextLayout(role) {
@@ -1284,7 +1367,8 @@ class ControllerScene extends Phaser.Scene {
       this._syncTextLayout(role);
       this.detailText.setText('Hazardous walls and the ball.');
     } else if (role === 'trainer') {
-      this._setupTrainerBoard(roleData, this.currentState);
+      const trainerPerspective = this._getTrainerPerspectiveView(this.currentState || {});
+      this._setupTrainerBoard(roleData, this.currentState, trainerPerspective.option);
       this._syncTextLayout(role);
       buttons.push(
         {
@@ -1305,8 +1389,52 @@ class ControllerScene extends Phaser.Scene {
         }
       );
 
+      if (this.trainerActiveTab === 'maze') {
+        const boardCenterY = this.mazeOY + (this.mazeCS * this.boardRows) / 2;
+        const boardRightX = this.mazeOX + (this.mazeCS * this.boardCols);
+        buttons.push(
+          {
+            label: '←',
+            action: 'trainer_prev_view',
+            width: 52,
+            x: Math.max(34, this.mazeOX - 28),
+            y: boardCenterY,
+            fontSize: '28px',
+          },
+          {
+            label: '→',
+            action: 'trainer_next_view',
+            width: 52,
+            x: Math.min(width - 34, boardRightX + 28),
+            y: boardCenterY,
+            fontSize: '28px',
+          }
+        );
+
+        const perspectiveLabel = this.add.text(width / 2, 144, `View: ${trainerPerspective.option ? trainerPerspective.option.label : 'All roles'}`, {
+          fontSize: '16px',
+          color: '#dde6f2',
+          wordWrap: { width: width - 96 },
+          align: 'center',
+        }).setOrigin(0.5);
+        this.roleUi.push(perspectiveLabel);
+      }
+
+      const timer = (this.currentState && this.currentState.timer) || null;
+      this.trainerTimerStatusText = this.add.text(width / 2, height - 146, '', {
+        fontSize: '16px',
+        color: '#99bbff',
+      }).setOrigin(0.5);
+      this.roleUi.push(this.trainerTimerStatusText);
+
+      buttons.push(
+        { label: timer && timer.status === 'stopped' ? 'Resume' : 'Start', action: 'trainer_timer_start', width: 108, x: (width / 2) - 116, y: height - 104, fontSize: '20px' },
+        { label: 'Pause', action: 'trainer_timer_stop', width: 108, x: width / 2, y: height - 104, fontSize: '20px' },
+        { label: 'Reset', action: 'trainer_timer_reset', width: 108, x: (width / 2) + 116, y: height - 104, fontSize: '20px' }
+      );
+
       if (this.trainerActiveTab === 'events') {
-        this.detailText.setText('Trainer controls: scroll or tap timeline entries, replay selected event, add clarity notes.');
+        this.detailText.setText('Trainer controls: scroll or tap timeline entries, share the selected event, and add clarity notes.');
 
         const feedAreaTop = this.eventsText.y - 6;
         const feedAreaHeight = Math.max(120, height - feedAreaTop - 178);
@@ -1374,8 +1502,28 @@ class ControllerScene extends Phaser.Scene {
         this.roleUi.push(claritySelect);
 
         buttons.push(
-          { label: 'Replay', action: 'trainer_share_replay', width: 132, x: (width / 2) - 74, y: height - 58, fontSize: '22px' },
-          { label: 'Add Event', action: 'trainer_add_clarity', width: 132, x: (width / 2) + 74, y: height - 58, fontSize: '22px' }
+          { label: 'Share', action: 'trainer_share_replay', width: 132, x: (width / 2) - 74, y: height - 58, fontSize: '22px' },
+          { label: 'Flag', action: 'trainer_add_clarity', width: 132, x: (width / 2) + 74, y: height - 58, fontSize: '22px' }
+        );
+      } else {
+        const clarityOptions = CLARITY_TYPES.map((entry) => {
+          const selected = entry === this.trainerClarityType ? ' selected' : '';
+          return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
+        }).join('');
+        const claritySelect = this.add.dom((width / 2) - 48, height - 52).createFromHTML(
+          `<select id="trainer-clarity-select" style="width:178px;height:42px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:15px;padding:8px;">
+            ${clarityOptions}
+          </select>`
+        );
+        const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
+        if (clarityEl) {
+          clarityEl.addEventListener('change', (event) => {
+            this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
+          });
+        }
+        this.roleUi.push(claritySelect);
+        buttons.push(
+          { label: 'Flag', action: 'trainer_add_clarity', width: 92, x: width - 56, y: height - 52, fontSize: '20px' }
         );
       }
     } else {
@@ -1410,6 +1558,30 @@ class ControllerScene extends Phaser.Scene {
           this._setTrainerTab('events');
           return;
         }
+        if (item.action === 'trainer_prev_view') {
+          this._cycleTrainerPerspective(-1);
+          return;
+        }
+        if (item.action === 'trainer_next_view') {
+          this._cycleTrainerPerspective(1);
+          return;
+        }
+        if (item.action === 'trainer_timer_start') {
+          const activeTimer = (this.currentState && this.currentState.timer) || {};
+          const durationMs = activeTimer.durationMs || activeTimer.remainingMs || (5 * 60 * 1000);
+          sendWs({ type: 'timer_start', durationMs });
+          return;
+        }
+        if (item.action === 'trainer_timer_stop') {
+          sendWs({ type: 'timer_stop' });
+          return;
+        }
+        if (item.action === 'trainer_timer_reset') {
+          const activeTimer = (this.currentState && this.currentState.timer) || {};
+          const durationMs = activeTimer.durationMs || activeTimer.remainingMs || (5 * 60 * 1000);
+          sendWs({ type: 'timer_reset', durationMs });
+          return;
+        }
         if (item.action === 'trainer_share_replay') {
           const roleData = (this.currentState && this.currentState.roleData) || {};
           const selected = this._getTrainerSelectedEvent(roleData);
@@ -1433,6 +1605,10 @@ class ControllerScene extends Phaser.Scene {
       });
       bg.on('pointerup', () => bg.setFillStyle(baseButtonColor));
       bg.on('pointerout', () => bg.setFillStyle(baseButtonColor));
+
+      if (item.action === 'trainer_timer_start' || item.action === 'trainer_timer_stop' || item.action === 'trainer_timer_reset') {
+        this.trainerTimerButtons.push({ action: item.action, bg, label });
+      }
 
       this.roleUi.push(bg, label);
     }
@@ -1599,6 +1775,34 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
+  _drawTrainerPerspectiveBoard(trainerPerspective) {
+    const preview = trainerPerspective && trainerPerspective.option ? trainerPerspective.option : null;
+    if (!preview || preview.viewerRole === 'trainer') {
+      this._drawTrainerBoard((this.currentState && this.currentState.roleData) || {});
+      return;
+    }
+
+    const previewRoleData = preview.roleData || {};
+    if (preview.viewerRole === 'mover') {
+      this._drawMoverMaze(previewRoleData);
+      return;
+    }
+    if (preview.viewerRole === 'guide') {
+      this._drawGuideBoard(previewRoleData);
+      return;
+    }
+    if (preview.viewerRole === 'key-seer') {
+      this._drawKeyBoard(previewRoleData);
+      return;
+    }
+    if (preview.viewerRole === 'navigator') {
+      this._drawNavigatorBoard(previewRoleData);
+      return;
+    }
+
+    this._drawTrainerBoard((this.currentState && this.currentState.roleData) || {});
+  }
+
   _renderBoard(roleData) {
     this._clearBoardIcons();
     if (this.viewerRole === 'mover' && roleData.maze) {
@@ -1611,7 +1815,7 @@ class ControllerScene extends Phaser.Scene {
       this._drawNavigatorBoard(roleData);
     } else if (this.viewerRole === 'trainer') {
       if (this.trainerActiveTab === 'maze') {
-        this._drawTrainerBoard(roleData);
+        this._drawTrainerPerspectiveBoard(this._getTrainerPerspectiveView(this.currentState || {}));
       } else if (this.mazeGraphics) {
         this.mazeGraphics.clear();
       }
@@ -1681,13 +1885,51 @@ class ControllerScene extends Phaser.Scene {
     }
   }
 
+  _updateTrainerControls(state) {
+    if (this.viewerRole !== 'trainer') {
+      return;
+    }
+
+    const timer = state.timer || {};
+    if (this.trainerTimerStatusText) {
+      this.trainerTimerStatusText.setText(`Timer: ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`);
+      this.trainerTimerStatusText.setColor(timer.status === 'expired' ? '#ff8888' : '#99bbff');
+    }
+
+    for (const button of this.trainerTimerButtons) {
+      let enabled = state.status !== 'ended';
+      let nextLabel = button.label.text;
+
+      if (button.action === 'trainer_timer_start') {
+        nextLabel = timer.status === 'stopped' ? 'Resume' : 'Start';
+        enabled = enabled && timer.status !== 'running' && timer.status !== 'expired';
+      } else if (button.action === 'trainer_timer_stop') {
+        nextLabel = 'Pause';
+        enabled = enabled && timer.status === 'running';
+      } else if (button.action === 'trainer_timer_reset') {
+        nextLabel = 'Reset';
+      }
+
+      button.label.setText(nextLabel);
+      button.bg.setFillStyle(enabled ? 0x3355ff : 0x4a4f66);
+      if (enabled) {
+        button.bg.setInteractive({ useHandCursor: true });
+      } else {
+        button.bg.disableInteractive();
+      }
+    }
+  }
+
   _renderState(state) {
     const roleData = state.roleData || {};
     const summary = state.summary || {};
     const timer = state.timer || null;
+    const trainerPerspective = this.viewerRole === 'trainer'
+      ? this._getTrainerPerspectiveView(state)
+      : null;
 
     if (this.viewerRole === 'trainer') {
-      this._setupTrainerBoard(roleData, state);
+      this._setupTrainerBoard(roleData, state, trainerPerspective && trainerPerspective.option);
     } else {
       this._setupBoard(this.viewerRole, roleData, state);
     }
@@ -1716,6 +1958,7 @@ class ControllerScene extends Phaser.Scene {
       } else {
         this.eventsText.setText('');
       }
+      this._updateTrainerControls(state);
     } else {
       this.eventsText.setText('');
     }
@@ -1767,12 +2010,27 @@ class ControllerScene extends Phaser.Scene {
       color: summary.outcome === 'success' ? '#22ee66' : '#ff6666',
       fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(11);
-    const subtitle = this.add.text(width / 2, height / 2 + 22, 'Waiting for the host to restart the round.', {
+    const canRestart = this.viewerRole === 'trainer' && state.canRestart;
+    const subtitle = this.add.text(width / 2, height / 2 + 22, canRestart ? 'Tap restart to play again.' : 'Waiting for the host to restart the round.', {
       fontSize: '16px',
       color: '#888888',
     }).setOrigin(0.5).setDepth(11);
 
     this.endUi = [overlay, title, subtitle];
+    if (canRestart) {
+      const restartBg = this.add.rectangle(width / 2, height / 2 + 74, 196, 52, 0x22aa55)
+        .setDepth(11)
+        .setInteractive({ useHandCursor: true });
+      const restartLabel = this.add.text(width / 2, height / 2 + 74, 'Restart', {
+        fontSize: '22px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(12);
+      restartBg.on('pointerover', () => restartBg.setFillStyle(0x44cc77));
+      restartBg.on('pointerout', () => restartBg.setFillStyle(0x22aa55));
+      restartBg.on('pointerup', () => sendWs({ type: 'game_restart' }));
+      this.endUi.push(restartBg, restartLabel);
+    }
   }
 
   _showResetFeedback(pendingReset) {

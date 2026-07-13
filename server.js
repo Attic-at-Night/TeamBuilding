@@ -100,28 +100,28 @@ const handlers = {
 
   [MessageType.GAME_RESTART](_message, socket) {
     const meta = socket.meta;
-    if (meta?.role === ClientRole.DISPLAY) {
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
       sessionManager.restartGame(meta.sessionId);
     }
   },
 
   [MessageType.TIMER_START](message, socket) {
     const meta = socket.meta;
-    if (meta?.role === ClientRole.DISPLAY) {
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
       sessionManager.startTimer(meta.sessionId, message.durationMs);
     }
   },
 
   [MessageType.TIMER_STOP](_message, socket) {
     const meta = socket.meta;
-    if (meta?.role === ClientRole.DISPLAY) {
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
       sessionManager.stopTimer(meta.sessionId);
     }
   },
 
   [MessageType.TIMER_RESET](message, socket) {
     const meta = socket.meta;
-    if (meta?.role === ClientRole.DISPLAY) {
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
       sessionManager.resetTimer(meta.sessionId, message.durationMs);
     }
   },

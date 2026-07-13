@@ -463,11 +463,25 @@ function buildAiSuggestions(state) {
   }));
 }
 
+function buildTrainerRoleViews(state) {
+  return (state.players || []).map((player) => {
+    const assignedRoles = getRoleForPlayer(state, player.id);
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      assignedRoles,
+      viewerRole: getPrimaryRole(assignedRoles),
+      roleData: buildRoleData(state, assignedRoles),
+    };
+  }).filter((view) => view.viewerRole);
+}
+
 function buildTrainerState(state, session) {
   const trainerMaze = buildTrainerCombinedMaze(state.maze);
   const trainerEvents = buildTrainerEvents(state);
   const observerSignals = buildObserverSignals(state);
   const aiSuggestions = buildAiSuggestions(state);
+  const trainerRoleViews = buildTrainerRoleViews(state);
   const mazeMeta = buildMazeMeta(state.maze);
   return {
     status: state.status,
@@ -477,14 +491,17 @@ function buildTrainerState(state, session) {
     log: state.log,
     maze: state.maze,
     mazeMeta,
+    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
     trainerMaze,
     trainerEvents,
+    trainerRoleViews,
     observerSignals,
     aiSuggestions,
     trainerHighlightEventIds: state.trainerHighlightEventIds,
     roleData: {
       trainerMaze,
       trainerEvents,
+      trainerRoleViews,
       observerSignals,
       aiSuggestions,
       mazeMeta,
