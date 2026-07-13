@@ -1009,7 +1009,8 @@ class ControllerScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     const topY = 154;
-    const availableWidth = width - 24;
+    const sideGutter = this.trainerActiveTab === 'maze' ? 128 : 24;
+    const availableWidth = width - sideGutter;
     const bottomReserve = this.trainerActiveTab === 'maze' ? 220 : 336;
     const availableHeight = Math.max(128, height - topY - bottomReserve);
     const previewRole = trainerPerspective && trainerPerspective.viewerRole !== 'trainer'
@@ -1397,7 +1398,7 @@ class ControllerScene extends Phaser.Scene {
             label: '←',
             action: 'trainer_prev_view',
             width: 52,
-            x: Math.max(34, this.mazeOX - 28),
+            x: Math.max(28, this.mazeOX - 56),
             y: boardCenterY,
             fontSize: '28px',
           },
@@ -1405,7 +1406,7 @@ class ControllerScene extends Phaser.Scene {
             label: '→',
             action: 'trainer_next_view',
             width: 52,
-            x: Math.min(width - 34, boardRightX + 28),
+            x: Math.min(width - 28, boardRightX + 56),
             y: boardCenterY,
             fontSize: '28px',
           }
@@ -1421,16 +1422,16 @@ class ControllerScene extends Phaser.Scene {
       }
 
       const timer = (this.currentState && this.currentState.timer) || null;
-      this.trainerTimerStatusText = this.add.text(width / 2, height - 146, '', {
+      this.trainerTimerStatusText = this.add.text(width / 2, height - 214, '', {
         fontSize: '16px',
         color: '#99bbff',
       }).setOrigin(0.5);
       this.roleUi.push(this.trainerTimerStatusText);
 
       buttons.push(
-        { label: timer && timer.status === 'stopped' ? 'Resume' : 'Start', action: 'trainer_timer_start', width: 108, x: (width / 2) - 116, y: height - 104, fontSize: '20px' },
-        { label: 'Pause', action: 'trainer_timer_stop', width: 108, x: width / 2, y: height - 104, fontSize: '20px' },
-        { label: 'Reset', action: 'trainer_timer_reset', width: 108, x: (width / 2) + 116, y: height - 104, fontSize: '20px' }
+        { label: timer && timer.status === 'stopped' ? 'Resume' : 'Start', action: 'trainer_timer_start', width: 108, x: (width / 2) - 116, y: height - 172, fontSize: '20px' },
+        { label: 'Pause', action: 'trainer_timer_stop', width: 108, x: width / 2, y: height - 172, fontSize: '20px' },
+        { label: 'Reset', action: 'trainer_timer_reset', width: 108, x: (width / 2) + 116, y: height - 172, fontSize: '20px' }
       );
 
       if (this.trainerActiveTab === 'events') {
@@ -1482,50 +1483,28 @@ class ControllerScene extends Phaser.Scene {
           this.trainerFeedLastY = null;
         });
         this.roleUi.push(feedArea);
-
-        const clarityOptions = CLARITY_TYPES.map((entry) => {
-          const selected = entry === this.trainerClarityType ? ' selected' : '';
-          return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
-        }).join('');
-        const claritySelect = this.add.dom(width / 2, height - 122).createFromHTML(
-          `<select id="trainer-clarity-select" style="width:260px;height:44px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:16px;padding:8px;">
-            ${clarityOptions}
-          </select>`
-        );
-        const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
-        if (clarityEl) {
-          clarityEl.addEventListener('change', (event) => {
-            this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
-            this._renderState(this.currentState || {});
-          });
-        }
-        this.roleUi.push(claritySelect);
-
-        buttons.push(
-          { label: 'Share', action: 'trainer_share_replay', width: 132, x: (width / 2) - 74, y: height - 58, fontSize: '22px' },
-          { label: 'Flag', action: 'trainer_add_clarity', width: 132, x: (width / 2) + 74, y: height - 58, fontSize: '22px' }
-        );
-      } else {
-        const clarityOptions = CLARITY_TYPES.map((entry) => {
-          const selected = entry === this.trainerClarityType ? ' selected' : '';
-          return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
-        }).join('');
-        const claritySelect = this.add.dom((width / 2) - 48, height - 52).createFromHTML(
-          `<select id="trainer-clarity-select" style="width:178px;height:42px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:15px;padding:8px;">
-            ${clarityOptions}
-          </select>`
-        );
-        const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
-        if (clarityEl) {
-          clarityEl.addEventListener('change', (event) => {
-            this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
-          });
-        }
-        this.roleUi.push(claritySelect);
-        buttons.push(
-          { label: 'Flag', action: 'trainer_add_clarity', width: 92, x: width - 56, y: height - 52, fontSize: '20px' }
-        );
       }
+
+      const clarityOptions = CLARITY_TYPES.map((entry) => {
+        const selected = entry === this.trainerClarityType ? ' selected' : '';
+        return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
+      }).join('');
+      const claritySelect = this.add.dom((width / 2) - 48, height - 112).createFromHTML(
+        `<select id="trainer-clarity-select" style="width:178px;height:42px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:15px;padding:8px;">
+          ${clarityOptions}
+        </select>`
+      );
+      const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
+      if (clarityEl) {
+        clarityEl.addEventListener('change', (event) => {
+          this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
+        });
+      }
+      this.roleUi.push(claritySelect);
+      buttons.push(
+        { label: 'Share', action: 'trainer_share_replay', width: 108, x: width - 116, y: height - 112, fontSize: '20px' },
+        { label: 'Flag', action: 'trainer_add_clarity', width: 108, x: width - 116, y: height - 58, fontSize: '20px' }
+      );
     } else {
       this._syncTextLayout(role);
       this.detailText.setText('Waiting for your view to load.');
