@@ -1377,7 +1377,7 @@ class ControllerScene extends Phaser.Scene {
           action: 'trainer_tab_maze',
           width: 120,
           x: (width / 2) - 66,
-          y: 116,
+          y: 90,
           fontSize: '20px',
         },
         {
@@ -1385,7 +1385,7 @@ class ControllerScene extends Phaser.Scene {
           action: 'trainer_tab_events',
           width: 120,
           x: (width / 2) + 66,
-          y: 116,
+          y: 90,
           fontSize: '20px',
         }
       );
@@ -1412,7 +1412,7 @@ class ControllerScene extends Phaser.Scene {
           }
         );
 
-        const perspectiveLabel = this.add.text(width / 2, 144, `View: ${trainerPerspective.option ? trainerPerspective.option.label : 'All roles'}`, {
+        const perspectiveLabel = this.add.text(width / 2, 128, `View: ${trainerPerspective.option ? trainerPerspective.option.label : 'All roles'}`, {
           fontSize: '16px',
           color: '#dde6f2',
           wordWrap: { width: width - 96 },
@@ -1433,9 +1433,11 @@ class ControllerScene extends Phaser.Scene {
         { label: 'Pause', action: 'trainer_timer_stop', width: 108, x: width / 2, y: height - 172, fontSize: '20px' },
         { label: 'Reset', action: 'trainer_timer_reset', width: 108, x: (width / 2) + 116, y: height - 172, fontSize: '20px' }
       );
+      const controlsDivider = this.add.rectangle(width / 2, height - 142, width - 28, 2, 0x334477, 0.9);
+      this.roleUi.push(controlsDivider);
 
       if (this.trainerActiveTab === 'events') {
-        this.detailText.setText('Trainer controls: scroll or tap timeline entries, share the selected event, and add clarity notes.');
+        this.detailText.setText('Trainer controls: scroll or tap timeline entries, share the selected event, and select a clarity issue to flag.');
 
         const feedAreaTop = this.eventsText.y - 6;
         const feedAreaHeight = Math.max(120, height - feedAreaTop - 178);
@@ -1489,21 +1491,28 @@ class ControllerScene extends Phaser.Scene {
         const selected = entry === this.trainerClarityType ? ' selected' : '';
         return `<option value="${entry}"${selected}>${humanizeClarityType(entry)}</option>`;
       }).join('');
-      const claritySelect = this.add.dom((width / 2) - 48, height - 112).createFromHTML(
-        `<select id="trainer-clarity-select" style="width:178px;height:42px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:15px;padding:8px;">
+      const claritySelect = this.add.dom((width / 2) - 52, height - 90).createFromHTML(
+        `<select id="trainer-clarity-select" style="width:208px;height:42px;border-radius:10px;border:1px solid #4a5ea8;background:#171d3a;color:#ffffff;font-size:15px;padding:8px;">
           ${clarityOptions}
         </select>`
       );
       const clarityEl = claritySelect.getChildByID('trainer-clarity-select');
       if (clarityEl) {
         clarityEl.addEventListener('change', (event) => {
-          this.trainerClarityType = event.target.value || CLARITY_TYPES[0];
+          const clarityType = event.target.value || CLARITY_TYPES[0];
+          this.trainerClarityType = clarityType;
+          sendWs({
+            type: 'player_input',
+            input: {
+              action: 'trainer_add_clarity_event',
+              clarityType,
+            },
+          });
         });
       }
       this.roleUi.push(claritySelect);
       buttons.push(
-        { label: 'Share', action: 'trainer_share_replay', width: 108, x: width - 116, y: height - 112, fontSize: '20px' },
-        { label: 'Flag', action: 'trainer_add_clarity', width: 108, x: width - 116, y: height - 58, fontSize: '20px' }
+        { label: 'Share', action: 'trainer_share_replay', width: 108, x: (width / 2) + 132, y: height - 90, fontSize: '20px' }
       );
     } else {
       this._syncTextLayout(role);
