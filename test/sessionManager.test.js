@@ -726,7 +726,16 @@ test('trainer can toggle highlights and share highlight set', () => {
 test('trainer can share replay snippet around a selected event', () => {
   const { manager, display, trainer, sessionId } = bootstrapGame(2);
   const trainerId = registerPlayerId(trainer);
-  const targetEventId = display.sent.at(-1).state.log[0].eventId;
+
+  assert.equal(
+    manager.handleInput(sessionId, trainerId, {
+      action: 'trainer_add_clarity_event',
+      clarityType: 'role_unclear',
+    }),
+    true
+  );
+
+  const targetEventId = display.sent.at(-1).state.log.find((entry) => entry.event === 'clarity_event').eventId;
 
   assert.equal(
     manager.handleInput(sessionId, trainerId, {
@@ -740,7 +749,8 @@ test('trainer can share replay snippet around a selected event', () => {
   assert.equal(payload.type, 'replay_snippet');
   assert.equal(payload.eventId, targetEventId);
   assert.ok(Array.isArray(payload.replayEvents));
-  assert.ok(payload.replayEvents.length > 0);
+  assert.equal(payload.replayEvents.length, 1);
+  assert.equal(payload.replayEvents[0].event, 'clarity_event');
 });
 
 test('trainer can add clarity events to the timeline', () => {

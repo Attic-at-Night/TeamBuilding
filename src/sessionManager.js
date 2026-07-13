@@ -372,27 +372,22 @@ function buildObserverSignals(state) {
 
 function buildReplaySnippet(state, eventId, windowSeconds = 5) {
   const anchor = state.log.find((entry) => entry.eventId === eventId);
-  if (!anchor) {
+  if (!anchor || anchor.event !== 'clarity_event') {
     return null;
   }
-
-  const anchorTime = typeof anchor.t === 'number' ? anchor.t : 0;
-  const replayEvents = state.log.filter((entry) => {
-    const eventTime = typeof entry.t === 'number' ? entry.t : anchorTime;
-    return Math.abs(eventTime - anchorTime) <= windowSeconds;
-  }).map((entry) => ({
-    eventId: entry.eventId,
-    event: entry.event,
-    t: entry.t,
-    ts: entry.ts,
-    player: entry.player || null,
-    dir: entry.dir || null,
-    result: entry.result || null,
-    hazardType: entry.hazardType || null,
-    clarityType: entry.clarityType || null,
-    position: entry.position || null,
-    snapshot: entry.snapshot || null,
-  }));
+  const replayEvents = [{
+    eventId: anchor.eventId,
+    event: anchor.event,
+    t: anchor.t,
+    ts: anchor.ts,
+    player: anchor.player || null,
+    dir: anchor.dir || null,
+    result: anchor.result || null,
+    hazardType: anchor.hazardType || null,
+    clarityType: anchor.clarityType || null,
+    position: anchor.position || null,
+    snapshot: anchor.snapshot || null,
+  }];
 
   return {
     type: 'replay_snippet',

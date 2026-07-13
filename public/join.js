@@ -362,32 +362,17 @@ function getTrainerPerspectiveView(state, index) {
   };
 }
 
-function buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest) {
-  const snapshotSummary = summarizeTrainerSnapshot(selected && selected.snapshot);
-  const mazeMeta = roleData.mazeMeta || {};
-
+function buildTrainerDetailText(_roleData, summary) {
   return [
     'OVERVIEW',
-    `Keys ${summary.keysCollected || 0}/3 • Lives ${summary.livesRemaining || 0} • Resets ${summary.resets || 0}`,
-    `Timer ${formatTimerValue(timer)} • ${formatTimerStatus(timer)}`,
-    `Maze ${mazeMeta.layoutVariant || 'default'}${mazeMeta.hardMode ? ' • hard mode' : ''}`,
-    '',
-    'SELECTED EVENT',
-    selected ? formatEvent(selected) : 'No event selected',
-    summarizeTrainerEvent(selected),
-    '',
-    'SHARE',
-    formatTrainerBroadcastSummary(latest),
-    '',
-    'NEW CLARITY EVENT',
-    `Type: ${selectedClarity}`,
-    snapshotSummary,
+    `Keys ${summary.keysCollected || 0}/3 • Resets ${summary.resets || 0}`,
+    `Outcome: ${summary.outcome || 'in progress'}`,
   ].join('\n');
 }
 
 function getTrainerFeedEvents(roleData) {
   const trainerEvents = roleData.trainerEvents || [];
-  return trainerEvents.filter((entry) => entry.event !== 'input');
+  return trainerEvents.filter((entry) => entry.event === 'clarity_event');
 }
 
 function formatEvent(entry) {
@@ -722,6 +707,7 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedVisibleEvents = [];
     this.trainerFeedDragged = false;
     this.trainerFeedLastY = null;
+    this.trainerLatestEventId = null;
     this.trainerFeedScrollTrack = null;
     this.trainerFeedScrollThumb = null;
     this.trainerTimerButtons = [];
@@ -1065,8 +1051,8 @@ class ControllerScene extends Phaser.Scene {
     if (role === 'mover') {
       this.eventsText.setPosition(18, this.mazeOY + this.mazeCS * this.boardRows + 12);
     } else if (role === 'trainer') {
-      const controlsReserve = 170;
-      this.eventsText.setPosition(18, Math.max(344, height - controlsReserve - 250));
+      const controlsReserve = 250;
+      this.eventsText.setPosition(18, Math.max(320, height - controlsReserve - 250));
     } else {
       this.eventsText.setPosition(18, height - 132);
     }
@@ -1412,7 +1398,7 @@ class ControllerScene extends Phaser.Scene {
           }
         );
 
-        const perspectiveLabel = this.add.text(width / 2, 128, `View: ${trainerPerspective.option ? trainerPerspective.option.label : 'All roles'}`, {
+        const perspectiveLabel = this.add.text(width / 2, 146, `View: ${trainerPerspective.option ? trainerPerspective.option.label : 'All roles'}`, {
           fontSize: '16px',
           color: '#dde6f2',
           wordWrap: { width: width - 96 },
@@ -1433,14 +1419,14 @@ class ControllerScene extends Phaser.Scene {
         { label: 'Pause', action: 'trainer_timer_stop', width: 108, x: width / 2, y: height - 172, fontSize: '20px' },
         { label: 'Reset', action: 'trainer_timer_reset', width: 108, x: (width / 2) + 116, y: height - 172, fontSize: '20px' }
       );
-      const controlsDivider = this.add.rectangle(width / 2, height - 142, width - 28, 2, 0x334477, 0.9);
+      const controlsDivider = this.add.rectangle(width / 2, height - 122, width - 28, 2, 0x334477, 0.9);
       this.roleUi.push(controlsDivider);
 
       if (this.trainerActiveTab === 'events') {
         this.detailText.setText('Trainer controls: scroll or tap timeline entries, share the selected event, and select a clarity issue to flag.');
 
         const feedAreaTop = this.eventsText.y - 6;
-        const feedAreaHeight = Math.max(120, height - feedAreaTop - 178);
+        const feedAreaHeight = Math.max(120, height - feedAreaTop - 236);
         this.trainerFeedAreaHeight = feedAreaHeight;
         this.trainerFeedListStartY = this.eventsText.y + (this.trainerFeedLineHeight * this.trainerFeedHeaderLines) + 2;
 
@@ -1824,8 +1810,9 @@ class ControllerScene extends Phaser.Scene {
     };
 
     if (!trainerEvents.length) {
-      this.eventsText.setText('No events yet.');
+      this.eventsText.setText('No clarity events yet.');
       this.trainerFeedVisibleEvents = [];
+      this.trainerLatestEventId = null;
       if (this.trainerFeedScrollThumb) {
         this.trainerFeedScrollThumb.setVisible(false);
       }
@@ -1833,6 +1820,12 @@ class ControllerScene extends Phaser.Scene {
     }
 
     const sorted = [...trainerEvents].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const latestEventId = sorted[0] && sorted[0].eventId ? sorted[0].eventId : null;
+    if (latestEventId && latestEventId !== this.trainerLatestEventId) {
+      this.trainerLatestEventId = latestEventId;
+      this.trainerEventScroll = 0;
+      this.trainerSelectedOffset = 0;
+    }
     const maxStart = Math.max(0, sorted.length - this.trainerFeedVisibleCount);
     this.trainerEventScroll = Math.min(this.trainerEventScroll, maxStart);
     this.trainerSelectedOffset = Math.min(
@@ -1843,16 +1836,13 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedVisibleEvents = visible;
     const lines = visible.map((entry, idx) => {
       const pointer = idx === this.trainerSelectedOffset ? '>' : ' ';
-      const star = entry.highlighted ? '*' : ' ';
       const label = truncateLabel(formatTrainerTimelineEntry(entry));
-      return `${pointer}${star} ${label}`;
+      return `${pointer} ${label}`;
     });
-    const highlightedCount = (roleData.trainerHighlightEventIds || []).length;
-    const hazardCount = trainerEvents.filter((entry) => entry.event === 'hazard_hit' || entry.event === 'ghost_collision').length;
-    const clarityCount = trainerEvents.filter((entry) => entry.event === 'clarity_event').length;
+    const clarityCount = trainerEvents.length;
     const selectedIndex = Math.min(visible.length - 1, this.trainerSelectedOffset);
     const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
-    const header = `TIMELINE\nHighlights: ${highlightedCount} • Hazards: ${hazardCount} • Clarity: ${clarityCount}`;
+    const header = `CLARITY EVENTS\nTotal: ${clarityCount}`;
     const footer = `Selected: ${selected ? truncateLabel(formatEvent(selected)) : 'None'}\n${truncateLabel(summarizeTrainerEvent(selected))}`;
     this.eventsText.setWordWrapWidth(0);
     this.eventsText.setText(`${header}\n${lines.join('\n')}\n${footer}`);
@@ -1929,12 +1919,8 @@ class ControllerScene extends Phaser.Scene {
 
     if (this.viewerRole === 'trainer') {
       const latest = state.trainerBroadcast && state.trainerBroadcast.payload;
-      const selectedClarity = humanizeClarityType(this.trainerClarityType);
-      const selected = this._getTrainerSelectedEvent(roleData);
-      const aiSuggestions = roleData.aiSuggestions || [];
-      const selectedSuggestion = aiSuggestions[this.trainerSuggestionIndex] || null;
       if (this.trainerActiveTab === 'events') {
-        this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, selectedClarity, selected, selectedSuggestion, latest));
+        this.detailText.setText(buildTrainerDetailText(roleData, summary, timer, latest));
       }
     } else {
       this.detailText.setText('');
