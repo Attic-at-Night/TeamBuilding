@@ -753,6 +753,23 @@ test('trainer can share replay snippet around a selected event', () => {
   assert.equal(payload.replayEvents[0].event, 'clarity_event');
 });
 
+test('trainer replay share rejects non-clarity events', () => {
+  const { manager, trainer, display, sessionId } = bootstrapGame(2);
+  const trainerId = registerPlayerId(trainer);
+  const nonClarityEventId = display.sent.at(-1).state.log.find((entry) => entry.event === 'game_start').eventId;
+
+  assert.equal(
+    manager.handleInput(sessionId, trainerId, {
+      action: 'trainer_share_replay',
+      eventId: nonClarityEventId,
+    }),
+    false
+  );
+
+  const state = latestState(trainer);
+  assert.ok(state.log.some((entry) => entry.event === 'input_rejected' && entry.reason === 'invalid_replay_event'));
+});
+
 test('trainer can add clarity events to the timeline', () => {
   const { manager, display, trainer, sessionId } = bootstrapGame(2);
   const trainerId = registerPlayerId(trainer);

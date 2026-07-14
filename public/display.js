@@ -491,11 +491,7 @@ class GameScene extends Phaser.Scene {
   init(data) {
     this.pendingState = data.initialState || null;
     this.currentState = this.pendingState;
-    this.timelineItems = [];
-    this.timelineScroll = 0;
-    this.timelineContentHeight = 0;
-    this.timelineAutoFollow = true;
-    this.onWheel = this.onWheel.bind(this);
+    this.focusItems = [];
   }
 
   create() {
@@ -507,73 +503,24 @@ class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.summaryText = this.add.text(22, 82, '', {
-      fontSize: '18px',
-      color: '#ffff88',
-      lineSpacing: 6,
-      wordWrap: { width: 320 },
-    });
-
-    this.timerValueText = this.add.text(width / 2, 84, '5:00', {
-      fontSize: '56px',
+    this.timerValueText = this.add.text(width / 2, Math.floor(height * 0.28), '5:00', {
+      fontSize: '148px',
       color: '#ffffff',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.timerStatusText = this.add.text(width / 2, 134, 'Ready', {
-      fontSize: '18px',
+    this.timerStatusText = this.add.text(width / 2, Math.floor(height * 0.4), 'Ready', {
+      fontSize: '34px',
       color: '#99bbff',
     }).setOrigin(0.5);
 
-    this.timerButtons = [];
-    this.createTimerButton(width / 2 - 130, 192, 110, 'Start', 'timer_start');
-    this.createTimerButton(width / 2, 192, 110, 'Pause', 'timer_stop');
-    this.createTimerButton(width / 2 + 130, 192, 110, 'Reset', 'timer_reset');
-
-    this.timelineViewport = {
-      x: 22,
-      y: 246,
-      width: width - 44,
-      height: height - 286,
+    this.focusViewport = {
+      x: 90,
+      y: Math.floor(height * 0.52),
+      width: width - 180,
+      height: Math.floor(height * 0.37),
     };
-
-    this.add.text(this.timelineViewport.x, this.timelineViewport.y - 28, 'Timeline (trainer-curated; scroll for older events)', {
-      fontSize: '16px',
-      color: '#99bbff',
-    });
-
-    this.add.rectangle(
-      this.timelineViewport.x + this.timelineViewport.width / 2,
-      this.timelineViewport.y + this.timelineViewport.height / 2,
-      this.timelineViewport.width,
-      this.timelineViewport.height,
-      0x101827,
-      0.85
-    );
-
-    this.timelineContainer = this.add.container(this.timelineViewport.x + 4, this.timelineViewport.y + 4);
-    this.timelineMaskShape = this.add.graphics();
-    this.timelineMaskShape.fillStyle(0xffffff, 1);
-    this.timelineMaskShape.fillRect(
-      this.timelineViewport.x,
-      this.timelineViewport.y,
-      this.timelineViewport.width,
-      this.timelineViewport.height
-    );
-    this.timelineContainer.setMask(this.timelineMaskShape.createGeometryMask());
-    this.timelineMaskShape.setVisible(false);
-
-    this.timelineStatusText = this.add.text(this.timelineViewport.x, this.timelineViewport.y + this.timelineViewport.height + 8, '', {
-      fontSize: '13px',
-      color: '#88ddff',
-      wordWrap: { width: this.timelineViewport.width },
-    });
-    this.highlightDeckText = this.add.text(width - 370, 74, '', {
-      fontSize: '13px',
-      color: '#ffdf9a',
-      lineSpacing: 4,
-      wordWrap: { width: 340 },
-    }).setOrigin(0, 0);
+    this.focusContainer = this.add.container(this.focusViewport.x, this.focusViewport.y);
 
     this.endOverlay = this.add.rectangle(width / 2, height / 2, width - 60, 190, 0x000000, 0.88)
       .setDepth(10)
@@ -621,9 +568,8 @@ class GameScene extends Phaser.Scene {
       fontSize: '22px',
       color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(21).setVisible(false);
-
     this.game.events.on('ws_message', this.onMessage, this);
-    this.input.on('wheel', this.onWheel, this);
+    this.game.events.on('ws_message', this.onMessage, this);
 
     this.time.addEvent({
       delay: 1000,
@@ -659,16 +605,12 @@ class GameScene extends Phaser.Scene {
       `Time: ${formatDuration(summary.durationMs, summary.startedAt, summary.endedAt)}`,
       `Outcome: ${summary.outcome || 'in progress'}`,
     ];
-    this.summaryText.setText(lines.join('\n'));
     this.timerValueText.setText(formatTimerValue(timer));
     this.timerStatusText.setText(formatTimerStatus(timer));
     this.timerStatusText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
-    this.updateTimerButtons(state);
 
     const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
-    const timelineEntries = trainerPayload ? (state.log || []) : [];
-    this.renderTimeline(timelineEntries, trainerPayload);
-    this.updateTimelineStatus(state);
+    this.renderFocusedShare(trainerPayload, state.trainerBroadcast || null);
 
     if (state.pendingReset) {
       const pr = state.pendingReset;
@@ -715,181 +657,64 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  createTimerButton(x, y, width, label, action) {
-    const bg = this.add.rectangle(x, y, width, 42, 0x3355ff)
-      .setInteractive({ useHandCursor: true });
-    const text = this.add.text(x, y, label, {
-      fontSize: '18px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    bg.on('pointerover', () => {
-      if (bg.getData('enabled')) {
-        bg.setFillStyle(0x5577ff);
-      }
-    });
-    bg.on('pointerout', () => {
-      bg.setFillStyle(bg.getData('enabled') ? 0x3355ff : 0x4a4f66);
-    });
-    bg.on('pointerup', () => {
-      if (!bg.getData('enabled')) {
-        return;
-      }
-      const timer = (this.currentState && this.currentState.timer) || {};
-      const durationMs = timer.durationMs || timer.remainingMs || (5 * 60 * 1000);
-      if (action === 'timer_start') {
-        sendWs({ type: 'timer_start', durationMs });
-      } else if (action === 'timer_stop') {
-        sendWs({ type: 'timer_stop' });
-      } else if (action === 'timer_reset') {
-        sendWs({ type: 'timer_reset', durationMs });
-      }
-    });
-
-    this.timerButtons.push({ bg, text, action });
-  }
-
-  updateTimerButtons(state) {
-    const timer = state.timer || {};
-    const isEnded = state.status === 'ended';
-
-    for (const button of this.timerButtons) {
-      let enabled = !isEnded;
-      let label = button.action === 'timer_start' ? 'Start' : button.text.text;
-
-      if (button.action === 'timer_start') {
-        label = timer.status === 'stopped' ? 'Resume' : 'Start';
-        enabled = enabled && timer.status !== 'running' && timer.status !== 'expired';
-      } else if (button.action === 'timer_stop') {
-        label = 'Pause';
-        enabled = enabled && timer.status === 'running';
-      } else if (button.action === 'timer_reset') {
-        label = 'Reset';
-        enabled = enabled;
-      }
-
-      button.text.setText(label);
-      button.bg.setData('enabled', enabled);
-      button.bg.setFillStyle(enabled ? 0x3355ff : 0x4a4f66);
-      if (enabled) {
-        button.bg.setInteractive({ useHandCursor: true });
-      } else {
-        button.bg.disableInteractive();
-      }
+  renderFocusedShare(trainerPayload, trainerBroadcast) {
+    for (const item of this.focusItems) {
+      item.destroy();
     }
+    this.focusItems = [];
+
+    const sharedEntry = trainerPayload
+      && trainerPayload.type === 'replay_snippet'
+      && trainerPayload.event === 'clarity_event'
+      && Array.isArray(trainerPayload.replayEvents)
+      ? trainerPayload.replayEvents.find((entry) => entry.event === 'clarity_event') || null
+      : null;
+
+    const panelBg = this.add.rectangle(
+      this.focusViewport.width / 2,
+      this.focusViewport.height / 2,
+      this.focusViewport.width,
+      this.focusViewport.height,
+      0x101827,
+      0.9
+    ).setOrigin(0.5);
+    panelBg.setStrokeStyle(3, sharedEntry ? 0xffbb33 : 0x708090, 0.95);
+    this.focusContainer.add(panelBg);
+    this.focusItems.push(panelBg);
+
+    if (!sharedEntry) {
+      const placeholder = this.add.text(this.focusViewport.width / 2, this.focusViewport.height / 2, 'No shared clarity event selected.', {
+        fontSize: '34px',
+        color: '#9aa7b8',
+        align: 'center',
+        wordWrap: { width: this.focusViewport.width - 80 },
+      }).setOrigin(0.5);
+      this.focusContainer.add(placeholder);
+      this.focusItems.push(placeholder);
+      return;
+    }
+
+    const title = this.add.text(40, 34, `Clarity: ${humanizeClarityType(sharedEntry.clarityType)}`, {
+      fontSize: '48px',
+      color: '#fff0cc',
+      fontStyle: 'bold',
+      wordWrap: { width: this.focusViewport.width - 80 },
+    }).setOrigin(0, 0);
+    const time = this.add.text(40, 102, new Date(sharedEntry.ts || Date.now()).toLocaleTimeString(), {
+      fontSize: '26px',
+      color: '#f3cb72',
+    }).setOrigin(0, 0);
+    const trainer = this.add.text(40, 146, `trainer: ${(trainerBroadcast && trainerBroadcast.trainerName) || 'Trainer'}`, {
+      fontSize: '26px',
+      color: '#f3cb72',
+    }).setOrigin(0, 0);
+
+    this.focusContainer.add([title, time, trainer]);
+    this.focusItems.push(title, time, trainer);
   }
 
   shutdown() {
     this.game.events.off('ws_message', this.onMessage, this);
-    this.input.off('wheel', this.onWheel, this);
-  }
-
-  renderTimeline(entries, trainerPayload) {
-    for (const item of this.timelineItems) {
-      item.destroy();
-    }
-    this.timelineItems = [];
-
-    let y = 0;
-    const innerWidth = this.timelineViewport.width - 12;
-    for (const entry of entries) {
-      const card = formatTimelineCard(entry);
-      if (!card) {
-        continue;
-      }
-
-      const style = toneStyle(card.tone);
-      const detailLine = card.detail ? truncateText(card.detail, 110) : null;
-      const height = detailLine ? 54 : 36;
-      const bg = this.add.rectangle(0, y, innerWidth, height, 0x1a2130, 0.96).setOrigin(0, 0);
-      bg.setStrokeStyle(2, style.border, 0.95);
-      const summary = this.add.text(10, y + 6, `${card.time}  ${truncateText(card.summary, 90)}`, {
-        fontSize: '14px',
-        color: style.text,
-        wordWrap: { width: innerWidth - 20 },
-      });
-      this.timelineContainer.add([bg, summary]);
-      this.timelineItems.push(bg, summary);
-
-      if (detailLine) {
-        const detail = this.add.text(10, y + 28, detailLine, {
-          fontSize: '12px',
-          color: style.detail,
-          wordWrap: { width: innerWidth - 20 },
-        });
-        this.timelineContainer.add(detail);
-        this.timelineItems.push(detail);
-      }
-
-      y += height + 8;
-    }
-
-    if (!entries.length) {
-      const placeholder = this.add.text(8, 8, trainerPayload ? 'No events yet.' : 'Timeline hidden until trainer shares debrief data.', {
-        fontSize: '14px',
-        color: '#9aa7b8',
-        wordWrap: { width: innerWidth - 16 },
-      });
-      this.timelineContainer.add(placeholder);
-      this.timelineItems.push(placeholder);
-      y = 54;
-    }
-
-    this.timelineContentHeight = y + 8;
-    if (this.timelineAutoFollow) {
-      this.timelineScroll = this.getTimelineMaxScroll();
-    } else {
-      this.timelineScroll = Phaser.Math.Clamp(this.timelineScroll, 0, this.getTimelineMaxScroll());
-    }
-    this.applyTimelineScroll();
-  }
-
-  getTimelineMaxScroll() {
-    return Math.max(0, this.timelineContentHeight - (this.timelineViewport.height - 8));
-  }
-
-  applyTimelineScroll() {
-    this.timelineContainer.y = this.timelineViewport.y + 4 - this.timelineScroll;
-  }
-
-  onWheel(pointer, _gameObjects, _deltaX, deltaY) {
-    const vx = this.timelineViewport.x;
-    const vy = this.timelineViewport.y;
-    const vw = this.timelineViewport.width;
-    const vh = this.timelineViewport.height;
-    if (pointer.x < vx || pointer.x > vx + vw || pointer.y < vy || pointer.y > vy + vh) {
-      return;
-    }
-
-    const step = Math.sign(deltaY) * 28;
-    const maxScroll = this.getTimelineMaxScroll();
-    this.timelineScroll = Phaser.Math.Clamp(this.timelineScroll + step, 0, maxScroll);
-    this.timelineAutoFollow = this.timelineScroll >= Math.max(0, maxScroll - 2);
-    this.applyTimelineScroll();
-  }
-
-  updateTimelineStatus(state) {
-    const maxScroll = this.getTimelineMaxScroll();
-    const autoText = this.timelineAutoFollow ? 'ON' : 'OFF (manual scroll)';
-    const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
-    let trainerLine = 'Trainer data: waiting for curation';
-    if (trainerPayload) {
-      if (Array.isArray(trainerPayload.events)) {
-        trainerLine = `Trainer data: session export (${trainerPayload.events.length} events)`;
-      } else if (trainerPayload.type === 'highlight_set') {
-        trainerLine = `Trainer highlights shared: ${trainerPayload.highlight_count || 0}`;
-      } else if (trainerPayload.type === 'replay_snippet') {
-        trainerLine = `Trainer share (${trainerPayload.event || 'event'})`;
-      } else {
-        trainerLine = `Trainer data: ${truncateText(JSON.stringify(trainerPayload), 110)}`;
-      }
-    }
-    this.timelineStatusText.setText(
-      `Auto-follow: ${autoText} • Scroll ${Math.round(this.timelineScroll)}/${Math.round(maxScroll)}\n${trainerLine}`
-    );
-
-    this.highlightDeckText.setText(formatTrainerBroadcastDetails(trainerPayload));
   }
 }
 
