@@ -470,7 +470,7 @@ class LobbyScene extends Phaser.Scene {
 
     if (state.status !== 'lobby') {
       this.game.events.off('ws_message', this.onMessage, this);
-      this.scene.start('GameScene', { initialState: state });
+      this.scene.start('GameScene', { initialState: state, sessionData: this.sessionData });
     }
 
     if (summary.outcome) {
@@ -491,11 +491,14 @@ class GameScene extends Phaser.Scene {
   init(data) {
     this.pendingState = data.initialState || null;
     this.currentState = this.pendingState;
+    this.sessionData = data.sessionData || null;
     this.focusItems = [];
   }
 
   create() {
     const { width, height } = this.scale;
+
+    this.renderJoinPanel();
 
     this.add.text(width / 2, 28, 'Session Overview', {
       fontSize: '30px',
@@ -654,6 +657,43 @@ class GameScene extends Phaser.Scene {
       this.restartButtonBg.setVisible(false);
       this.restartButtonLabel.setVisible(false);
       this.restartButtonBg.disableInteractive();
+    }
+  }
+
+  renderJoinPanel() {
+    if (!this.sessionData) {
+      return;
+    }
+
+    const { sessionId, joinUrl } = this.sessionData;
+    const panel = this.add.rectangle(128, 98, 236, 186, 0x101827, 0.88).setOrigin(0.5);
+    panel.setStrokeStyle(2, 0x708090, 0.8);
+    this.add.text(18, 16, `Join: ${sessionId || ''}`, {
+      fontSize: '18px',
+      color: '#dde6f2',
+      fontStyle: 'bold',
+    }).setOrigin(0, 0);
+    this.add.text(18, 152, String(joinUrl || ''), {
+      fontSize: '11px',
+      color: '#88aaff',
+      wordWrap: { width: 210 },
+    }).setOrigin(0, 0);
+
+    if (this.textures.exists('qr_code')) {
+      this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+      return;
+    }
+
+    if (this.sessionData.qrCodeDataUrl) {
+      const onQrAdd = (key) => {
+        if (key !== 'qr_code') {
+          return;
+        }
+        this.textures.off('addtexture', onQrAdd);
+        this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+      };
+      this.textures.on('addtexture', onQrAdd);
+      this.textures.addBase64('qr_code', this.sessionData.qrCodeDataUrl);
     }
   }
 

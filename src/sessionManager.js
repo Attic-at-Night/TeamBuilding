@@ -677,6 +677,67 @@ function beginGameState(session, startedAt) {
   });
 }
 
+function normalizeRoleArray(value) {
+  if (Array.isArray(value)) {
+    return value.filter((role) => typeof role === 'string' && role.length > 0);
+  }
+  if (typeof value === 'string' && value.length > 0) {
+    return [value];
+  }
+  return [];
+}
+
+function rebalanceRoles(activePlayers, previousRoles = {}) {
+  const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
+  const playerMap = new Map(activePlayers.map((player) => [player.id, player]));
+  const remainingPlayerIds = activePlayers.map((player) => player.id);
+  const remainingGroupIndexes = roleGroups.map((_group, index) => index);
+  const nextRoles = {};
+
+  const assign = (playerId, groupIndex) => {
+    const playerIndex = remainingPlayerIds.indexOf(playerId);
+    const groupPosition = remainingGroupIndexes.indexOf(groupIndex);
+    if (playerIndex < 0 || groupPosition < 0) {
+      return false;
+    }
+    nextRoles[playerId] = roleGroups[groupIndex].slice();
+    remainingPlayerIds.splice(playerIndex, 1);
+    remainingGroupIndexes.splice(groupPosition, 1);
+    return true;
+  };
+
+  const existingMoverId = activePlayers.find((player) => {
+    const assigned = normalizeRoleArray(previousRoles[player.id]);
+    return assigned.includes(MazeRole.MOVER);
+  })?.id || null;
+  const moverGroupIndex = remainingGroupIndexes.find((groupIndex) => roleGroups[groupIndex].includes(MazeRole.MOVER));
+  if (existingMoverId && playerMap.has(existingMoverId) && moverGroupIndex != null) {
+    assign(existingMoverId, moverGroupIndex);
+  }
+
+  while (remainingPlayerIds.length && remainingGroupIndexes.length) {
+    let best = null;
+    for (const playerId of remainingPlayerIds) {
+      const previous = normalizeRoleArray(previousRoles[playerId]);
+      for (const groupIndex of remainingGroupIndexes) {
+        const group = roleGroups[groupIndex];
+        const overlap = group.filter((role) => previous.includes(role)).length;
+        const score = overlap;
+        if (!best || score > best.score) {
+          best = { playerId, groupIndex, score };
+        }
+      }
+    }
+
+    if (!best) {
+      break;
+    }
+    assign(best.playerId, best.groupIndex);
+  }
+
+  return nextRoles;
+}
+
 function cloneJsonValue(value) {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -807,50 +868,52 @@ class SessionManager {
         }
       } else {
         const openSlot = this._findOpenGameplaySlot(session);
-        if (!openSlot) {
-          this._log('warn', 'Rejected controller join because no gameplay slot is available.', {
+        if (openSlot) {
+          const playerName = String(playerNameInput || 'Player').trim() || 'Player';
+          const reconnectTokenForPlayer = makeReconnectToken();
+          if (openSlot.reconnectToken) {
+            session.reconnectTokens.delete(openSlot.reconnectToken);
+          }
+          openSlot.name = playerName;
+          openSlot.reconnectToken = reconnectTokenForPlayer;
+          session.reconnectTokens.set(reconnectTokenForPlayer, openSlot.id);
+          session.controllers.set(openSlot.id, { socket, ...openSlot });
+          socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId: openSlot.id, isTrainer: false };
+          this._cancelAbandonedSessionCleanup(sessionId, 'controller_joined');
+          this._log('info', 'Controller claimed disconnected gameplay slot.', {
             sessionId,
-            requestedTrainer,
-            status: session.state.status,
+            playerId: openSlot.id,
+            playerName,
             controllerCount: session.controllers.size,
+            participantCount: session.participants.size,
+            status: session.state.status,
           });
-          sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
-          return false;
-        }
 
-        const playerName = String(playerNameInput || 'Player').trim() || 'Player';
-        const reconnectTokenForPlayer = makeReconnectToken();
-        if (openSlot.reconnectToken) {
-          session.reconnectTokens.delete(openSlot.reconnectToken);
+          sendJson(socket, {
+            type: MessageType.CLIENT_REGISTERED,
+            role: ClientRole.CONTROLLER,
+            sessionId,
+            playerId: openSlot.id,
+            isTrainer: false,
+            reconnectToken: reconnectTokenForPlayer,
+            reconnected: false,
+          });
+
+          session.state.players = this._getPlayers(session);
+          this.broadcastState(sessionId);
+          return true;
         }
-        openSlot.name = playerName;
-        openSlot.reconnectToken = reconnectTokenForPlayer;
-        session.reconnectTokens.set(reconnectTokenForPlayer, openSlot.id);
-        session.controllers.set(openSlot.id, { socket, ...openSlot });
-        socket.meta = { role: ClientRole.CONTROLLER, sessionId, playerId: openSlot.id, isTrainer: false };
-        this._cancelAbandonedSessionCleanup(sessionId, 'controller_joined');
-        this._log('info', 'Controller claimed disconnected gameplay slot.', {
+      }
+      if (this._getGameplayParticipants(session).length >= MAX_PLAYERS) {
+        this._log('warn', 'Rejected controller join because session is full.', {
           sessionId,
-          playerId: openSlot.id,
-          playerName,
+          requestedTrainer,
+          status: session.state.status,
           controllerCount: session.controllers.size,
           participantCount: session.participants.size,
-          status: session.state.status,
         });
-
-        sendJson(socket, {
-          type: MessageType.CLIENT_REGISTERED,
-          role: ClientRole.CONTROLLER,
-          sessionId,
-          playerId: openSlot.id,
-          isTrainer: false,
-          reconnectToken: reconnectTokenForPlayer,
-          reconnected: false,
-        });
-
-        session.state.players = this._getPlayers(session);
-        this.broadcastState(sessionId);
-        return true;
+        sendJoinError(socket, 'Session is full.', ErrorCode.SESSION_FULL);
+        return false;
       }
     }
 
@@ -895,6 +958,9 @@ class SessionManager {
     });
 
     session.state.players = this._getPlayers(session);
+    if (!isTrainer && session.state.status === GameStatus.PLAYING) {
+      this._rebalanceActiveGameRoles(session.state, sessionId, 'player_joined');
+    }
     this.broadcastState(sessionId);
     return true;
   }
@@ -1662,6 +1728,36 @@ class SessionManager {
       return null;
     }
     return this.logStore.load(sessionId);
+  }
+
+  _rebalanceActiveGameRoles(state, sessionId, reason) {
+    if (state.status !== GameStatus.PLAYING) {
+      return false;
+    }
+
+    const players = state.players || [];
+    if (players.length < MIN_PLAYERS || players.length > MAX_PLAYERS) {
+      return false;
+    }
+
+    const nextRoles = rebalanceRoles(players, state.roles || {});
+    state.roles = nextRoles;
+    appendLog(state, {
+      ts: Date.now(),
+      event: 'roles_rebalanced',
+      reason,
+      players: players.map((player) => ({ id: player.id, name: player.name })),
+      roles: Object.entries(nextRoles).map(([playerId, role]) => ({
+        playerId,
+        roles: Array.isArray(role) ? role : [role],
+      })),
+    });
+    this._log('info', 'Rebalanced gameplay roles during active session.', {
+      sessionId,
+      reason,
+      playerCount: players.length,
+    });
+    return true;
   }
 
   _buildStateForSocket(session, meta) {

@@ -266,6 +266,43 @@ test('three-player sessions merge guide+navigator only', () => {
   assert.deepEqual(latestState(guide).roleData.assignedRoles, [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
 });
 
+test('late third join in active two-player game redistributes roles and views', () => {
+  const { manager, controllers, sessionId } = bootstrapGame(2);
+  const lateJoiner = createFakeSocket();
+  const moverBefore = findControllerByRole(controllers, MazeRole.MOVER);
+  const moverBeforeId = registerPlayerId(moverBefore);
+
+  assert.equal(manager.joinController(sessionId, { name: 'Late Joiner' }, lateJoiner), true);
+
+  const allControllers = [...controllers, lateJoiner];
+  const moverAfter = findControllerByRole(allControllers, MazeRole.MOVER);
+  const guideAfter = findControllerByRole(allControllers, MazeRole.GUIDE);
+  const keySeerAfter = findControllerByRole(allControllers, MazeRole.KEY_SEER);
+
+  assert.ok(moverAfter);
+  assert.ok(guideAfter);
+  assert.ok(keySeerAfter);
+  assert.equal(registerPlayerId(moverAfter), moverBeforeId, 'mover role should remain stable during rebalance');
+
+  const moverState = latestState(moverAfter);
+  assert.deepEqual(moverState.roleData.assignedRoles, [MazeRole.MOVER]);
+  assert.ok(moverState.roleData.maze);
+  assert.equal(moverState.roleData.maze.cells, undefined);
+
+  const guideState = latestState(guideAfter);
+  assert.deepEqual(guideState.roleData.assignedRoles, [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
+  assert.ok(Array.isArray(guideState.roleData.hazards));
+  assert.ok(guideState.roleData.maze && guideState.roleData.maze.cells);
+
+  const keySeerState = latestState(keySeerAfter);
+  assert.deepEqual(keySeerState.roleData.assignedRoles, [MazeRole.KEY_SEER]);
+  assert.ok(Array.isArray(keySeerState.roleData.keys));
+
+  const rebalancedLog = manager.sessions.get(sessionId).state.log.find((entry) => entry.event === 'roles_rebalanced');
+  assert.ok(rebalancedLog);
+  assert.equal(manager.sessions.get(sessionId).state.players.length, 3);
+});
+
 test('mover pickup updates key progress and logs the pickup', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
