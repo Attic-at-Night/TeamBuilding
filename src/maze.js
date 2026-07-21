@@ -25,6 +25,10 @@ function shuffle(arr) {
   return arr;
 }
 
+function cellKey(row, col) {
+  return `${row},${col}`;
+}
+
 /**
  * BFS shortest path from (startRow, startCol) to (goalRow, goalCol).
  * Returns an array of { row, col } cells, or null if unreachable.
@@ -72,6 +76,135 @@ function findPath(cells, height, width, startRow, startCol, goalRow, goalCol) {
     }
   }
   return null;
+}
+
+function collectReachableCells(cells, height, width, startRow, startCol, blockedCells = new Set()) {
+  const startKey = cellKey(startRow, startCol);
+  if (blockedCells.has(startKey)) {
+    return new Set();
+  }
+
+  const visited = Array.from({ length: height }, () => new Array(width).fill(false));
+  const queue = [[startRow, startCol]];
+  const reachable = new Set([startKey]);
+  visited[startRow][startCol] = true;
+
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    for (const dir of DIRS) {
+      if (cells[r][c].walls[dir]) continue;
+      const [dr, dc] = DELTA[dir];
+      const nr = r + dr;
+      const nc = c + dc;
+      const nextKey = cellKey(nr, nc);
+      if (visited[nr][nc] || blockedCells.has(nextKey)) {
+        continue;
+      }
+      visited[nr][nc] = true;
+      reachable.add(nextKey);
+      queue.push([nr, nc]);
+    }
+  }
+
+  return reachable;
+}
+
+function findLowestHazardPath(cells, height, width, startRow, startCol, goalRow, goalCol, hazardCells = new Set()) {
+  const bestCosts = Array.from({ length: height }, () => new Array(width).fill(Infinity));
+  const parents = Array.from({ length: height }, () => new Array(width).fill(null));
+  const deque = [[startRow, startCol]];
+
+  bestCosts[startRow][startCol] = 0;
+
+  while (deque.length > 0) {
+    const [r, c] = deque.shift();
+    if (r === goalRow && c === goalCol) {
+      break;
+    }
+
+    for (const dir of DIRS) {
+      if (cells[r][c].walls[dir]) continue;
+      const [dr, dc] = DELTA[dir];
+      const nr = r + dr;
+      const nc = c + dc;
+      const nextKey = cellKey(nr, nc);
+      const nextCost = bestCosts[r][c] + (hazardCells.has(nextKey) ? 1 : 0);
+
+      if (nextCost >= bestCosts[nr][nc]) {
+        continue;
+      }
+
+      bestCosts[nr][nc] = nextCost;
+      parents[nr][nc] = [r, c];
+
+      if (hazardCells.has(nextKey)) {
+        deque.push([nr, nc]);
+      } else {
+        deque.unshift([nr, nc]);
+      }
+    }
+  }
+
+  if (!Number.isFinite(bestCosts[goalRow][goalCol])) {
+    return null;
+  }
+
+  const path = [];
+  let row = goalRow;
+  let col = goalCol;
+  while (row !== null) {
+    path.unshift({ row, col });
+    const parent = parents[row][col];
+    if (parent === null) {
+      break;
+    }
+    [row, col] = parent;
+  }
+
+  return path;
+}
+
+function ensureTargetsReachable(cells, height, width, hazards, targets, start = { row: 0, col: 0 }) {
+  const hazardCells = new Set(hazards.map((hazard) => cellKey(hazard.row, hazard.col)));
+  const requiredTargets = targets.filter(Boolean);
+
+  while (true) {
+    const reachableCells = collectReachableCells(
+      cells,
+      height,
+      width,
+      start.row,
+      start.col,
+      hazardCells
+    );
+    const blockedTarget = requiredTargets.find((target) => !reachableCells.has(cellKey(target.row, target.col)));
+    if (!blockedTarget) {
+      break;
+    }
+
+    const path = findLowestHazardPath(
+      cells,
+      height,
+      width,
+      start.row,
+      start.col,
+      blockedTarget.row,
+      blockedTarget.col,
+      hazardCells
+    );
+    if (!path) {
+      break;
+    }
+
+    const blockingHazard = path.find((cell, index) => index > 0 && hazardCells.has(cellKey(cell.row, cell.col)));
+    if (!blockingHazard) {
+      break;
+    }
+
+    hazardCells.delete(cellKey(blockingHazard.row, blockingHazard.col));
+  }
+
+  return hazards.filter((hazard) => hazardCells.has(cellKey(hazard.row, hazard.col)));
 }
 
 /**
@@ -206,7 +339,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
     }
   }
   shuffle(candidates);
-  const hazards = pickDistinctCells([...candidates], hazardCount);
+  let hazards = pickDistinctCells([...candidates], hazardCount);
   const keyCandidates = candidates.filter((cell) => !hazards.some((hazard) => hazard.row === cell.row && hazard.col === cell.col));
   const keys = pickDistinctCells(keyCandidates, keyCount).map((cell, index) => ({
     id: `key-${index + 1}-${randomId()}`,
@@ -232,6 +365,7 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
     row: cell.row,
     col: cell.col,
   }));
+  hazards = ensureTargetsReachable(cells, height, width, hazards, [...keys, goal]);
 
   return {
     seed: randomId(),
