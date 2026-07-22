@@ -755,12 +755,37 @@ test('follow-up can be manually ended by the host/trainer path', () => {
   assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'follow_up_completed'));
 });
 
-test('manual timer controls are blocked during scripted flow phases', () => {
+test('manual timer controls still work for scripted gameplay phases', () => {
   const { manager, display, sessionId } = bootstrapGame(2);
+  const initialState = display.sent.at(-1).state;
+  const originalNow = Date.now;
 
-  assert.equal(manager.startTimer(sessionId, 30000), false);
-  assert.equal(manager.stopTimer(sessionId), false);
-  assert.equal(manager.resetTimer(sessionId, 30000), false);
+  try {
+    Date.now = () => initialState.timer.startedAt + 60000;
+    assert.equal(manager.stopTimer(sessionId), true);
+    let state = display.sent.at(-1).state;
+    assert.equal(state.timer.status, 'stopped');
+    assert.equal(state.phaseFlow.phaseRemainingMs, (15 * 60 * 1000) - 60000);
+
+    Date.now = () => initialState.timer.startedAt + 65000;
+    assert.equal(manager.startTimer(sessionId), true);
+    state = display.sent.at(-1).state;
+    assert.equal(state.timer.status, 'running');
+    assert.equal(state.timer.remainingMs, (15 * 60 * 1000) - 60000);
+    assert.equal(state.phaseFlow.phaseRemainingMs, (15 * 60 * 1000) - 60000);
+
+    assert.equal(manager.resetTimer(sessionId, 15 * 60 * 1000), true);
+    state = display.sent.at(-1).state;
+    assert.equal(state.timer.status, 'idle');
+    assert.equal(state.timer.remainingMs, 15 * 60 * 1000);
+    assert.equal(state.phaseFlow.phaseRemainingMs, 15 * 60 * 1000);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test('follow-up still blocks timer controls', () => {
+  const { manager, display, sessionId } = bootstrapGame(2);
 
   const phase1End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase1End);
@@ -771,7 +796,39 @@ test('manual timer controls are blocked during scripted flow phases', () => {
 
   assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
   assert.equal(manager.startTimer(sessionId, 30000), false);
+  assert.equal(manager.stopTimer(sessionId), false);
   assert.equal(manager.resetTimer(sessionId, 30000), false);
+});
+
+test('restart after follow-up returns to phase 1 and cycles roles', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const firstRoundRoles = new Map(controllers.map((socket) => [
+    registerPlayerId(socket),
+    latestState(socket).roleData.assignedRoles.slice(),
+  ]));
+
+  const phase1End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase1End);
+  const phase2End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase2End);
+  const phase3End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase3End);
+  assert.equal(manager.endFollowUp(sessionId), true);
+  assert.equal(manager.restartGame(sessionId), true);
+
+  const restartedState = display.sent.at(-1).state;
+  assert.equal(restartedState.status, GameStatus.PLAYING);
+  assert.equal(restartedState.phaseFlow.phaseType, 'gameplay');
+  assert.equal(restartedState.phaseFlow.currentPhase, 1);
+  assert.equal(restartedState.timer.durationMs, 15 * 60 * 1000);
+
+  const restartedRoles = new Map(controllers.map((socket) => [
+    registerPlayerId(socket),
+    latestState(socket).roleData.assignedRoles.slice(),
+  ]));
+  const [firstPlayerId, secondPlayerId] = controllers.map((socket) => registerPlayerId(socket));
+  assert.deepEqual(restartedRoles.get(firstPlayerId), firstRoundRoles.get(secondPlayerId));
+  assert.deepEqual(restartedRoles.get(secondPlayerId), firstRoundRoles.get(firstPlayerId));
 });
 
 test('trainer can share full session export to display state', () => {

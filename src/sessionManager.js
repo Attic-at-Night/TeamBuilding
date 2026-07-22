@@ -112,6 +112,33 @@ function buildEventSnapshot(state) {
   });
 }
 
+function roleGroupKey(roles) {
+  return normalizeRoleArray(roles).join('|');
+}
+
+function buildCycledRoles(activePlayers, previousRoles = {}) {
+  const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
+  const groupKeys = roleGroups.map((group) => roleGroupKey(group));
+  if (!roleGroups.length) {
+    return null;
+  }
+
+  const nextRoles = {};
+  const seenGroups = new Set();
+  for (const player of activePlayers) {
+    const previousGroupKey = roleGroupKey(previousRoles[player.id]);
+    const currentIndex = groupKeys.indexOf(previousGroupKey);
+    if (currentIndex < 0 || seenGroups.has(previousGroupKey)) {
+      return null;
+    }
+    const nextIndex = (currentIndex + 1) % roleGroups.length;
+    nextRoles[player.id] = roleGroups[nextIndex].slice();
+    seenGroups.add(previousGroupKey);
+  }
+
+  return nextRoles;
+}
+
 function appendLog(state, entry) {
   const logEntry = { ...entry };
   if (!logEntry.eventId) {
@@ -672,16 +699,21 @@ function applyGhostHazard(state, ghost) {
   );
 }
 
-function beginGameState(session, startedAt) {
+function beginGameState(session, startedAt, options = {}) {
   const players = session.controllers.size ? [...session.controllers.values()] : [];
   const activePlayers = players.filter((player) => !player.isTrainer);
-  const roles = {};
-  const roleOrder = getRoleOrder(activePlayers.length);
-  const randomizedPlayers = shufflePlayers(activePlayers);
-
-  randomizedPlayers.forEach((player, index) => {
-    roles[player.id] = roleOrder[index] || [];
-  });
+  const shouldCycleRoles = Boolean(options.cycleRoles);
+  const previousRoles = options.previousRoles || {};
+  const roles = shouldCycleRoles
+    ? (buildCycledRoles(activePlayers, previousRoles) || {})
+    : {};
+  if (!Object.keys(roles).length) {
+    const roleOrder = getRoleOrder(activePlayers.length);
+    const randomizedPlayers = shufflePlayers(activePlayers);
+    randomizedPlayers.forEach((player, index) => {
+      roles[player.id] = roleOrder[index] || [];
+    });
+  }
 
   session.state.roles = roles;
   session.state.maze = createRoundMazeForState(session.state);
@@ -1085,7 +1117,10 @@ class SessionManager {
       return false;
     }
 
-    beginGameState(session, Date.now());
+    beginGameState(session, Date.now(), {
+      cycleRoles: true,
+      previousRoles: session.state.roles,
+    });
     this.broadcastState(sessionId);
     return true;
   }
@@ -1096,12 +1131,48 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
+    if (session.state.phaseFlow && session.state.phaseFlow.phaseType === 'follow_up') {
       return false;
     }
 
     const now = Date.now();
     const timer = session.state.timer || createTimerState();
+    const phaseFlow = session.state.phaseFlow || createPhaseFlowState();
+
+    if (phaseFlow.phaseType === 'gameplay') {
+      const nextDurationMs = normalizeTimerDuration(durationMs, normalizeTimerDuration(phaseFlow.phaseDurationMs || timer.durationMs));
+      const nextRemainingMs = timer.status === 'stopped' && typeof timer.remainingMs === 'number'
+        ? timer.remainingMs
+        : (typeof phaseFlow.phaseRemainingMs === 'number' && phaseFlow.phaseRemainingMs > 0
+          ? phaseFlow.phaseRemainingMs
+          : nextDurationMs);
+
+      session.state.timer = createTimerState({
+        status: 'running',
+        durationMs: nextDurationMs,
+        remainingMs: nextRemainingMs,
+        startedAt: now,
+        expiresAt: now + nextRemainingMs,
+        stoppedAt: null,
+      });
+      session.state.phaseFlow = {
+        ...phaseFlow,
+        phaseDurationMs: nextDurationMs,
+        phaseRemainingMs: nextRemainingMs,
+        phaseStartedAt: now,
+        phaseEndsAt: now + nextRemainingMs,
+      };
+      appendLog(session.state, {
+        ts: now,
+        event: 'timer_start',
+        durationMs: nextDurationMs,
+        remainingMs: nextRemainingMs,
+      });
+
+      this.broadcastState(sessionId);
+      return true;
+    }
+
     const nextDurationMs = normalizeTimerDuration(durationMs, normalizeTimerDuration(timer.durationMs));
     const nextRemainingMs = timer.status === 'stopped' && typeof timer.remainingMs === 'number'
       ? timer.remainingMs
@@ -1132,7 +1203,7 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
+    if (session.state.phaseFlow && session.state.phaseFlow.phaseType === 'follow_up') {
       return false;
     }
 
@@ -1151,6 +1222,13 @@ class SessionManager {
       expiresAt: null,
       stoppedAt: now,
     });
+    if (session.state.phaseFlow && session.state.phaseFlow.phaseType === 'gameplay') {
+      session.state.phaseFlow = {
+        ...session.state.phaseFlow,
+        phaseRemainingMs: remainingMs,
+        phaseEndsAt: null,
+      };
+    }
     appendLog(session.state, {
       ts: now,
       event: 'timer_stop',
@@ -1167,11 +1245,39 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
+    if (session.state.phaseFlow && session.state.phaseFlow.phaseType === 'follow_up') {
       return false;
     }
 
     const timer = session.state.timer || createTimerState();
+    const phaseFlow = session.state.phaseFlow || createPhaseFlowState();
+    if (phaseFlow.phaseType === 'gameplay') {
+      const nextDurationMs = normalizeTimerDuration(durationMs, normalizeTimerDuration(phaseFlow.phaseDurationMs || timer.durationMs));
+      session.state.timer = createTimerState({
+        status: 'idle',
+        durationMs: nextDurationMs,
+        remainingMs: nextDurationMs,
+        startedAt: null,
+        expiresAt: null,
+        stoppedAt: null,
+      });
+      session.state.phaseFlow = {
+        ...phaseFlow,
+        phaseDurationMs: nextDurationMs,
+        phaseRemainingMs: nextDurationMs,
+        phaseStartedAt: null,
+        phaseEndsAt: null,
+      };
+      appendLog(session.state, {
+        event: 'timer_reset',
+        durationMs: nextDurationMs,
+        remainingMs: nextDurationMs,
+      });
+
+      this.broadcastState(sessionId);
+      return true;
+    }
+
     const nextDurationMs = normalizeTimerDuration(durationMs, normalizeTimerDuration(timer.durationMs));
     session.state.timer = createTimerState({
       status: 'idle',

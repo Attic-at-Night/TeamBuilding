@@ -152,6 +152,7 @@ The display exposes start / pause / reset timer controls, and controllers show c
 Gameplay sessions now run on a fixed flow after `game_start`: **phase 1 (15 min)**, **phase 2 (10 min)**,
 **phase 3 (5 min)**, then a **follow-up** phase where gameplay is paused and clients show a compact follow-up
 indicator while hiding normal gameplay UI.
+The trainer can still pause, resume, and reset the active gameplay phase timer when facilitation needs it.
 
 ### Game state shape
 
