@@ -228,6 +228,10 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
   assert.ok(latestState(navigator).roleData.maze);
   assert.ok(latestState(navigator).roleData.maze.cells);
   assert.ok(latestState(navigator).roleData.playerPos);
+  assert.equal(display.sent.at(-1).state.phaseFlow.phaseType, 'gameplay');
+  assert.equal(display.sent.at(-1).state.phaseFlow.currentPhase, 1);
+  assert.equal(display.sent.at(-1).state.timer.durationMs, 15 * 60 * 1000);
+  assert.equal(display.sent.at(-1).state.timer.status, 'running');
 });
 
 test('two-player sessions merge roles into mover+key-seer and guide+navigator', () => {
@@ -702,6 +706,74 @@ test('tickTimers expires running timers when time reaches zero', () => {
   assert.ok(manager.sessions.get(sessionId).state.log.some((entry) => entry.event === 'timer_expired'));
 });
 
+test('phase timers auto-advance through gameplay phases and enter follow-up', () => {
+  const { manager, display, sessionId } = bootstrapGame(2);
+
+  let state = display.sent.at(-1).state;
+  assert.equal(state.phaseFlow.phaseType, 'gameplay');
+  assert.equal(state.phaseFlow.currentPhase, 1);
+  const phase1End = state.timer.expiresAt;
+
+  assert.equal(manager.tickTimers(phase1End), 1);
+  state = display.sent.at(-1).state;
+  assert.equal(state.status, GameStatus.PLAYING);
+  assert.equal(state.phaseFlow.currentPhase, 2);
+  assert.equal(state.timer.durationMs, 10 * 60 * 1000);
+  const phase2End = state.timer.expiresAt;
+
+  assert.equal(manager.tickTimers(phase2End), 1);
+  state = display.sent.at(-1).state;
+  assert.equal(state.status, GameStatus.PLAYING);
+  assert.equal(state.phaseFlow.currentPhase, 3);
+  assert.equal(state.timer.durationMs, 5 * 60 * 1000);
+  const phase3End = state.timer.expiresAt;
+
+  assert.equal(manager.tickTimers(phase3End), 1);
+  state = display.sent.at(-1).state;
+  assert.equal(state.status, GameStatus.FOLLOW_UP);
+  assert.equal(state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(state.timer.status, 'idle');
+});
+
+test('follow-up can be manually ended by the host/trainer path', () => {
+  const { manager, display, sessionId } = bootstrapGame(2);
+
+  const phase1End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase1End);
+  const phase2End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase2End);
+  const phase3End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase3End);
+
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(manager.endFollowUp(sessionId), true);
+
+  const finalState = display.sent.at(-1).state;
+  assert.equal(finalState.status, GameStatus.ENDED);
+  assert.equal(finalState.summary.outcome, 'success');
+  assert.ok(finalState.log.some((entry) => entry.event === 'follow_up_end'));
+  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'follow_up_completed'));
+});
+
+test('manual timer controls are blocked during scripted flow phases', () => {
+  const { manager, display, sessionId } = bootstrapGame(2);
+
+  assert.equal(manager.startTimer(sessionId, 30000), false);
+  assert.equal(manager.stopTimer(sessionId), false);
+  assert.equal(manager.resetTimer(sessionId, 30000), false);
+
+  const phase1End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase1End);
+  const phase2End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase2End);
+  const phase3End = display.sent.at(-1).state.timer.expiresAt;
+  manager.tickTimers(phase3End);
+
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(manager.startTimer(sessionId, 30000), false);
+  assert.equal(manager.resetTimer(sessionId, 30000), false);
+});
+
 test('trainer can share full session export to display state', () => {
   const { manager, display, trainer, sessionId } = bootstrapGame(2);
   const trainerId = trainer.sent.find((m) => m.type === MessageType.CLIENT_REGISTERED).playerId;
@@ -837,14 +909,10 @@ test('session export includes normalized observer signals', () => {
     action: 'trainer_add_clarity_event',
     clarityType: 'silent_confusion',
   });
-  manager.startTimer(sessionId, 15000);
-  manager.stopTimer(sessionId);
-
   const exported = manager.getSessionExport(sessionId);
   assert.ok(Array.isArray(exported.observer_signals));
   assert.ok(exported.observer_signals.some((entry) => entry.category === 'clarity' && entry.clarityType === 'silent_confusion'));
-  assert.ok(exported.observer_signals.some((entry) => entry.category === 'timer' && entry.type === 'timer_start'));
-  assert.ok(exported.observer_signals.some((entry) => entry.category === 'timer' && entry.type === 'timer_stop'));
+  assert.ok(exported.observer_signals.some((entry) => entry.category === 'flow' && entry.type === 'phase_start'));
 });
 
 test('trainer can approve ai suggestions', () => {

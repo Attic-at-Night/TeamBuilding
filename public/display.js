@@ -63,6 +63,21 @@ function formatTimerStatus(timer) {
   return 'Ready';
 }
 
+function isFollowUpState(state) {
+  if (!state) {
+    return false;
+  }
+  return state.status === 'follow_up' || (state.phaseFlow && state.phaseFlow.phaseType === 'follow_up');
+}
+
+function getGameplayPhaseLabel(state) {
+  const phaseFlow = state && state.phaseFlow ? state.phaseFlow : null;
+  if (!phaseFlow || phaseFlow.phaseType !== 'gameplay' || !phaseFlow.currentPhase) {
+    return 'Gameplay';
+  }
+  return `Gameplay phase ${phaseFlow.currentPhase}/${phaseFlow.totalGameplayPhases || 3}`;
+}
+
 function truncateText(value, maxLength = 120) {
   const text = String(value || '');
   if (text.length <= maxLength) {
@@ -493,6 +508,7 @@ class GameScene extends Phaser.Scene {
     this.currentState = this.pendingState;
     this.sessionData = data.sessionData || null;
     this.focusItems = [];
+    this.joinPanelItems = [];
   }
 
   create() {
@@ -515,6 +531,10 @@ class GameScene extends Phaser.Scene {
     this.timerStatusText = this.add.text(width / 2, Math.floor(height * 0.4), 'Ready', {
       fontSize: '34px',
       color: '#99bbff',
+    }).setOrigin(0.5);
+    this.phaseText = this.add.text(width / 2, Math.floor(height * 0.47), '', {
+      fontSize: '24px',
+      color: '#b6c7ff',
     }).setOrigin(0.5);
 
     this.focusViewport = {
@@ -574,6 +594,38 @@ class GameScene extends Phaser.Scene {
     this.game.events.on('ws_message', this.onMessage, this);
     this.game.events.on('ws_message', this.onMessage, this);
 
+    this.followUpOverlay = this.add.rectangle(width / 2, height / 2, 560, 220, 0x070b1b, 0.95)
+      .setDepth(30)
+      .setStrokeStyle(2, 0x88aaff, 0.9)
+      .setVisible(false);
+    this.followUpTitle = this.add.text(width / 2, height / 2 - 36, 'Follow-up phase', {
+      fontSize: '40px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(31).setVisible(false);
+    this.followUpBody = this.add.text(width / 2, height / 2 + 8, 'Gameplay is paused. Team + trainer debrief.', {
+      fontSize: '20px',
+      color: '#c6d4f3',
+      align: 'center',
+    }).setOrigin(0.5).setDepth(31).setVisible(false);
+    this.followUpEndButtonBg = this.add.rectangle(width / 2, height / 2 + 70, 260, 54, 0x3355ff)
+      .setDepth(31)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true });
+    this.followUpEndButtonLabel = this.add.text(width / 2, height / 2 + 70, 'End follow-up', {
+      fontSize: '22px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(32).setVisible(false);
+    this.followUpEndButtonBg.on('pointerover', () => this.followUpEndButtonBg.setFillStyle(0x5577ff));
+    this.followUpEndButtonBg.on('pointerout', () => this.followUpEndButtonBg.setFillStyle(0x3355ff));
+    this.followUpEndButtonBg.on('pointerup', () => {
+      if (this.followUpEndButtonBg.visible) {
+        sendWs({ type: 'followup_end' });
+      }
+    });
+    this.followUpEndButtonBg.disableInteractive();
+
     this.time.addEvent({
       delay: 1000,
       loop: true,
@@ -599,6 +651,7 @@ class GameScene extends Phaser.Scene {
 
   renderState(state) {
     this.currentState = state;
+    const isFollowUp = isFollowUpState(state);
     const summary = state.summary || {};
     const timer = state.timer || null;
     const lines = [
@@ -611,6 +664,7 @@ class GameScene extends Phaser.Scene {
     this.timerValueText.setText(formatTimerValue(timer));
     this.timerStatusText.setText(formatTimerStatus(timer));
     this.timerStatusText.setColor(timer && timer.status === 'expired' ? '#ff8888' : '#99bbff');
+    this.phaseText.setText(getGameplayPhaseLabel(state));
 
     const trainerPayload = state.trainerBroadcast && state.trainerBroadcast.payload;
     this.renderFocusedShare(trainerPayload, state.trainerBroadcast || null);
@@ -658,6 +712,38 @@ class GameScene extends Phaser.Scene {
       this.restartButtonLabel.setVisible(false);
       this.restartButtonBg.disableInteractive();
     }
+
+    const gameplayVisible = !isFollowUp;
+    this.timerValueText.setVisible(gameplayVisible);
+    this.timerStatusText.setVisible(gameplayVisible);
+    this.phaseText.setVisible(gameplayVisible);
+    this.focusContainer.setVisible(gameplayVisible);
+    this.resetFeedbackOverlay.setVisible(gameplayVisible && Boolean(state.pendingReset));
+    this.resetFeedbackIcon.setVisible(gameplayVisible && Boolean(state.pendingReset));
+    this.resetFeedbackTitle.setVisible(gameplayVisible && Boolean(state.pendingReset));
+    this.resetFeedbackCountdown.setVisible(gameplayVisible && Boolean(state.pendingReset));
+    for (const item of this.joinPanelItems) {
+      item.setVisible(gameplayVisible);
+    }
+    if (!gameplayVisible) {
+      this.endOverlay.setVisible(false);
+      this.endText.setVisible(false);
+      this.endSubText.setVisible(false);
+      this.restartButtonBg.setVisible(false);
+      this.restartButtonLabel.setVisible(false);
+      this.restartButtonBg.disableInteractive();
+    }
+
+    this.followUpOverlay.setVisible(isFollowUp);
+    this.followUpTitle.setVisible(isFollowUp);
+    this.followUpBody.setVisible(isFollowUp);
+    this.followUpEndButtonBg.setVisible(isFollowUp);
+    this.followUpEndButtonLabel.setVisible(isFollowUp);
+    if (isFollowUp) {
+      this.followUpEndButtonBg.setInteractive({ useHandCursor: true });
+    } else {
+      this.followUpEndButtonBg.disableInteractive();
+    }
   }
 
   renderJoinPanel() {
@@ -666,21 +752,26 @@ class GameScene extends Phaser.Scene {
     }
 
     const { sessionId, joinUrl } = this.sessionData;
+    this.joinPanelItems.forEach((item) => item.destroy());
+    this.joinPanelItems = [];
+
     const panel = this.add.rectangle(128, 98, 236, 186, 0x101827, 0.88).setOrigin(0.5);
     panel.setStrokeStyle(2, 0x708090, 0.8);
-    this.add.text(18, 16, `Join: ${sessionId || ''}`, {
+    const joinTitle = this.add.text(18, 16, `Join: ${sessionId || ''}`, {
       fontSize: '18px',
       color: '#dde6f2',
       fontStyle: 'bold',
     }).setOrigin(0, 0);
-    this.add.text(18, 152, String(joinUrl || ''), {
+    const joinUrlText = this.add.text(18, 152, String(joinUrl || ''), {
       fontSize: '11px',
       color: '#88aaff',
       wordWrap: { width: 210 },
     }).setOrigin(0, 0);
+    this.joinPanelItems.push(panel, joinTitle, joinUrlText);
 
     if (this.textures.exists('qr_code')) {
-      this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+      const qr = this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+      this.joinPanelItems.push(qr);
       return;
     }
 
@@ -690,7 +781,8 @@ class GameScene extends Phaser.Scene {
           return;
         }
         this.textures.off('addtexture', onQrAdd);
-        this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+        const qr = this.add.image(128, 90, 'qr_code').setDisplaySize(108, 108);
+        this.joinPanelItems.push(qr);
       };
       this.textures.on('addtexture', onQrAdd);
       this.textures.addBase64('qr_code', this.sessionData.qrCodeDataUrl);

@@ -17,6 +17,11 @@ const KEY_COUNT = 3;
 const LIFE_PICKUP_COUNT = 0;
 const RECENT_EVENT_LIMIT = 10;
 const DEFAULT_TIMER_DURATION_MS = 5 * 60 * 1000;
+const GAMEPLAY_PHASE_DURATIONS_MS = [
+  15 * 60 * 1000,
+  10 * 60 * 1000,
+  5 * 60 * 1000,
+];
 const RESET_FEEDBACK_MS = 5000;
 const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -61,7 +66,21 @@ function makeInitialState() {
     aiSuggestionDecisions: {},
     summary: createSummaryState(START_LIVES),
     timer: createTimerState(),
+    phaseFlow: createPhaseFlowState(),
     pendingReset: null,
+  };
+}
+
+function createPhaseFlowState(overrides = {}) {
+  return {
+    phaseType: 'lobby',
+    currentPhase: null,
+    totalGameplayPhases: GAMEPLAY_PHASE_DURATIONS_MS.length,
+    phaseDurationMs: null,
+    phaseRemainingMs: null,
+    phaseStartedAt: null,
+    phaseEndsAt: null,
+    ...overrides,
   };
 }
 
@@ -75,6 +94,7 @@ function buildEventSnapshot(state) {
     roles: state.roles,
     summary: state.summary,
     timer: state.timer,
+    phaseFlow: state.phaseFlow,
     mazeMeta: buildMazeMeta(state.maze),
     maze: state.maze ? {
       seed: state.maze.seed || null,
@@ -263,6 +283,7 @@ function buildDisplayState(state, session) {
     trainers,
     summary: state.summary,
     timer: state.timer,
+    phaseFlow: state.phaseFlow,
     mazeMeta: buildMazeMeta(state.maze),
     log: state.log,
     trainerBroadcast: state.trainerBroadcast,
@@ -343,6 +364,8 @@ function buildObserverSignals(state) {
         'timer_stop',
         'timer_reset',
         'timer_expired',
+        'phase_start',
+        'follow_up_end',
         'clarity_event',
       ].includes(entry.event);
     })
@@ -352,11 +375,13 @@ function buildObserverSignals(state) {
       t: entry.t,
       category: entry.event.startsWith('timer_')
         ? 'timer'
+        : (entry.event === 'phase_start' || entry.event === 'follow_up_end'
+          ? 'flow'
         : (entry.event === 'clarity_event'
           ? 'clarity'
           : (entry.event === 'hazard_hit' || entry.event === 'reset' || entry.event === 'ghost_move' || entry.event === 'ghost_collision'
             ? 'state'
-            : 'input')),
+            : 'input'))),
       type: entry.event,
       playerId: entry.playerId || null,
       player: entry.player || null,
@@ -483,6 +508,7 @@ function buildTrainerState(state, session) {
     players: state.players,
     summary: state.summary,
     timer: state.timer,
+    phaseFlow: state.phaseFlow,
     log: state.log,
     maze: state.maze,
     mazeMeta,
@@ -522,6 +548,7 @@ function buildControllerState(state, session, playerId) {
     players: state.players,
     summary: controllerSummary,
     timer: state.timer,
+    phaseFlow: state.phaseFlow,
     mazeMeta,
     displayConnected: Boolean(session && session.display),
     viewerRole: role,
@@ -543,6 +570,11 @@ function finishGame(state, outcome, reason) {
   state.summary.endedAt = endedAt;
   state.summary.durationMs = state.summary.startedAt ? endedAt - state.summary.startedAt : null;
   state.summary.outcome = outcome;
+  state.phaseFlow = createPhaseFlowState({
+    phaseType: 'ended',
+    currentPhase: null,
+  });
+  state.timer = createTimerState();
 
   appendLog(state, {
     ts: endedAt,
@@ -662,8 +694,11 @@ function beginGameState(session, startedAt) {
     ...createSummaryState(START_LIVES),
     startedAt,
   };
-  session.state.timer = createTimerState();
   session.state.status = GameStatus.PLAYING;
+  session.state.phaseFlow = createPhaseFlowState({
+    phaseType: 'gameplay',
+    currentPhase: 1,
+  });
 
   appendLog(session.state, {
     ts: startedAt,
@@ -674,6 +709,58 @@ function beginGameState(session, startedAt) {
       roles: Array.isArray(role) ? role : [role],
     })),
     trainer: session.state.trainer,
+  });
+
+  beginGameplayPhase(session.state, 1, startedAt);
+}
+
+function beginGameplayPhase(state, phase, startedAt = Date.now()) {
+  const phaseDurationMs = GAMEPLAY_PHASE_DURATIONS_MS[phase - 1];
+  if (!phaseDurationMs) {
+    return false;
+  }
+  state.status = GameStatus.PLAYING;
+  state.phaseFlow = createPhaseFlowState({
+    phaseType: 'gameplay',
+    currentPhase: phase,
+    phaseDurationMs,
+    phaseRemainingMs: phaseDurationMs,
+    phaseStartedAt: startedAt,
+    phaseEndsAt: startedAt + phaseDurationMs,
+  });
+  state.timer = createTimerState({
+    status: 'running',
+    durationMs: phaseDurationMs,
+    remainingMs: phaseDurationMs,
+    startedAt,
+    expiresAt: startedAt + phaseDurationMs,
+    stoppedAt: null,
+  });
+  appendLog(state, {
+    ts: startedAt,
+    event: 'phase_start',
+    phaseType: 'gameplay',
+    phase,
+    durationMs: phaseDurationMs,
+  });
+  return true;
+}
+
+function beginFollowUpPhase(state, startedAt = Date.now()) {
+  state.status = GameStatus.FOLLOW_UP;
+  state.phaseFlow = createPhaseFlowState({
+    phaseType: 'follow_up',
+    currentPhase: null,
+    phaseDurationMs: null,
+    phaseRemainingMs: null,
+    phaseStartedAt: startedAt,
+    phaseEndsAt: null,
+  });
+  state.timer = createTimerState();
+  appendLog(state, {
+    ts: startedAt,
+    event: 'phase_start',
+    phaseType: 'follow_up',
   });
 }
 
@@ -1009,6 +1096,10 @@ class SessionManager {
       return false;
     }
 
+    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
+      return false;
+    }
+
     const now = Date.now();
     const timer = session.state.timer || createTimerState();
     const nextDurationMs = normalizeTimerDuration(durationMs, normalizeTimerDuration(timer.durationMs));
@@ -1041,6 +1132,10 @@ class SessionManager {
       return false;
     }
 
+    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
+      return false;
+    }
+
     const timer = session.state.timer || createTimerState();
     if (timer.status !== 'running') {
       return false;
@@ -1069,6 +1164,10 @@ class SessionManager {
   resetTimer(sessionId, durationMs) {
     const session = this.sessions.get(sessionId);
     if (!session) {
+      return false;
+    }
+
+    if (session.state.phaseFlow && (session.state.phaseFlow.phaseType === 'gameplay' || session.state.phaseFlow.phaseType === 'follow_up')) {
       return false;
     }
 
@@ -1107,6 +1206,20 @@ class SessionManager {
         continue;
       }
 
+      const phaseFlow = session.state.phaseFlow || createPhaseFlowState();
+      if (didExpire && session.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+        const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+        const nextPhase = currentPhase + 1;
+        if (nextPhase <= GAMEPLAY_PHASE_DURATIONS_MS.length) {
+          beginGameplayPhase(session.state, nextPhase, now);
+        } else {
+          beginFollowUpPhase(session.state, now);
+        }
+        this.broadcastState(sessionId);
+        changed += 1;
+        continue;
+      }
+
       session.state.timer = createTimerState({
         ...timer,
         status: didExpire ? 'expired' : 'running',
@@ -1114,6 +1227,14 @@ class SessionManager {
         expiresAt: didExpire ? null : timer.expiresAt,
         stoppedAt: didExpire ? now : null,
       });
+
+      if (session.state.phaseFlow && session.state.phaseFlow.phaseType === 'gameplay') {
+        session.state.phaseFlow = {
+          ...session.state.phaseFlow,
+          phaseRemainingMs: remainingMs,
+          phaseEndsAt: didExpire ? null : timer.expiresAt,
+        };
+      }
 
       if (didExpire) {
         appendLog(session.state, {
@@ -1128,6 +1249,21 @@ class SessionManager {
     }
 
     return changed;
+  }
+
+  endFollowUp(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state.status !== GameStatus.FOLLOW_UP) {
+      return false;
+    }
+
+    appendLog(session.state, {
+      ts: Date.now(),
+      event: 'follow_up_end',
+    });
+    finishGame(session.state, 'success', 'follow_up_completed');
+    this.broadcastState(sessionId);
+    return true;
   }
 
   tickWorld() {
@@ -1979,6 +2115,7 @@ class SessionManager {
       ended_at: summary.endedAt,
       outcome: summary.outcome,
       timer: state.timer || null,
+      phase_flow: state.phaseFlow || null,
       trainer: state.trainer,
       highlighted_event_ids: state.trainerHighlightEventIds,
       observer_signals: buildObserverSignals(state),

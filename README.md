@@ -91,6 +91,10 @@ game_start ───────→ status → playing
                   ←─ state_sync (playing)
                                           ←─── state_sync (playing)
 
+phase flow ───────→ phase 1 (15:00) → phase 2 (10:00) → phase 3 (5:00)
+                  then status → follow_up (non-gameplay debrief)
+                  display/trainer can send followup_end → status → ended
+
                                                player_input ──→
                   ←─ player_input (forwarded)
 ```
@@ -106,6 +110,7 @@ game_start ───────→ status → playing
 | Client → Server | `timer_start` | Display starts or resumes the session timer |
 | Client → Server | `timer_stop` | Display pauses the session timer |
 | Client → Server | `timer_reset` | Display resets the session timer |
+| Client → Server | `followup_end` | Display or trainer ends follow-up and completes the session |
 | Client → Server | `player_input` | Controller sends an action (e.g. `{ action: "buzz" }`) |
 | Client → Server | `resync_request` | Any client requests a full state re-send (reconnect) |
 | Server → Client | `client_registered` | Acknowledges display/controller registration |
@@ -144,11 +149,15 @@ The server also now maintains authoritative timer state with `idle`, `running`, 
 lifecycle states. Timer transitions are included in synchronized state and persisted session exports.
 The display exposes start / pause / reset timer controls, and controllers show compact timer status.
 
+Gameplay sessions now run on a fixed flow after `game_start`: **phase 1 (15 min)**, **phase 2 (10 min)**,
+**phase 3 (5 min)**, then a **follow-up** phase where gameplay is paused and clients show a compact follow-up
+indicator while hiding normal gameplay UI.
+
 ### Game state shape
 
 ```json
 {
-  "status": "lobby | playing | ended",
+  "status": "lobby | playing | follow_up | ended",
   "players": [{ "id": "uuid", "name": "Alice" }],
   "roles": { "<playerId>": "mover | guide" },
   "maze": {

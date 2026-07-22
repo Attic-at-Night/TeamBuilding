@@ -126,6 +126,13 @@ const handlers = {
     }
   },
 
+  [MessageType.FOLLOWUP_END](_message, socket) {
+    const meta = socket.meta;
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
+      sessionManager.endFollowUp(meta.sessionId);
+    }
+  },
+
   [MessageType.PLAYER_INPUT](message, socket) {
     const meta = socket.meta;
     if (meta?.role === ClientRole.CONTROLLER) {

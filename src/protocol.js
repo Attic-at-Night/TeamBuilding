@@ -13,6 +13,7 @@
  * timer_start       – display starts or resumes the session timer
  * timer_stop        – display pauses the session timer
  * timer_reset       – display resets the session timer
+ * followup_end      – display/trainer ends the follow-up phase
  * player_input      – controller sends an action to the server
  * resync_request    – any client requests a full state_sync (e.g. on reconnect)
  *
@@ -33,6 +34,7 @@ const MessageType = {
   TIMER_START: 'timer_start',
   TIMER_STOP: 'timer_stop',
   TIMER_RESET: 'timer_reset',
+  FOLLOWUP_END: 'followup_end',
   PLAYER_INPUT: 'player_input',
   RESYNC_REQUEST: 'resync_request',
 
@@ -48,6 +50,7 @@ const PROTOCOL_VERSION = 1;
 const GameStatus = {
   LOBBY: 'lobby',
   PLAYING: 'playing',
+  FOLLOW_UP: 'follow_up',
   ENDED: 'ended',
 };
 

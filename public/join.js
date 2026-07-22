@@ -214,6 +214,13 @@ function formatTimerStatus(timer) {
   return 'Ready';
 }
 
+function isFollowUpState(state) {
+  if (!state) {
+    return false;
+  }
+  return state.status === 'follow_up' || (state.phaseFlow && state.phaseFlow.phaseType === 'follow_up');
+}
+
 const CLARITY_TYPES = [
   'role_unclear',
   'lack_of_sent_communication',
@@ -636,7 +643,7 @@ class WaitScene extends Phaser.Scene {
   }
 
   onMessage(message) {
-    if (message.type === 'state_sync' && message.state.status === 'playing') {
+    if (message.type === 'state_sync' && message.state.status !== 'lobby') {
       this.game.events.off('ws_message', this.onMessage, this);
       this.game.events.off('ws_close', this.onClose, this);
       this.scene.start('ControllerScene', { initialState: message.state });
@@ -712,6 +719,9 @@ class ControllerScene extends Phaser.Scene {
     this.trainerFeedScrollThumb = null;
     this.trainerTimerButtons = [];
     this.trainerTimerStatusText = null;
+    this.followUpUi = [];
+    this.followUpEndButtonBg = null;
+    this.followUpEndButtonLabel = null;
     this.lastMoveSentAt = 0;
     this.connectionUi = null;
     this.playerMarkerAnim = {
@@ -759,6 +769,7 @@ class ControllerScene extends Phaser.Scene {
     this._buildRoleUi(this.viewerRole);
     this._createConnectionUi();
     this._createConnectionWarningUi();
+    this._createFollowUpUi();
     if (this.currentState) {
       this._renderState(this.currentState);
     }
@@ -947,6 +958,77 @@ class ControllerScene extends Phaser.Scene {
     this.trainerTimerStatusText = null;
     if (this.mazeGraphics) {
       this.mazeGraphics.clear();
+    }
+  }
+
+  _createFollowUpUi() {
+    const { width, height } = this.scale;
+    const overlay = this.add.rectangle(width / 2, height / 2, width - 36, 180, 0x070b1b, 0.94)
+      .setDepth(30)
+      .setStrokeStyle(2, 0x88aaff, 0.9)
+      .setVisible(false);
+    const title = this.add.text(width / 2, height / 2 - 28, 'Follow-up phase', {
+      fontSize: '32px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      align: 'center',
+    }).setOrigin(0.5).setDepth(31).setVisible(false);
+    const body = this.add.text(width / 2, height / 2 + 12, 'Gameplay is paused. Debrief with your team.', {
+      fontSize: '16px',
+      color: '#c6d4f3',
+      align: 'center',
+      wordWrap: { width: width - 64 },
+    }).setOrigin(0.5).setDepth(31).setVisible(false);
+    const endBg = this.add.rectangle(width / 2, height / 2 + 66, 210, 46, 0x3355ff)
+      .setDepth(31)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true });
+    const endLabel = this.add.text(width / 2, height / 2 + 66, 'End follow-up', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(32).setVisible(false);
+    endBg.on('pointerover', () => endBg.setFillStyle(0x5577ff));
+    endBg.on('pointerout', () => endBg.setFillStyle(0x3355ff));
+    endBg.on('pointerup', () => {
+      if (endBg.visible) {
+        sendWs({ type: 'followup_end' });
+      }
+    });
+    endBg.disableInteractive();
+
+    this.followUpUi = [overlay, title, body, endBg, endLabel];
+    this.followUpEndButtonBg = endBg;
+    this.followUpEndButtonLabel = endLabel;
+  }
+
+  _setFollowUpVisible(visible, canEnd) {
+    for (const item of this.followUpUi) {
+      item.setVisible(visible);
+    }
+    if (this.followUpEndButtonBg && this.followUpEndButtonLabel) {
+      const showEnd = visible && canEnd;
+      this.followUpEndButtonBg.setVisible(showEnd);
+      this.followUpEndButtonLabel.setVisible(showEnd);
+      if (showEnd) {
+        this.followUpEndButtonBg.setInteractive({ useHandCursor: true });
+      } else {
+        this.followUpEndButtonBg.disableInteractive();
+      }
+    }
+  }
+
+  _setRoleUiVisible(visible) {
+    for (const item of this.roleUi) {
+      item.setVisible(visible);
+    }
+    if (!visible) {
+      this.mazeGraphics.clear();
+      this._clearBoardIcons();
+      this.detailText.setText('');
+      this.eventsText.setText('');
+      this._hideEndUi();
+      this._hideResetFeedback();
     }
   }
 
@@ -1899,6 +1981,15 @@ class ControllerScene extends Phaser.Scene {
   }
 
   _renderState(state) {
+    this.currentState = state;
+    if (isFollowUpState(state)) {
+      this._setRoleUiVisible(false);
+      this._setFollowUpVisible(true, this.viewerRole === 'trainer');
+      return;
+    }
+
+    this._setFollowUpVisible(false, false);
+    this._setRoleUiVisible(true);
     const roleData = state.roleData || {};
     const summary = state.summary || {};
     const timer = state.timer || null;
@@ -2161,6 +2252,9 @@ class ControllerScene extends Phaser.Scene {
   }
 
   _sendMove(dir) {
+    if (isFollowUpState(this.currentState)) {
+      return;
+    }
     const now = Date.now();
     if (now - this.lastMoveSentAt < 120) {
       return;
