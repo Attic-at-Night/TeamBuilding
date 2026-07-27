@@ -11,8 +11,8 @@ class SessionController {
     this.toQrDataUrl = options.toQrDataUrl;
     this.resolveServerPort = options.resolveServerPort;
     this.publicOrigin = options.publicOrigin || null;
-    this.qrCodeWidth = options.qrCodeWidth || 320;
-    this.qrCodeMargin = options.qrCodeMargin || 1;
+    this.qrCodeWidth = options.qrCodeWidth ?? 320;
+    this.qrCodeMargin = options.qrCodeMargin ?? 1;
 
     this.createSession = this.createSession.bind(this);
     this.getSessionLog = this.getSessionLog.bind(this);
