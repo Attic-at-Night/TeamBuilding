@@ -2,7 +2,8 @@
 
 class SessionModel {
   constructor(options = {}) {
-    this.sessionManager = options.sessionManager || null;
+    if (!options.sessionManager) throw new TypeError('SessionModel requires a sessionManager.');
+    this.sessionManager = options.sessionManager;
   }
 
   createSession(origin) {
