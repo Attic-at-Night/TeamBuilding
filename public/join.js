@@ -3,10 +3,51 @@ let socketSequence = 0;
 let myPlayerId = null;
 let pendingReconnectToken = null;
 let pendingPlayerName = null;
-const CONNECTION_PROBE_INTERVAL_MS = 12000;
-const CONNECTION_PROBE_TIMEOUT_MS = 3500;
-const CONNECTION_WARNING_LATENCY_MS = 1200;
-const CONNECTION_WARNING_LATENCY_STREAK = 2;
+const viewSettings = window.TeamBuildingViewSettings || {};
+const controllerViewSettings = viewSettings.controller || {};
+const screenDependencies = window.TeamBuildingScreenDependencies
+  && typeof window.TeamBuildingScreenDependencies.createControllerDependencies === 'function'
+  ? window.TeamBuildingScreenDependencies.createControllerDependencies()
+  : {
+    now: () => Date.now(),
+    setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    storage: window.localStorage,
+    searchParams: () => new URLSearchParams(window.location.search),
+    openWebSocket: () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      return new WebSocket(`${protocol}://${window.location.host}`);
+    },
+  };
+const roleDependencies = window.TeamBuildingControllerRoleDependencies || {};
+const trainerDependencies = roleDependencies
+  && typeof roleDependencies.createTrainerDependencies === 'function'
+  ? roleDependencies.createTrainerDependencies()
+  : {
+    defaultTab: 'maze',
+    defaultClarityType: 'role_unclear',
+    clarityTypes: [
+      'role_unclear',
+      'lack_of_sent_communication',
+      'lack_of_received_communication',
+      'acted_before_communicating',
+      'contradicting_instructions',
+      'silent_confusion',
+    ],
+    feedVisibleCount: 8,
+  };
+const playerDependencies = roleDependencies
+  && typeof roleDependencies.createPlayerDependencies === 'function'
+  ? roleDependencies.createPlayerDependencies()
+  : {
+    defaultTab: null,
+    defaultClarityType: null,
+    clarityTypes: [],
+    feedVisibleCount: 8,
+  };
+const CONNECTION_PROBE_INTERVAL_MS = controllerViewSettings.connectionProbeIntervalMs || 12000;
+const CONNECTION_PROBE_TIMEOUT_MS = controllerViewSettings.connectionProbeTimeoutMs || 3500;
+const CONNECTION_WARNING_LATENCY_MS = controllerViewSettings.connectionWarningLatencyMs || 1200;
+const CONNECTION_WARNING_LATENCY_STREAK = controllerViewSettings.connectionWarningLatencyStreak || 2;
 
 function storageKey(sessionId) {
   return `teambuilding.reconnect.${sessionId}`;
@@ -14,7 +55,7 @@ function storageKey(sessionId) {
 
 function loadReconnectState(sessionId) {
   try {
-    const raw = window.localStorage.getItem(storageKey(sessionId));
+    const raw = screenDependencies.storage.getItem(storageKey(sessionId));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -23,7 +64,7 @@ function loadReconnectState(sessionId) {
 
 function saveReconnectState(sessionId, payload) {
   try {
-    window.localStorage.setItem(storageKey(sessionId), JSON.stringify(payload));
+    screenDependencies.storage.setItem(storageKey(sessionId), JSON.stringify(payload));
   } catch {
     // Ignore storage failures.
   }
@@ -31,14 +72,14 @@ function saveReconnectState(sessionId, payload) {
 
 function clearReconnectState(sessionId) {
   try {
-    window.localStorage.removeItem(storageKey(sessionId));
+    screenDependencies.storage.removeItem(storageKey(sessionId));
   } catch {
     // Ignore storage failures.
   }
 }
 
 function getCurrentSessionIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
+  const params = screenDependencies.searchParams();
   return (params.get('session') || '').toUpperCase();
 }
 
@@ -81,8 +122,7 @@ function connectControllerSocket(sessionId, name, game, reconnectToken = null) {
     socket.close();
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const nextSocket = new WebSocket(`${protocol}://${window.location.host}`);
+  const nextSocket = screenDependencies.openWebSocket();
   const sequence = ++socketSequence;
   socket = nextSocket;
 
@@ -134,7 +174,7 @@ function sendWs(payload) {
 
 function requestResyncWhenReady(delayMs = 0) {
   if (delayMs > 0) {
-    window.setTimeout(() => requestResyncWhenReady(0), delayMs);
+    screenDependencies.setTimeout(() => requestResyncWhenReady(0), delayMs);
     return;
   }
 
@@ -221,14 +261,7 @@ function isFollowUpState(state) {
   return state.status === 'follow_up' || (state.phaseFlow && state.phaseFlow.phaseType === 'follow_up');
 }
 
-const CLARITY_TYPES = [
-  'role_unclear',
-  'lack_of_sent_communication',
-  'lack_of_received_communication',
-  'acted_before_communicating',
-  'contradicting_instructions',
-  'silent_confusion',
-];
+const CLARITY_TYPES = trainerDependencies.clarityTypes;
 
 function humanizeClarityType(value) {
   return String(value || 'clarity_event').replace(/_/g, ' ');
@@ -452,7 +485,7 @@ class JoinScene extends Phaser.Scene {
   }
 
   init() {
-    const params = new URLSearchParams(window.location.search);
+    const params = screenDependencies.searchParams();
     this.sessionId = (params.get('session') || '').toUpperCase();
   }
 
@@ -703,12 +736,12 @@ class ControllerScene extends Phaser.Scene {
     this.trainerEventScroll = 0;
     this.trainerSelectedOffset = 0;
     this.trainerSuggestionIndex = 0;
-    this.trainerActiveTab = 'maze';
+    this.trainerActiveTab = trainerDependencies.defaultTab || 'maze';
     this.trainerPerspectiveIndex = 0;
-    this.trainerClarityType = CLARITY_TYPES[0];
+    this.trainerClarityType = trainerDependencies.defaultClarityType || CLARITY_TYPES[0];
     this.trainerFeedLineHeight = 22;
     this.trainerFeedHeaderLines = 2;
-    this.trainerFeedVisibleCount = 8;
+    this.trainerFeedVisibleCount = trainerDependencies.feedVisibleCount || playerDependencies.feedVisibleCount || 8;
     this.trainerFeedListStartY = 0;
     this.trainerFeedAreaHeight = 0;
     this.trainerFeedVisibleEvents = [];
@@ -2255,7 +2288,7 @@ class ControllerScene extends Phaser.Scene {
     if (isFollowUpState(this.currentState)) {
       return;
     }
-    const now = Date.now();
+    const now = screenDependencies.now();
     if (now - this.lastMoveSentAt < 120) {
       return;
     }
@@ -2325,9 +2358,9 @@ class ControllerScene extends Phaser.Scene {
 
 new Phaser.Game({
   type: Phaser.AUTO,
-  width: 390,
-  height: 844,
-  backgroundColor: '#1a1a2e',
+  width: controllerViewSettings.width || 390,
+  height: controllerViewSettings.height || 844,
+  backgroundColor: controllerViewSettings.backgroundColor || '#1a1a2e',
   scene: [JoinScene, WaitScene, ControllerScene],
   parent: document.body,
   scale: {
