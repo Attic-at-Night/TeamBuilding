@@ -44,10 +44,10 @@ const playerDependencies = roleDependencies
     clarityTypes: [],
     feedVisibleCount: 8,
   };
-const CONNECTION_PROBE_INTERVAL_MS = controllerViewSettings.connectionProbeIntervalMs || 12000;
-const CONNECTION_PROBE_TIMEOUT_MS = controllerViewSettings.connectionProbeTimeoutMs || 3500;
-const CONNECTION_WARNING_LATENCY_MS = controllerViewSettings.connectionWarningLatencyMs || 1200;
-const CONNECTION_WARNING_LATENCY_STREAK = controllerViewSettings.connectionWarningLatencyStreak || 2;
+const CONNECTION_PROBE_INTERVAL_MS = controllerViewSettings.connectionProbeIntervalMs ?? 12000;
+const CONNECTION_PROBE_TIMEOUT_MS = controllerViewSettings.connectionProbeTimeoutMs ?? 3500;
+const CONNECTION_WARNING_LATENCY_MS = controllerViewSettings.connectionWarningLatencyMs ?? 1200;
+const CONNECTION_WARNING_LATENCY_STREAK = controllerViewSettings.connectionWarningLatencyStreak ?? 2;
 
 function storageKey(sessionId) {
   return `teambuilding.reconnect.${sessionId}`;
