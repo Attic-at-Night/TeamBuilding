@@ -1,0 +1,90 @@
+.app-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+header p {
+  margin: 0.25rem 0 0;
+  color: #9fb0c9;
+}
+
+.card {
+  background: #101a2e;
+  border: 1px solid #283650;
+  border-radius: 12px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: #b5c6de;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  background: #09101d;
+  border: 1px solid #364663;
+  color: #f1f5ff;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+button {
+  border: 1px solid #3b5ea8;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  color: #e6edff;
+  background: #1f3970;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status p {
+  margin: 0;
+}
+
+.error {
+  color: #ff9ea4;
+}
+
+.grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+pre {
+  margin: 0;
+  background: #060b16;
+  border: 1px solid #2b3850;
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow: auto;
+  max-height: 360px;
+  font-size: 0.78rem;
+}

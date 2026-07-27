@@ -14,6 +14,24 @@ Then open:
 - `http://localhost:3000/` on the TV/browser — this is the **display** screen
 - Scan the QR code from a phone to open the **controller** screen
 
+## React frontend scaffold (for AI Studio overhaul)
+
+The repo now includes `frontend/` (React + Vite) as a separate frontend workspace that talks to the existing backend.
+
+```bash
+npm run frontend:dev
+```
+
+Or directly:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Backend contract details for the new UI live in `frontend/README.md`.
+
 ## Host online
 
 This app can also run on a public host. When the display is opened through a real domain or public IP, new sessions now generate QR codes and join links that reuse that public URL, so remote devices can connect directly over the internet.
