@@ -4,6 +4,8 @@ const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
 const { SessionLogStore } = require('./src/sessionLogStore');
+const { SessionModel } = require('./src/mvc/session/sessionModel');
+const { SessionController } = require('./src/mvc/session/sessionController');
 const { detectNetworkConnection } = require('./src/network');
 const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
 const { MessageType, ClientRole, ErrorCode } = require('./src/protocol');
@@ -13,6 +15,20 @@ const { HEARTBEAT_INTERVAL_MS, DISCONNECT_GRACE_MS, MAX_MISSED_HEARTBEATS } = re
 const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
+const sessionModel = new SessionModel({ sessionManager });
+let server;
+const sessionController = new SessionController({
+  sessionModel,
+  detectNetworkConnection,
+  getPublicSessionOrigin,
+  getSessionOrigin,
+  toQrDataUrl: (value, options) => QRCode.toDataURL(value, options),
+  resolveServerPort: () => {
+    const address = server && typeof server.address === 'function' ? server.address() : null;
+    return address && typeof address === 'object' && address.port ? address.port : Number(process.env.PORT || 3000);
+  },
+  publicOrigin: process.env.PUBLIC_ORIGIN || null,
+});
 
 app.set('trust proxy', true);
 app.use(express.json());
@@ -22,46 +38,10 @@ app.get('/join', (req, res) => {
   res.redirect(302, getJoinRedirectLocation(req.originalUrl));
 });
 
-app.post('/api/session', async (req, res) => {
-  const port = server.address().port;
-  const requestHost = req.get('host');
-  const requestHostname = req.hostname;
-  const publicOrigin = getPublicSessionOrigin({
-    publicOrigin: process.env.PUBLIC_ORIGIN,
-    requestProtocol: req.protocol,
-    requestHost,
-    requestHostname,
-  });
-  const connection = publicOrigin ? null : await detectNetworkConnection();
-  const origin = getSessionOrigin({
-    publicOrigin: process.env.PUBLIC_ORIGIN,
-    requestProtocol: req.protocol,
-    requestHost,
-    requestHostname,
-    port,
-    localIpAddress: connection?.ipAddress,
-  });
-  const { sessionId, joinUrl } = sessionManager.createSession(origin);
+app.post('/api/session', sessionController.createSession);
+app.get('/api/session/:sessionId/log', sessionController.getSessionLog);
 
-  const qrCodeDataUrl = await QRCode.toDataURL(joinUrl, {
-    margin: 1,
-    width: 320,
-  });
-
-  res.json({ sessionId, joinUrl, qrCodeDataUrl, connection });
-});
-
-app.get('/api/session/:sessionId/log', (req, res) => {
-  const sessionId = String(req.params.sessionId || '').toUpperCase();
-  const sessionLog = sessionManager.getSessionExport(sessionId);
-  if (!sessionLog) {
-    res.status(404).json({ error: 'Session log not found.' });
-    return;
-  }
-  res.json(sessionLog);
-});
-
-const server = app.listen(process.env.PORT || 3000, () => {
+server = app.listen(process.env.PORT || 3000, () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
   // eslint-disable-next-line no-console

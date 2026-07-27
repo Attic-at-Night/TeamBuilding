@@ -1,12 +1,27 @@
 let socket = null;
+const viewSettings = window.TeamBuildingViewSettings || {};
+const displayViewSettings = viewSettings.display || {};
+const displayDependencies = window.TeamBuildingScreenDependencies
+  && typeof window.TeamBuildingScreenDependencies.createDisplayDependencies === 'function'
+  ? window.TeamBuildingScreenDependencies.createDisplayDependencies()
+  : {
+    now: () => Date.now(),
+    openWebSocket: () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      return new WebSocket(`${protocol}://${window.location.host}`);
+    },
+    fetchSessionBootstrap: async () => {
+      const response = await window.fetch('/api/session', { method: 'POST' });
+      return response.json();
+    },
+  };
 
 function connectDisplaySocket(sessionId, game) {
   if (socket) {
     socket.close();
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  socket = new WebSocket(`${protocol}://${window.location.host}`);
+  socket = displayDependencies.openWebSocket();
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'display_register', sessionId }));
   });
@@ -354,8 +369,7 @@ class SetupScene extends Phaser.Scene {
       btn.disableInteractive();
       label.setText('Starting…');
       try {
-        const res = await fetch('/api/session', { method: 'POST' });
-        const data = await res.json();
+        const data = await displayDependencies.fetchSessionBootstrap();
         connectDisplaySocket(data.sessionId, this.game);
         this.scene.start('LobbyScene', data);
       } catch {
@@ -852,9 +866,9 @@ class GameScene extends Phaser.Scene {
 
 new Phaser.Game({
   type: Phaser.AUTO,
-  width: 1280,
-  height: 720,
-  backgroundColor: '#1a1a2e',
+  width: displayViewSettings.width || 1280,
+  height: displayViewSettings.height || 720,
+  backgroundColor: displayViewSettings.backgroundColor || '#1a1a2e',
   scene: [SetupScene, LobbyScene, GameScene],
   parent: document.body,
   scale: {

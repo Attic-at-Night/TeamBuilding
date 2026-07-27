@@ -1,33 +1,26 @@
 const crypto = require('crypto');
 const { MessageType, GameStatus, ClientRole, MazeRole, ErrorCode } = require('./protocol');
-const { generateMaze, movePlayer, moveGhosts, findKeyAt, findLifeAt, findGhostAt } = require('./maze');
+const { movePlayer, moveGhosts, findKeyAt, findLifeAt, findGhostAt } = require('./maze');
 const { getRoleOrder, shufflePlayers } = require('./roles/roleAssignments');
 const { createSummaryState, createTimerState } = require('./gameplay/stateSchema');
+const { createPhaseFlowState, makeInitialState, createRoundMaze } = require('./gameplay/sessionStateFactory');
+const { normalizeRoleArray, buildCycledRoles, rebalanceRoles } = require('./gameplay/roleBalancing');
+const { makeSessionId, makeReconnectToken } = require('./session/sessionIdentity');
+const { gameplaySettings } = require('./config/gameplaySettings');
 const { encodeServerMessage } = require('./networking/messageEnvelope');
 const { isClarityEventType } = require('./trainer/clarityEvents');
 
-const MAX_PLAYERS = 4;
-const MIN_PLAYERS = 2;
-const START_LIVES = 3;
-const MAX_LIVES = 5;
-const MAZE_WIDTH = 8;
-const MAZE_HEIGHT = 8;
-const HAZARD_COUNT = 5;
-const KEY_COUNT = 3;
-const LIFE_PICKUP_COUNT = 0;
-const RECENT_EVENT_LIMIT = 10;
-const DEFAULT_TIMER_DURATION_MS = 5 * 60 * 1000;
-const GAMEPLAY_PHASE_DURATIONS_MS = [
-  15 * 60 * 1000,
-  10 * 60 * 1000,
-  5 * 60 * 1000,
-];
-const RESET_FEEDBACK_MS = 5000;
-const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
-
-function makeSessionId() {
-  return crypto.randomBytes(3).toString('hex').toUpperCase();
-}
+const MAX_PLAYERS = gameplaySettings.players.max;
+const MIN_PLAYERS = gameplaySettings.players.min;
+const START_LIVES = gameplaySettings.lives.start;
+const MAX_LIVES = gameplaySettings.lives.max;
+const HAZARD_COUNT = gameplaySettings.maze.hazardCount;
+const KEY_COUNT = gameplaySettings.maze.keyCount;
+const RECENT_EVENT_LIMIT = gameplaySettings.events.recentLimit;
+const DEFAULT_TIMER_DURATION_MS = gameplaySettings.timer.defaultDurationMs;
+const GAMEPLAY_PHASE_DURATIONS_MS = gameplaySettings.timer.gameplayPhaseDurationsMs;
+const RESET_FEEDBACK_MS = gameplaySettings.events.resetFeedbackMs;
+const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = gameplaySettings.session.abandonedTimeoutMs;
 
 function sendJson(socket, payload) {
   if (!socket || typeof socket.send !== 'function') {
@@ -52,42 +45,6 @@ function normalizeCleanupTimeoutMs(value) {
   return Math.max(1000, Math.floor(value));
 }
 
-function makeInitialState() {
-  return {
-    status: GameStatus.LOBBY,
-    players: [],
-    roles: {},
-    maze: null,
-    log: [],
-    nextEventId: 1,
-    trainer: null,
-    trainerBroadcast: null,
-    trainerHighlightEventIds: [],
-    aiSuggestionDecisions: {},
-    summary: createSummaryState(START_LIVES),
-    timer: createTimerState(),
-    phaseFlow: createPhaseFlowState(),
-    pendingReset: null,
-  };
-}
-
-function createPhaseFlowState(overrides = {}) {
-  return {
-    phaseType: 'lobby',
-    currentPhase: null,
-    totalGameplayPhases: GAMEPLAY_PHASE_DURATIONS_MS.length,
-    phaseDurationMs: null,
-    phaseRemainingMs: null,
-    phaseStartedAt: null,
-    phaseEndsAt: null,
-    ...overrides,
-  };
-}
-
-function createRoundMaze() {
-  return generateMaze(MAZE_WIDTH, MAZE_HEIGHT, HAZARD_COUNT, KEY_COUNT, LIFE_PICKUP_COUNT);
-}
-
 function buildEventSnapshot(state) {
   return cloneJsonValue({
     players: state.players,
@@ -110,33 +67,6 @@ function buildEventSnapshot(state) {
       reached: state.maze.reached,
     } : null,
   });
-}
-
-function roleGroupKey(roles) {
-  return normalizeRoleArray(roles).join('|');
-}
-
-function buildCycledRoles(activePlayers, previousRoles = {}) {
-  const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
-  const groupKeys = roleGroups.map((group) => roleGroupKey(group));
-  if (!roleGroups.length) {
-    return null;
-  }
-
-  const nextRoles = {};
-  const seenGroups = new Set();
-  for (const player of activePlayers) {
-    const previousGroupKey = roleGroupKey(previousRoles[player.id]);
-    const currentIndex = groupKeys.indexOf(previousGroupKey);
-    if (currentIndex < 0 || seenGroups.has(previousGroupKey)) {
-      return null;
-    }
-    const nextIndex = (currentIndex + 1) % roleGroups.length;
-    nextRoles[player.id] = roleGroups[nextIndex].slice();
-    seenGroups.add(previousGroupKey);
-  }
-
-  return nextRoles;
 }
 
 function appendLog(state, entry) {
@@ -621,12 +551,11 @@ function createRoundMazeForState(state) {
   const hazardCount = hardMode ? HAZARD_COUNT + 1 : HAZARD_COUNT;
   const layoutVariant = hardMode ? 'hard-mode' : (resets % 2 === 1 ? 'tight-corners' : 'open-loops');
 
-  return generateMaze(
-    MAZE_WIDTH,
-    MAZE_HEIGHT,
-    hazardCount,
-    KEY_COUNT,
-    LIFE_PICKUP_COUNT,
+  return createRoundMaze(
+    {
+      hazardCount,
+      keyCount: KEY_COUNT,
+    },
     { loopFraction, ghostCount, layoutVariant, hardMode }
   );
 }
@@ -796,77 +725,12 @@ function beginFollowUpPhase(state, startedAt = Date.now()) {
   });
 }
 
-function normalizeRoleArray(value) {
-  if (Array.isArray(value)) {
-    return value.filter((role) => typeof role === 'string' && role.length > 0);
-  }
-  if (typeof value === 'string' && value.length > 0) {
-    return [value];
-  }
-  return [];
-}
-
-function rebalanceRoles(activePlayers, previousRoles = {}) {
-  const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
-  const playerMap = new Map(activePlayers.map((player) => [player.id, player]));
-  const remainingPlayerIds = activePlayers.map((player) => player.id);
-  const remainingGroupIndexes = roleGroups.map((_group, index) => index);
-  const nextRoles = {};
-
-  const assign = (playerId, groupIndex) => {
-    const playerIndex = remainingPlayerIds.indexOf(playerId);
-    const groupPosition = remainingGroupIndexes.indexOf(groupIndex);
-    if (playerIndex < 0 || groupPosition < 0) {
-      return false;
-    }
-    nextRoles[playerId] = roleGroups[groupIndex].slice();
-    remainingPlayerIds.splice(playerIndex, 1);
-    remainingGroupIndexes.splice(groupPosition, 1);
-    return true;
-  };
-
-  const existingMoverId = activePlayers.find((player) => {
-    const assigned = normalizeRoleArray(previousRoles[player.id]);
-    return assigned.includes(MazeRole.MOVER);
-  })?.id || null;
-  const moverGroupIndex = remainingGroupIndexes.find((groupIndex) => roleGroups[groupIndex].includes(MazeRole.MOVER));
-  if (existingMoverId && playerMap.has(existingMoverId) && moverGroupIndex != null) {
-    assign(existingMoverId, moverGroupIndex);
-  }
-
-  while (remainingPlayerIds.length && remainingGroupIndexes.length) {
-    let best = null;
-    for (const playerId of remainingPlayerIds) {
-      const previous = normalizeRoleArray(previousRoles[playerId]);
-      for (const groupIndex of remainingGroupIndexes) {
-        const group = roleGroups[groupIndex];
-        const overlap = group.filter((role) => previous.includes(role)).length;
-        const score = overlap;
-        if (!best || score > best.score) {
-          best = { playerId, groupIndex, score };
-        }
-      }
-    }
-
-    if (!best) {
-      break;
-    }
-    assign(best.playerId, best.groupIndex);
-  }
-
-  return nextRoles;
-}
-
 function cloneJsonValue(value) {
   try {
     return JSON.parse(JSON.stringify(value));
   } catch {
     return null;
   }
-}
-
-function makeReconnectToken() {
-  return crypto.randomUUID();
 }
 
 function normalizeTimerDuration(durationMs, fallbackDurationMs = DEFAULT_TIMER_DURATION_MS) {

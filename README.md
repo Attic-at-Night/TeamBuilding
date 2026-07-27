@@ -228,12 +228,27 @@ close/error cases, and abandoned-session cleanup) are emitted to the normal serv
 ```
 server.js              Express + WebSocket server; WS message dispatch
 src/
+  config/
+    gameplaySettings.js Shared gameplay/session tuning
+  gameplay/
+    roleBalancing.js    Role assignment/cycling/rebalancing helpers
+    sessionStateFactory.js Session state + phase/maze defaults
+  mvc/
+    session/
+      sessionController.js Session HTTP controller
+      sessionModel.js      Session model wrapper
+      sessionView.js       Session response view
   protocol.js          Shared message type / game status / client role constants
   sessionManager.js    Game session lifecycle (display, controllers, state)
   network.js           Local IP / SSID detection for the QR code URL
+  session/
+    sessionIdentity.js  Session/reconnect token helpers
   url.js               Join URL redirect helper
 public/
   index.html           Display screen
+  config/viewSettings.js Runtime view config (display/controller)
+  dependencies/screenDependencies.js Display/controller dependency factories
+  dependencies/controllerRoleDependencies.js Trainer/player dependency split
   display.js           Display client (registers as display, shows state, inputs)
   join.html            Controller screen
   join.js              Controller client (joins session, sends player_input)
