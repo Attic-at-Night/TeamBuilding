@@ -4,6 +4,13 @@ import { Compass, Map, History } from 'lucide-react'
 export function NavigatorView({ roleData, summary }) {
   const maze = roleData?.maze
   const hazardLog = roleData?.hazardLog || []
+  const hazards = roleData?.hazards || []
+  const ghosts = roleData?.ghosts || []
+  const keys = roleData?.keys || []
+  const goal = roleData?.goal || null
+  const assignedRoles = roleData?.assignedRoles || ['navigator']
+
+  const roleTitle = assignedRoles.map((r) => r.toUpperCase()).join(' + ')
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
@@ -13,7 +20,7 @@ export function NavigatorView({ roleData, summary }) {
           <Compass className="w-5 h-5 text-teal-400" />
           <div>
             <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Your Role</span>
-            <span className="text-sm font-bold text-teal-300">NAVIGATOR</span>
+            <span className="text-sm font-bold text-teal-300">{roleTitle}</span>
           </div>
         </div>
 
@@ -23,14 +30,18 @@ export function NavigatorView({ roleData, summary }) {
         </div>
       </div>
 
-      {/* Navigator Map (Static Maze Cells + Mover Pos + Reached Breadcrumb Path) */}
+      {/* Navigator Map (Static Maze Cells + Mover Pos + Reached Breadcrumb Path + Hazards/Ghosts/Keys if merged) */}
       <div className="flex flex-col items-center">
         <GridCanvas
           width={maze?.width || 15}
           height={maze?.height || 15}
           cells={maze?.cells}
-          playerPos={maze?.playerPos}
-          reached={maze?.reached}
+          playerPos={maze?.playerPos || roleData?.playerPos}
+          reached={maze?.reached || roleData?.reached}
+          hazards={hazards}
+          ghosts={ghosts}
+          keys={keys}
+          goal={goal}
           fogRadius={null}
           mode="navigator"
           accentColor="#14b8a6"

@@ -6,6 +6,12 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
   const goal = roleData?.goal || null
   const playerPos = roleData?.playerPos || roleData?.maze?.playerPos
   const keysCollected = summary?.keysCollected ?? 0
+  const hazards = roleData?.hazards || []
+  const ghosts = roleData?.ghosts || []
+  const reached = roleData?.maze?.reached || roleData?.reached || []
+  const assignedRoles = roleData?.assignedRoles || ['key-seer']
+
+  const roleTitle = assignedRoles.map((r) => r.toUpperCase()).join(' + ')
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
@@ -15,7 +21,7 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
           <Key className="w-5 h-5 text-amber-400" />
           <div>
             <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Your Role</span>
-            <span className="text-sm font-bold text-amber-300">KEY-SEER</span>
+            <span className="text-sm font-bold text-amber-300">{roleTitle}</span>
           </div>
         </div>
 
@@ -25,7 +31,7 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
         </div>
       </div>
 
-      {/* Key-Seer Map (Keys + Exit Goal + Mover Pos) */}
+      {/* Key-Seer Map (Keys + Exit Goal + Mover Pos + Merged Role Data) */}
       <div className="flex flex-col items-center">
         <GridCanvas
           width={roleData?.maze?.width || 15}
@@ -34,6 +40,9 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
           playerPos={playerPos}
           keys={keys}
           goal={goal}
+          hazards={hazards}
+          ghosts={ghosts}
+          reached={reached}
           fogRadius={null}
           mode="key-seer"
           accentColor="#eab308"

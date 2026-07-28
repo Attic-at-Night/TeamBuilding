@@ -21,7 +21,6 @@ export function ControllerShell({
   const [sessionId, setSessionId] = useState(initialSessionId)
   const [playerName, setPlayerName] = useState(initialName)
   const [isTrainer, setIsTrainer] = useState(false)
-  const [activeTab, setActiveTab] = useState(null)
 
   const viewerRole = stateSync?.viewerRole || null
   const status = stateSync?.status || 'lobby'
@@ -31,7 +30,7 @@ export function ControllerShell({
   const players = stateSync?.players || []
 
   const assignedRoles = roleData?.assignedRoles || (viewerRole ? [viewerRole] : [])
-  const currentRole = (activeTab && assignedRoles.includes(activeTab)) ? activeTab : (viewerRole || assignedRoles[0] || MazeRole.MOVER)
+  const currentRole = viewerRole || assignedRoles[0] || MazeRole.MOVER
 
   function handleJoinSubmit() {
     onJoin({
@@ -131,34 +130,6 @@ export function ControllerShell({
   // Active Role Views
   return (
     <div className="w-full flex flex-col items-center gap-2 pb-8">
-      {/* Multi-Role Tab Selector (for 1-3 player games where players hold multiple roles) */}
-      {assignedRoles.length > 1 && (
-        <div className="w-full max-w-md px-4 mt-2">
-          <div className="p-1 bg-slate-900/90 border border-slate-700/80 rounded-2xl flex items-center justify-around shadow-xl">
-            {assignedRoles.map((role) => {
-              const isActive = currentRole === role
-              return (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => setActiveTab(role)}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-md border border-blue-400'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  {role === MazeRole.MOVER && '🏃 Mover'}
-                  {role === MazeRole.GUIDE && '⚡ Guide'}
-                  {role === MazeRole.KEY_SEER && '🔑 Key-Seer'}
-                  {role === MazeRole.NAVIGATOR && '🗺️ Navigator'}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Facilitator Broadcast Banner */}
       {trainerBroadcast && (
         <div className="w-full max-w-md my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-950 to-indigo-950 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-2 shadow-lg animate-bounce">

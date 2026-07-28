@@ -5,6 +5,9 @@ import { Shield, Key, Heart } from 'lucide-react'
 export function MoverView({ roleData, summary, timer, onSendInput, status }) {
   const lives = summary?.livesRemaining ?? summary?.lives ?? 3
   const keysCollected = summary?.keysCollected ?? 0
+  const assignedRoles = roleData?.assignedRoles || ['mover']
+
+  const roleTitle = assignedRoles.map((r) => r.toUpperCase()).join(' + ')
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
@@ -14,7 +17,7 @@ export function MoverView({ roleData, summary, timer, onSendInput, status }) {
           <Shield className="w-5 h-5 text-blue-400" />
           <div>
             <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Your Role</span>
-            <span className="text-sm font-bold text-blue-300">MOVER</span>
+            <span className="text-sm font-bold text-blue-300">{roleTitle}</span>
           </div>
         </div>
 
