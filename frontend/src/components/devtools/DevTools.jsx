@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { Wrench, Monitor, Smartphone, Terminal, ChevronDown, ChevronUp } from 'lucide-react'
+import { Wrench, Monitor, Smartphone, Terminal, ChevronDown, ChevronUp, Eye } from 'lucide-react'
+import { VIEW_OPTIONS } from '../ViewSwitcher'
 
 export function DevTools({
   mode,
   setMode,
+  activeView,
+  setActiveView,
   stateSync,
   sessionId,
 }) {
@@ -13,7 +16,7 @@ export function DevTools({
   return (
     <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 text-xs font-sans select-none">
       {isOpen && (
-        <div className="p-4 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-2xl text-slate-200 w-80 flex flex-col gap-3">
+        <div className="p-4 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-2xl text-slate-200 w-88 flex flex-col gap-3">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <span className="font-extrabold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
               <Wrench className="w-3.5 h-3.5" /> Dev Studio Tools
@@ -21,22 +24,51 @@ export function DevTools({
             <span className="font-mono text-[10px] text-slate-500">SESSION: {sessionId || 'NONE'}</span>
           </div>
 
-          {/* Mode Switcher */}
+          {/* Quick View Inspector Selector */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
+              <Eye className="w-3 h-3 text-blue-400" /> View Inspector Selector
+            </span>
+            <select
+              value={activeView}
+              onChange={(e) => {
+                const val = e.target.value
+                setActiveView(val)
+                if (val.startsWith('display_')) setMode('display')
+                if (val.startsWith('controller_')) setMode('controller')
+              }}
+              className="p-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-bold focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              {VIEW_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Base Mode Switcher */}
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Client Mode</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Live Target Role</span>
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-xl">
               <button
                 type="button"
-                onClick={() => setMode('display')}
+                onClick={() => {
+                  setMode('display')
+                  if (activeView === 'live') setActiveView('display_playing')
+                }}
                 className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 font-bold transition-all ${
                   mode === 'display' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Monitor className="w-3.5 h-3.5" /> Display
+                <Monitor className="w-3.5 h-3.5" /> Big Display
               </button>
               <button
                 type="button"
-                onClick={() => setMode('controller')}
+                onClick={() => {
+                  setMode('controller')
+                  if (activeView === 'live') setActiveView('controller_mover')
+                }}
                 className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 font-bold transition-all ${
                   mode === 'controller' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
