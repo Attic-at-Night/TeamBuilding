@@ -36,6 +36,7 @@ export default function App() {
     disconnect,
     handleControllerJoin,
     mockViewState,
+    isReconnecting,
   } = useSessionAppController()
 
   const renderMainContent = () => {
@@ -54,6 +55,7 @@ export default function App() {
         <ControllerShell
           stateSync={stateSync}
           isConnected={connectionState === 'connected'}
+          isReconnecting={isReconnecting}
           errorText={errorText}
           onJoin={handleControllerJoin}
           onSend={send}
