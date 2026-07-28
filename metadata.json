@@ -1,0 +1,6 @@
+{
+  "name": "TeamBuilding",
+  "description": "QR-based TV host and mobile join flow for TeamBuilding sessions",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

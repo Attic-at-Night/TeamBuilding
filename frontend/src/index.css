@@ -1,15 +1,94 @@
-:root {
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #e7eefc;
-  background: #0a1222;
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #020617;
+    --bg-surface: #0f172a;
+    --bg-card: #1e293b;
+    --border-color: #334155;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-primary: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-glow: rgba(59, 130, 246, 0.25);
+    --font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* Theme 1: Cyberpunk Synthwave */
+  [data-theme='cyberpunk'] {
+    --bg-primary: #090014;
+    --bg-surface: #13002b;
+    --bg-card: #1f0042;
+    --border-color: #d946ef;
+    --text-main: #f0abfc;
+    --text-muted: #c084fc;
+    --accent-primary: #06b6d4;
+    --accent-hover: #0891b2;
+    --accent-glow: rgba(217, 70, 239, 0.4);
+  }
+
+  /* Theme 2: Retro CRT / Terminal */
+  [data-theme='retro'] {
+    --bg-primary: #050b05;
+    --bg-surface: #0a170a;
+    --bg-card: #0f240f;
+    --border-color: #22c55e;
+    --text-main: #4ade80;
+    --text-muted: #16a34a;
+    --accent-primary: #22c55e;
+    --accent-hover: #16a34a;
+    --accent-glow: rgba(34, 197, 94, 0.3);
+    --font-family: 'Courier New', Courier, monospace;
+  }
+
+  /* Theme 3: Clean Light / Studio Workshop */
+  [data-theme='light'] {
+    --bg-primary: #f8fafc;
+    --bg-surface: #ffffff;
+    --bg-card: #f1f5f9;
+    --border-color: #cbd5e1;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --accent-primary: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-glow: rgba(37, 99, 235, 0.15);
+  }
+
+  /* Theme 4: Gold & Obsidian Luxury */
+  [data-theme='gold'] {
+    --bg-primary: #0c0a09;
+    --bg-surface: #1c1917;
+    --bg-card: #292524;
+    --border-color: #eab308;
+    --text-main: #fef08a;
+    --text-muted: #ca8a04;
+    --accent-primary: #eab308;
+    --accent-hover: #ca8a04;
+    --accent-glow: rgba(234, 179, 8, 0.3);
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    font-family: var(--font-family);
+    min-height: 100vh;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
 }
 
-* {
-  box-sizing: border-box;
+.theme-card {
+  background-color: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-main);
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  padding: 1rem;
+.theme-button {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.theme-button:hover {
+  background-color: var(--accent-hover);
+  box-shadow: 0 0 15px var(--accent-glow);
 }

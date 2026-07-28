@@ -189,12 +189,24 @@ function buildRoleData(state, role) {
 
   if (roles.includes(MazeRole.MOVER)) {
     roleData.maze = buildMazeForMover(maze);
+    if (!roleData.playerPos) {
+      roleData.playerPos = maze ? maze.playerPos : null;
+    }
   }
 
   if (roles.includes(MazeRole.GUIDE)) {
     roleData.hazards = maze ? maze.hazards : [];
     roleData.ghosts = maze ? maze.ghosts : [];
-    roleData.playerPos = maze ? maze.playerPos : null;
+    if (!roleData.playerPos) {
+      roleData.playerPos = maze ? maze.playerPos : null;
+    }
+    if (!roleData.maze && maze) {
+      roleData.maze = {
+        width: maze.width,
+        height: maze.height,
+        cells: maze.cells,
+      };
+    }
   }
 
   if (roles.includes(MazeRole.KEY_SEER)) {
@@ -208,6 +220,13 @@ function buildRoleData(state, role) {
     roleData.goal = maze && state.summary.keysCollected >= KEY_COUNT ? maze.goal : null;
     if (!roleData.playerPos) {
       roleData.playerPos = maze ? maze.playerPos : null;
+    }
+    if (!roleData.maze && maze) {
+      roleData.maze = {
+        width: maze.width,
+        height: maze.height,
+        cells: maze.cells,
+      };
     }
   }
 
@@ -241,6 +260,7 @@ function buildDisplayState(state, session) {
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
+    displayMaze: buildTrainerCombinedMaze(state.maze),
     mazeMeta: buildMazeMeta(state.maze),
     log: state.log,
     trainerBroadcast: state.trainerBroadcast,
@@ -1519,15 +1539,16 @@ class SessionManager {
       return false;
     }
 
-    if (!roles.includes(MazeRole.MOVER)) {
+    if (input?.action === 'signal') {
       appendLog(state, {
         ts,
-        event: 'input_rejected',
+        event: 'signal',
         playerId,
-        reason: 'wrong_role',
+        playerName: controller.name,
+        signalType: input.type || input.signalType || 'callout',
       });
       this.broadcastState(sessionId);
-      return false;
+      return true;
     }
 
     if (!input || input.action !== 'move' || !['n', 'e', 's', 'w'].includes(input.dir)) {
@@ -1536,6 +1557,17 @@ class SessionManager {
         event: 'input_rejected',
         playerId,
         reason: 'invalid_input',
+      });
+      this.broadcastState(sessionId);
+      return false;
+    }
+
+    if (!roles.includes(MazeRole.MOVER)) {
+      appendLog(state, {
+        ts,
+        event: 'input_rejected',
+        playerId,
+        reason: 'wrong_role',
       });
       this.broadcastState(sessionId);
       return false;

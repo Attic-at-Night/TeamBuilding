@@ -1,0 +1,37 @@
+{
+  "session_id": "78995F",
+  "maze_seed": null,
+  "maze_meta": null,
+  "started_at": null,
+  "ended_at": null,
+  "outcome": null,
+  "timer": {
+    "status": "idle",
+    "durationMs": null,
+    "remainingMs": null,
+    "startedAt": null,
+    "expiresAt": null,
+    "stoppedAt": null
+  },
+  "phase_flow": {
+    "phaseType": "lobby",
+    "currentPhase": null,
+    "totalGameplayPhases": 3,
+    "phaseDurationMs": null,
+    "phaseRemainingMs": null,
+    "phaseStartedAt": null,
+    "phaseEndsAt": null
+  },
+  "trainer": null,
+  "highlighted_event_ids": [],
+  "observer_signals": [],
+  "ai_suggestions": [],
+  "events": [
+    {
+      "id": "evt-1",
+      "t": null,
+      "type": "display_connected",
+      "highlighted": false
+    }
+  ]
+}

@@ -1,201 +1,202 @@
-import { useMemo, useState } from 'react'
-import './App.css'
-import { MessageType, ErrorCode, PROTOCOL_VERSION } from './protocol'
-import { createGameSocket, getBackendHttpOrigin } from './wsClient'
+import { useState } from 'react'
+import { DisplayShell } from './components/display/DisplayShell'
+import { ControllerShell } from './components/controller/ControllerShell'
+import { DevTools } from './components/devtools/DevTools'
+import { ThemeSelector } from './components/ThemeSelector'
+import { NotificationOverlay } from './components/NotificationOverlay'
+import { MessageType } from './protocol'
+import { useSessionAppController } from './controllers/useSessionAppController'
 
-const DEFAULT_TIMER_MS = 15 * 60 * 1000
+import { DisplayLobby } from './components/display/DisplayLobby'
+import { DisplayPlaying } from './components/display/DisplayPlaying'
+import { DisplayDebrief } from './components/display/DisplayDebrief'
+import { ControllerLobby } from './components/controller/ControllerLobby'
+import { MoverView } from './components/controller/MoverView'
+import { GuideView } from './components/controller/GuideView'
+import { KeySeerView } from './components/controller/KeySeerView'
+import { NavigatorView } from './components/controller/NavigatorView'
+import { TrainerDashboard } from './components/controller/TrainerDashboard'
 
-function inferRoleFromPath(pathname) {
-  if (pathname.startsWith('/join')) {
-    return 'controller'
-  }
-  if (pathname.startsWith('/display')) {
-    return 'display'
-  }
-  return 'display'
-}
+export default function App() {
+  const [customNotification, setCustomNotification] = useState(null)
 
-function parseSessionFromQuery() {
-  const params = new URLSearchParams(window.location.search)
-  return (params.get('session') || '').toUpperCase()
-}
+  const {
+    mode,
+    setMode,
+    activeView,
+    setActiveView,
+    sessionId,
+    playerName,
+    joinUrl,
+    qrCodeDataUrl,
+    connectionState,
+    stateSync,
+    errorText,
+    send,
+    disconnect,
+    handleControllerJoin,
+    mockViewState,
+    isReconnecting,
+  } = useSessionAppController()
 
-function parsePlayerNameFromQuery() {
-  const params = new URLSearchParams(window.location.search)
-  return params.get('name') || ''
-}
-
-function App() {
-  const [role, setRole] = useState(() => inferRoleFromPath(window.location.pathname))
-  const [sessionId, setSessionId] = useState(() => parseSessionFromQuery())
-  const [playerName, setPlayerName] = useState(() => parsePlayerNameFromQuery())
-  const [timerMs, setTimerMs] = useState(DEFAULT_TIMER_MS)
-  const [connectionState, setConnectionState] = useState('disconnected')
-  const [socketHandle, setSocketHandle] = useState(null)
-  const [lastMessage, setLastMessage] = useState(null)
-  const [lastStateSync, setLastStateSync] = useState(null)
-  const [errorText, setErrorText] = useState('')
-
-  const backendOrigin = useMemo(() => getBackendHttpOrigin(), [])
-
-  function disconnect() {
-    if (socketHandle) {
-      socketHandle.close()
-      setSocketHandle(null)
+  const renderMainContent = () => {
+    if (activeView === 'live') {
+      return mode === 'display' ? (
+        <DisplayShell
+          stateSync={stateSync}
+          sessionId={sessionId}
+          joinUrl={joinUrl}
+          qrCodeDataUrl={qrCodeDataUrl}
+          onStartGame={() => send({ type: MessageType.GAME_START })}
+          onRestart={() => send({ type: MessageType.GAME_RESTART })}
+          onSend={send}
+        />
+      ) : (
+        <ControllerShell
+          stateSync={stateSync}
+          isConnected={connectionState === 'connected'}
+          isReconnecting={isReconnecting}
+          errorText={errorText}
+          onJoin={handleControllerJoin}
+          onSend={send}
+          onDisconnect={disconnect}
+          initialSessionId={sessionId}
+          initialName={playerName}
+        />
+      )
     }
-    setConnectionState('disconnected')
-  }
 
-  async function createSession() {
-    setErrorText('')
-    const response = await fetch(`${backendOrigin}/api/session`, { method: 'POST' })
-    if (!response.ok) {
-      throw new Error(`Session creation failed (${response.status})`)
+    const mock = mockViewState
+
+    switch (activeView) {
+      case 'display_lobby':
+        return (
+          <DisplayLobby
+            sessionId="TEAM2026"
+            joinUrl="https://app.aistudio.build/join?session=TEAM2026"
+            qrCodeDataUrl=""
+            players={mock.stateSync.players}
+            trainers={mock.stateSync.trainers}
+            ready={true}
+            onStartGame={() => {}}
+          />
+        )
+
+      case 'display_playing':
+        return <DisplayPlaying stateSync={mock.stateSync} />
+
+      case 'display_debrief':
+        return <DisplayDebrief stateSync={mock.stateSync} onRestart={() => {}} />
+
+      case 'controller_join':
+        return (
+          <ControllerLobby
+            sessionId="TEAM2026"
+            playerName="Alex"
+            isTrainer={false}
+            setSessionId={() => {}}
+            setPlayerName={() => {}}
+            setIsTrainer={() => {}}
+            onJoin={() => {}}
+            errorText=""
+          />
+        )
+
+      case 'controller_waiting':
+        return (
+          <ControllerShell
+            stateSync={{ ...mock.stateSync, status: 'lobby', viewerRole: 'mover' }}
+            isConnected={true}
+            errorText=""
+            onJoin={() => {}}
+            onSend={() => {}}
+            onDisconnect={() => {}}
+            initialSessionId="TEAM2026"
+            initialName="Alex Rivera"
+          />
+        )
+
+      case 'controller_mover':
+        return (
+          <MoverView
+            roleData={mock.roleData}
+            summary={mock.stateSync.summary}
+            status="playing"
+            onSendInput={() => {}}
+          />
+        )
+
+      case 'controller_guide':
+        return (
+          <GuideView
+            roleData={mock.roleData}
+            summary={mock.stateSync.summary}
+            status="playing"
+            onSendInput={() => {}}
+          />
+        )
+
+      case 'controller_key_seer':
+        return (
+          <KeySeerView
+            roleData={mock.roleData}
+            summary={mock.stateSync.summary}
+            status="playing"
+            onSendInput={() => {}}
+          />
+        )
+
+      case 'controller_navigator':
+        return (
+          <NavigatorView
+            roleData={mock.roleData}
+            summary={mock.stateSync.summary}
+          />
+        )
+
+      case 'controller_trainer':
+        return (
+          <TrainerDashboard
+            stateSync={mock.stateSync}
+            onSend={() => {}}
+          />
+        )
+
+      default:
+        return null
     }
-    const payload = await response.json()
-    setSessionId(String(payload.sessionId || '').toUpperCase())
-  }
-
-  function connect() {
-    if (!sessionId) {
-      setErrorText('Session ID is required before connecting.')
-      return
-    }
-    if (role === 'controller' && !playerName.trim()) {
-      setErrorText('Controller mode requires a player name.')
-      return
-    }
-
-    disconnect()
-    setErrorText('')
-    setConnectionState('connecting')
-
-    const nextHandle = createGameSocket({
-      onOpen(send) {
-        setConnectionState('connected')
-        if (role === 'display') {
-          send({ type: MessageType.DISPLAY_REGISTER, sessionId })
-          return
-        }
-        send({ type: MessageType.CONTROLLER_JOIN, sessionId, name: playerName.trim() })
-      },
-      onMessage(message) {
-        setLastMessage(message)
-        if (message.type === MessageType.STATE_SYNC) {
-          setLastStateSync(message.state || null)
-        }
-        if (message.type === MessageType.JOIN_ERROR) {
-          const normalizedCode = message.code || ErrorCode.UNKNOWN_MESSAGE_TYPE
-          setErrorText(`${message.message || 'Join error.'} (${normalizedCode})`)
-        }
-      },
-      onClose() {
-        setConnectionState('disconnected')
-      },
-      onError() {
-        setConnectionState('disconnected')
-        setErrorText('WebSocket transport error.')
-      },
-    })
-
-    setSocketHandle(nextHandle)
-  }
-
-  function send(payload) {
-    if (!socketHandle) {
-      setErrorText('Connect first.')
-      return
-    }
-    socketHandle.send(payload)
   }
 
   return (
-    <main className="app-shell">
-      <header>
-        <h1>TeamBuilding frontend scaffold</h1>
-        <p>Protocol v{PROTOCOL_VERSION} • Backend {backendOrigin}</p>
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-main)] font-sans selection:bg-blue-600 selection:text-white transition-colors duration-300">
+      <header className="sticky top-0 z-30 px-4 py-2 bg-slate-900/60 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-black tracking-wider uppercase text-slate-300">
+            Asymmetrical Escape Game
+          </span>
+        </div>
+        <ThemeSelector />
       </header>
 
-      <section className="card">
-        <label>
-          Role
-          <select value={role} onChange={(event) => setRole(event.target.value)}>
-            <option value="display">Display</option>
-            <option value="controller">Controller</option>
-          </select>
-        </label>
+      <main className="w-full relative">
+        <NotificationOverlay
+          stateSync={activeView === 'live' ? stateSync : mockViewState.stateSync}
+          customNotification={customNotification}
+          onDismiss={() => setCustomNotification(null)}
+        />
+        {renderMainContent()}
+      </main>
 
-        <label>
-          Session ID
-          <input
-            value={sessionId}
-            onChange={(event) => setSessionId(event.target.value.toUpperCase())}
-            placeholder="ABC123"
-          />
-        </label>
-
-        {role === 'controller' && (
-          <label>
-            Player name
-            <input
-              value={playerName}
-              onChange={(event) => setPlayerName(event.target.value)}
-              placeholder="Alex"
-            />
-          </label>
-        )}
-
-        <div className="actions">
-          <button type="button" onClick={createSession}>Create session</button>
-          <button type="button" onClick={connect}>Connect</button>
-          <button type="button" onClick={disconnect}>Disconnect</button>
-          <button type="button" onClick={() => send({ type: MessageType.RESYNC_REQUEST })}>Resync</button>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Control messages</h2>
-        <label>
-          Timer duration (ms)
-          <input
-            type="number"
-            min="1000"
-            step="1000"
-            value={timerMs}
-            onChange={(event) => setTimerMs(Number(event.target.value))}
-          />
-        </label>
-        <div className="actions">
-          <button type="button" onClick={() => send({ type: MessageType.GAME_START })}>game_start</button>
-          <button type="button" onClick={() => send({ type: MessageType.GAME_RESTART })}>game_restart</button>
-          <button type="button" onClick={() => send({ type: MessageType.TIMER_START, durationMs: timerMs })}>timer_start</button>
-          <button type="button" onClick={() => send({ type: MessageType.TIMER_STOP })}>timer_stop</button>
-          <button type="button" onClick={() => send({ type: MessageType.TIMER_RESET, durationMs: timerMs })}>timer_reset</button>
-          <button type="button" onClick={() => send({ type: MessageType.FOLLOWUP_END })}>followup_end</button>
-          <button type="button" onClick={() => send({ type: MessageType.PLAYER_INPUT, input: { action: 'move', dir: 'n' } })}>move_n</button>
-          <button type="button" onClick={() => send({ type: MessageType.PLAYER_INPUT, input: { action: 'move', dir: 'e' } })}>move_e</button>
-          <button type="button" onClick={() => send({ type: MessageType.PLAYER_INPUT, input: { action: 'move', dir: 's' } })}>move_s</button>
-          <button type="button" onClick={() => send({ type: MessageType.PLAYER_INPUT, input: { action: 'move', dir: 'w' } })}>move_w</button>
-        </div>
-      </section>
-
-      <section className="card status">
-        <p><strong>Socket:</strong> {connectionState}</p>
-        {errorText && <p className="error">{errorText}</p>}
-      </section>
-
-      <section className="card grid">
-        <article>
-          <h2>Last WebSocket message</h2>
-          <pre>{JSON.stringify(lastMessage, null, 2) || '(none yet)'}</pre>
-        </article>
-        <article>
-          <h2>Last state_sync payload</h2>
-          <pre>{JSON.stringify(lastStateSync, null, 2) || '(none yet)'}</pre>
-        </article>
-      </section>
-    </main>
+      <DevTools
+        mode={mode}
+        setMode={setMode}
+        activeView={activeView}
+        setActiveView={setActiveView}
+        stateSync={stateSync}
+        sessionId={sessionId}
+        onTriggerMockNotification={setCustomNotification}
+      />
+    </div>
   )
 }
-
-export default App
