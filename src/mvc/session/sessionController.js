@@ -20,11 +20,12 @@ class SessionController {
 
   async createSession(req, res) {
     const port = this.resolveServerPort();
-    const requestHost = req.get('host');
-    const requestHostname = req.hostname;
+    const requestHost = req.get('x-forwarded-host') || req.get('host');
+    const requestProtocol = req.get('x-forwarded-proto') || req.protocol;
+    const requestHostname = requestHost ? requestHost.split(':')[0] : req.hostname;
     const publicOrigin = this.getPublicSessionOrigin({
       publicOrigin: this.publicOrigin,
-      requestProtocol: req.protocol,
+      requestProtocol,
       requestHost,
       requestHostname,
     });

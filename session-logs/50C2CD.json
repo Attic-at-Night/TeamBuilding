@@ -1,0 +1,69 @@
+{
+  "session_id": "50C2CD",
+  "maze_seed": "51a289",
+  "maze_meta": {
+    "seed": "51a289",
+    "width": 8,
+    "height": 8,
+    "hazardCount": 5,
+    "ghostCount": 0,
+    "keyCount": 3,
+    "layoutVariant": "open-loops",
+    "hardMode": false
+  },
+  "started_at": 1785167507941,
+  "ended_at": null,
+  "outcome": null,
+  "timer": {
+    "status": "running",
+    "durationMs": 900000,
+    "remainingMs": 776493,
+    "startedAt": 1785167507941,
+    "expiresAt": 1785168407941,
+    "stoppedAt": null
+  },
+  "phase_flow": {
+    "phaseType": "gameplay",
+    "currentPhase": 1,
+    "totalGameplayPhases": 3,
+    "phaseDurationMs": 900000,
+    "phaseRemainingMs": 776493,
+    "phaseStartedAt": 1785167507941,
+    "phaseEndsAt": 1785168407941
+  },
+  "trainer": null,
+  "highlighted_event_ids": [],
+  "observer_signals": [
+    {
+      "eventId": "evt-2",
+      "ts": 1785167507941,
+      "t": 0,
+      "category": "flow",
+      "type": "phase_start",
+      "playerId": null,
+      "player": null,
+      "role": null,
+      "result": null,
+      "reason": null,
+      "hazardType": null,
+      "clarityType": null,
+      "durationMs": 900000,
+      "remainingMs": null
+    }
+  ],
+  "ai_suggestions": [],
+  "events": [
+    {
+      "id": "evt-1",
+      "t": 0,
+      "type": "game_start",
+      "highlighted": false
+    },
+    {
+      "id": "evt-2",
+      "t": 0,
+      "type": "phase_start",
+      "highlighted": false
+    }
+  ]
+}

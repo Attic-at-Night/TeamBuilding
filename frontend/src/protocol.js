@@ -17,6 +17,26 @@ export const MessageType = {
   SESSION_CLOSED: 'session_closed',
 }
 
+export const GameStatus = {
+  LOBBY: 'lobby',
+  PLAYING: 'playing',
+  FOLLOW_UP: 'follow_up',
+  ENDED: 'ended',
+}
+
+export const ClientRole = {
+  DISPLAY: 'display',
+  CONTROLLER: 'controller',
+}
+
+export const MazeRole = {
+  MOVER: 'mover',
+  GUIDE: 'guide',
+  KEY_SEER: 'key-seer',
+  NAVIGATOR: 'navigator',
+  TRAINER: 'trainer',
+}
+
 export const ErrorCode = {
   INVALID_MESSAGE_FORMAT: 'invalid_message_format',
   UNKNOWN_MESSAGE_TYPE: 'unknown_message_type',
@@ -29,3 +49,13 @@ export const ErrorCode = {
   RECONNECT_SLOT_UNAVAILABLE: 'reconnect_slot_unavailable',
   RECONNECT_REPLACED: 'reconnect_replaced',
 }
+
+export const CLARITY_TYPES = [
+  'role_unclear',
+  'silent_confusion',
+  'great_callout',
+  'stalled_motion',
+  'info_gap',
+  'breakthrough',
+]
+

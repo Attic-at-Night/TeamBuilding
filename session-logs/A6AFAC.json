@@ -1,0 +1,125 @@
+{
+  "session_id": "A6AFAC",
+  "maze_seed": "eb44dd",
+  "maze_meta": {
+    "seed": "eb44dd",
+    "width": 8,
+    "height": 8,
+    "hazardCount": 4,
+    "ghostCount": 0,
+    "keyCount": 3,
+    "layoutVariant": "open-loops",
+    "hardMode": false
+  },
+  "started_at": 1785168798269,
+  "ended_at": null,
+  "outcome": null,
+  "timer": {
+    "status": "running",
+    "durationMs": 900000,
+    "remainingMs": 656494,
+    "startedAt": 1785168798269,
+    "expiresAt": 1785169698269,
+    "stoppedAt": null
+  },
+  "phase_flow": {
+    "phaseType": "gameplay",
+    "currentPhase": 1,
+    "totalGameplayPhases": 3,
+    "phaseDurationMs": 900000,
+    "phaseRemainingMs": 656494,
+    "phaseStartedAt": 1785168798269,
+    "phaseEndsAt": 1785169698269
+  },
+  "trainer": null,
+  "highlighted_event_ids": [],
+  "observer_signals": [
+    {
+      "eventId": "evt-2",
+      "ts": 1785168798269,
+      "t": 0,
+      "category": "flow",
+      "type": "phase_start",
+      "playerId": null,
+      "player": null,
+      "role": null,
+      "result": null,
+      "reason": null,
+      "hazardType": null,
+      "clarityType": null,
+      "durationMs": 900000,
+      "remainingMs": null
+    },
+    {
+      "eventId": "evt-3",
+      "ts": 1785168822946,
+      "t": 24.677,
+      "category": "input",
+      "type": "input",
+      "playerId": "fd545456-c680-413e-88d0-97a611247719",
+      "player": "3",
+      "role": "key-seer",
+      "result": null,
+      "reason": null,
+      "hazardType": null,
+      "clarityType": null,
+      "durationMs": null,
+      "remainingMs": null
+    },
+    {
+      "eventId": "evt-5",
+      "ts": 1785168823111,
+      "t": 24.842,
+      "category": "input",
+      "type": "input",
+      "playerId": "fd545456-c680-413e-88d0-97a611247719",
+      "player": "3",
+      "role": "key-seer",
+      "result": null,
+      "reason": null,
+      "hazardType": null,
+      "clarityType": null,
+      "durationMs": null,
+      "remainingMs": null
+    }
+  ],
+  "ai_suggestions": [],
+  "events": [
+    {
+      "id": "evt-1",
+      "t": 0,
+      "type": "game_start",
+      "highlighted": false
+    },
+    {
+      "id": "evt-2",
+      "t": 0,
+      "type": "phase_start",
+      "highlighted": false
+    },
+    {
+      "id": "evt-3",
+      "t": 24.677,
+      "type": "input",
+      "highlighted": false
+    },
+    {
+      "id": "evt-4",
+      "t": 24.677,
+      "type": "input_rejected",
+      "highlighted": false
+    },
+    {
+      "id": "evt-5",
+      "t": 24.842,
+      "type": "input",
+      "highlighted": false
+    },
+    {
+      "id": "evt-6",
+      "t": 24.842,
+      "type": "input_rejected",
+      "highlighted": false
+    }
+  ]
+}
