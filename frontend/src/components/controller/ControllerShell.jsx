@@ -5,6 +5,7 @@ import { GuideView } from './GuideView'
 import { KeySeerView } from './KeySeerView'
 import { NavigatorView } from './NavigatorView'
 import { TrainerDashboard } from './TrainerDashboard'
+import { NotificationOverlay } from '../NotificationOverlay'
 import { MazeRole, MessageType } from '../../protocol'
 import { Shield, Users, Radio } from 'lucide-react'
 
@@ -130,6 +131,9 @@ export function ControllerShell({
   // Active Role Views
   return (
     <div className="w-full flex flex-col items-center gap-2 pb-8">
+      {/* Reusable State-Aware Notification Overlay */}
+      <NotificationOverlay stateSync={stateSync} />
+
       {/* Facilitator Broadcast Banner */}
       {trainerBroadcast && (
         <div className="w-full max-w-md my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-950 to-indigo-950 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-2 shadow-lg animate-bounce">
