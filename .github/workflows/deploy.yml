@@ -1,0 +1,153 @@
+name: CI and Deploy
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Package application
+        run: |
+          mkdir -p dist
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=dist \
+            -czf "dist/teambuilding-${GITHUB_SHA}.tar.gz" .
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: teambuilding-package
+          path: dist/teambuilding-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+
+  deploy:
+    needs: test-and-package
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      PUBLIC_ORIGIN: ${{ secrets.PUBLIC_ORIGIN }}
+      PORT: ${{ secrets.PORT }}
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: teambuilding-package
+          path: dist
+
+      - name: Check deployment configuration
+        id: deploy-config
+        run: |
+          missing=()
+          for key in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_PATH PUBLIC_ORIGIN; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Deploy skipped. Missing required secrets: ${missing[*]}"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        if: steps.deploy-config.outputs.should_deploy == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload release bundle
+        if: steps.deploy-config.outputs.should_deploy == 'true'
+        run: |
+          scp "dist/teambuilding-${GITHUB_SHA}.tar.gz" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/teambuilding-${GITHUB_SHA}.tar.gz"
+
+      - name: Deploy and restart app
+        if: steps.deploy-config.outputs.should_deploy == 'true'
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' PUBLIC_ORIGIN='$PUBLIC_ORIGIN' PORT='${PORT:-3000}' GITHUB_SHA='${GITHUB_SHA}' bash -s" <<'EOF'
+          set -euo pipefail
+          mkdir -p "$DEPLOY_PATH/releases/$GITHUB_SHA"
+          tar -xzf "/tmp/teambuilding-$GITHUB_SHA.tar.gz" -C "$DEPLOY_PATH/releases/$GITHUB_SHA"
+          cd "$DEPLOY_PATH/releases/$GITHUB_SHA"
+          npm ci --omit=dev --cache /tmp/npm-cache-"$GITHUB_SHA"
+
+          cat > .env <<ENVFILE
+          PUBLIC_ORIGIN=$PUBLIC_ORIGIN
+          PORT=$PORT
+          ENVFILE
+
+          ln -sfn "$DEPLOY_PATH/releases/$GITHUB_SHA" "$DEPLOY_PATH/current"
+
+          cd "$DEPLOY_PATH/current"
+          echo "Deployment runtime diagnostics:"
+          echo "  whoami: $(whoami)"
+          echo "  hostname: $(hostname)"
+          echo "  pwd: $(pwd)"
+          echo "  DEPLOY_PATH: $DEPLOY_PATH"
+          echo "  PM2_HOME: ${PM2_HOME:-"(unset; pm2 default is \$HOME/.pm2)"}"
+
+          if PM2_BIN="$(command -v pm2)"; then
+            echo "  pm2 binary: $PM2_BIN"
+            set -a
+            . ./.env
+            set +a
+            echo "pm2 list before restart/start:"
+            pm2 list
+
+            if pm2 describe teambuilding >/dev/null 2>&1; then
+              echo "pm2 process 'teambuilding' exists; restarting with updated environment"
+              pm2 restart teambuilding --update-env
+            else
+              echo "pm2 process 'teambuilding' not found; starting server.js"
+              pm2 start server.js --name teambuilding --time --update-env
+            fi
+
+            echo "pm2 list after restart/start:"
+            pm2 list
+            echo "Saving pm2 process list with pm2 save"
+            pm2 save
+            echo "pm2 describe teambuilding:"
+            pm2 describe teambuilding
+          else
+            echo "  pm2 binary: not found in PATH"
+            echo "pm2 is not installed. Start manually from $DEPLOY_PATH/current:"
+            echo "  set -a && . ./.env && set +a && node server.js"
+          fi
+          EOF

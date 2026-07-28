@@ -1,0 +1,75 @@
+import { GridCanvas } from '../maze/GridCanvas'
+import { Key, Flag, CheckCircle } from 'lucide-react'
+
+export function KeySeerView({ roleData, summary, onSendInput, status }) {
+  const keys = roleData?.keys || []
+  const goal = roleData?.goal || null
+  const playerPos = roleData?.playerPos || roleData?.maze?.playerPos
+  const keysCollected = summary?.keysCollected ?? 0
+
+  return (
+    <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
+      {/* HUD Header */}
+      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md">
+        <div className="flex items-center gap-2">
+          <Key className="w-5 h-5 text-amber-400" />
+          <div>
+            <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Your Role</span>
+            <span className="text-sm font-bold text-amber-300">KEY-SEER</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-amber-950/60 border border-amber-800/50 px-3 py-1 rounded-lg">
+          <Key className="w-4 h-4 text-amber-400" />
+          <span className="text-xs font-bold text-amber-200">{keysCollected} / 3 Keys Found</span>
+        </div>
+      </div>
+
+      {/* Key-Seer Map (Keys + Exit Goal + Mover Pos) */}
+      <div className="flex flex-col items-center">
+        <GridCanvas
+          width={roleData?.maze?.width || 15}
+          height={roleData?.maze?.height || 15}
+          cells={roleData?.maze?.cells}
+          playerPos={playerPos}
+          keys={keys}
+          goal={goal}
+          fogRadius={null}
+          mode="key-seer"
+          accentColor="#eab308"
+        />
+        <p className="text-xs text-slate-400 mt-2 text-center">
+          {keysCollected < 3
+            ? 'Guide the Mover to all 3 golden keys! The exit will unlock once collected.'
+            : 'All keys collected! Guide the Mover to the emerald exit goal!'}
+        </p>
+      </div>
+
+      {/* Key Seer Signal Callouts */}
+      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col gap-2">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Key & Goal Callouts</span>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={status !== 'playing'}
+            onClick={() => onSendInput({ action: 'signal', type: 'key_nearby' })}
+            className="p-3 rounded-xl bg-amber-900/40 hover:bg-amber-800/60 border border-amber-700/50 text-amber-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
+          >
+            <Key className="w-4 h-4 text-amber-400" />
+            <span>Key Nearby!</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={status !== 'playing' || keysCollected < 3}
+            onClick={() => onSendInput({ action: 'signal', type: 'exit_unlocked' })}
+            className="p-3 rounded-xl bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 text-emerald-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-40"
+          >
+            <Flag className="w-4 h-4 text-emerald-400" />
+            <span>Head to Exit!</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,30 @@
+{
+  "name": "teambuilding",
+  "version": "1.0.0",
+  "description": "QR-based TV host and mobile join flow for TeamBuilding sessions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "npm --prefix frontend run build",
+    "test": "node --test",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:preview": "npm --prefix frontend run preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Attic-at-Night/TeamBuilding.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Attic-at-Night/TeamBuilding/issues"
+  },
+  "homepage": "https://github.com/Attic-at-Night/TeamBuilding#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.21.0"
+  }
+}
