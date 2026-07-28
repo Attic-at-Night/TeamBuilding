@@ -3,7 +3,6 @@ import { DisplayShell } from './components/display/DisplayShell'
 import { ControllerShell } from './components/controller/ControllerShell'
 import { DevTools } from './components/devtools/DevTools'
 import { ThemeSelector } from './components/ThemeSelector'
-import { ViewSwitcher } from './components/ViewSwitcher'
 import { MessageType, ErrorCode, GameStatus } from './protocol'
 import { createGameSocket, getBackendHttpOrigin } from './wsClient'
 import { getMockStateForView } from './mockData'
@@ -307,16 +306,6 @@ export default function App() {
         </div>
         <ThemeSelector />
       </header>
-
-      {/* View Switcher Inspector Toolbar */}
-      <ViewSwitcher
-        currentView={activeView}
-        onViewChange={(newView) => {
-          setActiveView(newView)
-          if (newView.startsWith('display_')) setMode('display')
-          if (newView.startsWith('controller_')) setMode('controller')
-        }}
-      />
 
       {/* Main Content Area */}
       <main className="w-full">

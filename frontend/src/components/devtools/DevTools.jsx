@@ -1,6 +1,37 @@
 import { useState } from 'react'
-import { Wrench, Monitor, Smartphone, Terminal, ChevronDown, ChevronUp, Eye } from 'lucide-react'
-import { VIEW_OPTIONS } from '../ViewSwitcher'
+import {
+  Wrench,
+  Monitor,
+  Smartphone,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Radio,
+  Tv,
+  Users,
+  RotateCcw,
+  Footprints,
+  Compass,
+  Eye,
+  Map,
+  GraduationCap,
+} from 'lucide-react'
+
+export const BIG_SCREEN_VIEWS = [
+  { id: 'display_lobby', label: 'Lobby View', icon: Users, color: 'text-blue-400' },
+  { id: 'display_playing', label: 'Gameplay View', icon: Tv, color: 'text-indigo-400' },
+  { id: 'display_debrief', label: 'Debrief Summary', icon: RotateCcw, color: 'text-purple-400' },
+]
+
+export const CONTROLLER_VIEWS = [
+  { id: 'controller_join', label: 'Join Form', icon: Smartphone, color: 'text-slate-300' },
+  { id: 'controller_waiting', label: 'Lobby Waiting', icon: Users, color: 'text-sky-400' },
+  { id: 'controller_mover', label: 'Mover Role', icon: Footprints, color: 'text-blue-400' },
+  { id: 'controller_guide', label: 'Guide Role', icon: Compass, color: 'text-purple-400' },
+  { id: 'controller_key_seer', label: 'Key-Seer Role', icon: Eye, color: 'text-amber-400' },
+  { id: 'controller_navigator', label: 'Navigator Role', icon: Map, color: 'text-teal-400' },
+  { id: 'controller_trainer', label: 'Trainer Dashboard', icon: GraduationCap, color: 'text-amber-300' },
+]
 
 export function DevTools({
   mode,
@@ -13,84 +44,131 @@ export function DevTools({
   const [isOpen, setIsOpen] = useState(false)
   const [showJson, setShowJson] = useState(false)
 
+  const isLive = activeView === 'live'
+
+  const handleSelectView = (viewId, targetMode) => {
+    setActiveView(viewId)
+    if (targetMode) {
+      setMode(targetMode)
+    }
+  }
+
   return (
-    <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2 text-xs font-sans select-none">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 text-xs font-sans select-none">
       {isOpen && (
-        <div className="p-4 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-2xl text-slate-200 w-88 flex flex-col gap-3">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <span className="font-extrabold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-              <Wrench className="w-3.5 h-3.5" /> Dev Studio Tools
+        <div className="p-4 rounded-3xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-2xl text-slate-200 w-96 flex flex-col gap-4 transition-all">
+          {/* Header Bar */}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                <Wrench className="w-4 h-4" />
+              </div>
+              <span className="font-extrabold text-slate-100 tracking-wider uppercase text-[11px]">
+                DevStudio Inspector
+              </span>
+            </div>
+            <span className="font-mono text-[10px] bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-slate-400">
+              {sessionId || 'NO SESSION'}
             </span>
-            <span className="font-mono text-[10px] text-slate-500">SESSION: {sessionId || 'NONE'}</span>
           </div>
 
-          {/* Quick View Inspector Selector */}
+          {/* Mode Switcher: Live vs Inspector Preview */}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
-              <Eye className="w-3 h-3 text-blue-400" /> View Inspector Selector
+            <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center justify-between">
+              <span>Mode Target</span>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isLive ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'}`}>
+                {isLive ? 'LIVE SOCKET' : 'MOCK INSPECTOR'}
+              </span>
             </span>
-            <select
-              value={activeView}
-              onChange={(e) => {
-                const val = e.target.value
-                setActiveView(val)
-                if (val.startsWith('display_')) setMode('display')
-                if (val.startsWith('controller_')) setMode('controller')
-              }}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-bold focus:outline-none focus:border-blue-500 cursor-pointer"
+
+            <button
+              type="button"
+              onClick={() => handleSelectView('live')}
+              className={`w-full p-2.5 rounded-2xl border font-bold flex items-center justify-between transition-all cursor-pointer ${
+                isLive
+                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-950/50'
+                  : 'bg-slate-950/60 hover:bg-slate-800/80 border-slate-800 text-slate-400'
+              }`}
             >
-              {VIEW_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              <div className="flex items-center gap-2">
+                <Radio className={`w-4 h-4 ${isLive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+                <span className="text-xs">Live Socket Session</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400">{mode === 'display' ? 'Big Screen' : 'Controller'}</span>
+            </button>
           </div>
 
-          {/* Base Mode Switcher */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Live Target Role</span>
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('display')
-                  if (activeView === 'live') setActiveView('display_playing')
-                }}
-                className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 font-bold transition-all ${
-                  mode === 'display' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Monitor className="w-3.5 h-3.5" /> Big Display
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('controller')
-                  if (activeView === 'live') setActiveView('controller_mover')
-                }}
-                className={`py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 font-bold transition-all ${
-                  mode === 'controller' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5" /> Controller
-              </button>
+          {/* Big Screen Views */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] uppercase font-black text-blue-400 tracking-wider flex items-center gap-1.5">
+              <Monitor className="w-3.5 h-3.5" /> Big Screen Views
+            </span>
+            <div className="grid grid-cols-1 gap-1 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+              {BIG_SCREEN_VIEWS.map((v) => {
+                const Icon = v.icon
+                const isActive = activeView === v.id
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => handleSelectView(v.id, 'display')}
+                    className={`p-2 rounded-xl font-bold flex items-center gap-2 text-xs transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : v.color}`} />
+                    <span>{v.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* State Sync Inspector */}
-          <div className="flex flex-col gap-1">
+          {/* Controller Views */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] uppercase font-black text-amber-400 tracking-wider flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5" /> Controller Views
+            </span>
+            <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+              {CONTROLLER_VIEWS.map((v) => {
+                const Icon = v.icon
+                const isActive = activeView === v.id
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => handleSelectView(v.id, 'controller')}
+                    className={`p-2 rounded-xl font-bold flex items-center gap-2 text-xs transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : v.color}`} />
+                    <span className="truncate">{v.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* State Sync JSON Debugger */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-slate-800">
             <button
               type="button"
               onClick={() => setShowJson(!showJson)}
-              className="py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 flex items-center justify-between"
+              className="py-1.5 px-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] font-bold text-slate-400 hover:text-slate-200 flex items-center justify-between cursor-pointer"
             >
-              <span className="flex items-center gap-1"><Terminal className="w-3 h-3" /> State Sync Log</span>
-              {showJson ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              <span className="flex items-center gap-1.5">
+                <Terminal className="w-3.5 h-3.5 text-emerald-400" /> State Sync Log
+              </span>
+              {showJson ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
 
             {showJson && (
-              <pre className="p-2 rounded bg-slate-950 border border-slate-800 text-[10px] font-mono text-emerald-400 max-h-48 overflow-auto">
+              <pre className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[10px] font-mono text-emerald-400 max-h-40 overflow-auto scrollbar-thin">
                 {JSON.stringify(stateSync, null, 2)}
               </pre>
             )}
@@ -102,10 +180,10 @@ export function DevTools({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="p-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white shadow-2xl flex items-center gap-2 border border-blue-400 font-bold active:scale-95 transition-all"
+        className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl flex items-center gap-2 border border-blue-400/50 font-bold active:scale-95 transition-all cursor-pointer"
       >
         <Wrench className="w-4 h-4" />
-        <span className="text-xs">DevTools</span>
+        <span className="text-xs">DevTools Inspector</span>
       </button>
     </div>
   )
