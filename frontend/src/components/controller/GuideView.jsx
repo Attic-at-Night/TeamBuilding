@@ -44,34 +44,8 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
           accentColor="#a855f7"
         />
         <p className="text-xs text-slate-400 mt-2 text-center">
-          You see the walls, ghosts, and hazards. Warn the Mover where to go safely!
+          You see the walls, ghosts, and hazards. Speak in real time to guide the Mover safely!
         </p>
-      </div>
-
-      {/* Quick Guide Signal Buttons */}
-      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col gap-2">
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Quick Communication Callouts</span>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={status !== 'playing'}
-            onClick={() => onSendInput({ action: 'signal', type: 'ghost_warning' })}
-            className="p-3 rounded-xl bg-purple-900/40 hover:bg-purple-800/60 border border-purple-700/50 text-purple-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <Ghost className="w-4 h-4 text-purple-400" />
-            <span>Ghost Approaching!</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={status !== 'playing'}
-            onClick={() => onSendInput({ action: 'signal', type: 'hazard_warning' })}
-            className="p-3 rounded-xl bg-rose-900/40 hover:bg-rose-800/60 border border-rose-700/50 text-rose-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-            <span>Watch Out Hazard!</span>
-          </button>
-        </div>
       </div>
     </div>
   )

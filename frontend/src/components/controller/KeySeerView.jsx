@@ -1,5 +1,5 @@
 import { GridCanvas } from '../maze/GridCanvas'
-import { Key, Flag, CheckCircle } from 'lucide-react'
+import { Key } from 'lucide-react'
 
 export function KeySeerView({ roleData, summary, onSendInput, status }) {
   const keys = roleData?.keys || []
@@ -40,35 +40,9 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
         />
         <p className="text-xs text-slate-400 mt-2 text-center">
           {keysCollected < 3
-            ? 'Guide the Mover to all 3 golden keys! The exit will unlock once collected.'
-            : 'All keys collected! Guide the Mover to the emerald exit goal!'}
+            ? 'Speak in real time to guide the Mover to all 3 golden keys!'
+            : 'All keys collected! Direct the Mover out loud to the emerald exit goal!'}
         </p>
-      </div>
-
-      {/* Key Seer Signal Callouts */}
-      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col gap-2">
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Key & Goal Callouts</span>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={status !== 'playing'}
-            onClick={() => onSendInput({ action: 'signal', type: 'key_nearby' })}
-            className="p-3 rounded-xl bg-amber-900/40 hover:bg-amber-800/60 border border-amber-700/50 text-amber-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <Key className="w-4 h-4 text-amber-400" />
-            <span>Key Nearby!</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={status !== 'playing' || keysCollected < 3}
-            onClick={() => onSendInput({ action: 'signal', type: 'exit_unlocked' })}
-            className="p-3 rounded-xl bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-700/50 text-emerald-200 text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-40"
-          >
-            <Flag className="w-4 h-4 text-emerald-400" />
-            <span>Head to Exit!</span>
-          </button>
-        </div>
       </div>
     </div>
   )
