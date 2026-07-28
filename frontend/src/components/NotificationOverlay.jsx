@@ -224,7 +224,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
   }
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 pointer-events-auto transition-all duration-300 animate-in fade-in slide-in-from-top-6">
+    <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 pointer-events-auto transition-all duration-300 animate-in fade-in slide-in-from-top-6">
       <div
         className={`relative overflow-hidden rounded-3xl border p-5 backdrop-blur-2xl ${currentStyle.bg} ${currentStyle.border}`}
       >
