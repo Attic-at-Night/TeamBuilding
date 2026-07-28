@@ -48,8 +48,11 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
       return
     }
 
-    const prevLives = prev?.summary?.livesRemaining ?? prev?.summary?.lives ?? 3
-    const currLives = curr?.summary?.livesRemaining ?? curr?.summary?.lives ?? 3
+    const prevReset = prev?.pendingReset
+    const currReset = curr?.pendingReset
+
+    const prevLives = prev?.summary?.livesRemaining ?? prev?.summary?.lives ?? prevReset?.livesRemaining ?? 3
+    const currLives = curr?.summary?.livesRemaining ?? curr?.summary?.lives ?? currReset?.livesRemaining ?? 3
 
     const prevStatus = prev?.status || 'lobby'
     const currStatus = curr?.status || 'lobby'
@@ -66,16 +69,24 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
     const prevBroadcast = prev?.trainerBroadcast?.message
     const currBroadcast = curr?.trainerBroadcast?.message
 
-    // 1. Death / Life Lost Detection
-    if (currLives < prevLives) {
-      const lostCount = prevLives - currLives
-      if (currLives > 0) {
+    // 1. Death / Life Lost Detection (including pendingReset on controller)
+    if (currLives < prevLives || (!prevReset && currReset)) {
+      const lostCount = prevLives > currLives ? prevLives - currLives : 1
+      const effectiveLives = currLives
+
+      if (effectiveLives > 0) {
+        const hazardLabel = currReset?.reason === 'ghost_collision' 
+          ? 'GHOST CAUGHT PLAYER!' 
+          : currReset?.reason === 'wall_hazard' 
+          ? 'WALL HAZARD COLLISION!' 
+          : 'HAZARD HIT - LIFE LOST!'
+
         triggerNotification({
           id: `death-${Date.now()}`,
           type: 'death',
           variant: 'danger',
-          title: lostCount > 1 ? `${lostCount} LIVES LOST!` : 'HAZARD HIT - LIFE LOST!',
-          subtitle: `${currLives} ${currLives === 1 ? 'life' : 'lives'} remaining. Returning to start position!`,
+          title: lostCount > 1 ? `${lostCount} LIVES LOST!` : hazardLabel,
+          subtitle: `${effectiveLives} ${effectiveLives === 1 ? 'life' : 'lives'} remaining. Returning to start position!`,
           icon: Skull,
           duration: 4500,
         })

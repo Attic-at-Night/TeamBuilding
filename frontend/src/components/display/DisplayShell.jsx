@@ -1,7 +1,6 @@
 import { DisplayLobby } from './DisplayLobby'
 import { DisplayPlaying } from './DisplayPlaying'
 import { DisplayDebrief } from './DisplayDebrief'
-import { NotificationOverlay } from '../NotificationOverlay'
 import { GameStatus, MessageType } from '../../protocol'
 
 export function DisplayShell({
@@ -33,18 +32,8 @@ export function DisplayShell({
   }
 
   if (status === GameStatus.PLAYING) {
-    return (
-      <>
-        <NotificationOverlay stateSync={stateSync} />
-        <DisplayPlaying stateSync={stateSync} />
-      </>
-    )
+    return <DisplayPlaying stateSync={stateSync} />
   }
 
-  return (
-    <>
-      <NotificationOverlay stateSync={stateSync} />
-      <DisplayDebrief stateSync={stateSync} onRestart={onRestart} />
-    </>
-  )
+  return <DisplayDebrief stateSync={stateSync} onRestart={onRestart} />
 }
