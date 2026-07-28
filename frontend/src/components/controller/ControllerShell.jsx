@@ -6,11 +6,12 @@ import { KeySeerView } from './KeySeerView'
 import { NavigatorView } from './NavigatorView'
 import { TrainerDashboard } from './TrainerDashboard'
 import { MazeRole, MessageType } from '../../protocol'
-import { Shield, Users, Radio } from 'lucide-react'
+import { Shield, Users, Radio, Wifi } from 'lucide-react'
 
 export function ControllerShell({
   stateSync,
   isConnected,
+  isReconnecting = false,
   errorText,
   onJoin,
   onSend,
@@ -48,6 +49,20 @@ export function ControllerShell({
   }
 
   if (!isConnected || !stateSync) {
+    if (isReconnecting) {
+      return (
+        <div className="flex flex-col gap-6 w-full max-w-md mx-auto p-6 text-slate-100 min-h-[80vh] justify-center items-center">
+          <div className="w-16 h-16 rounded-3xl bg-amber-600/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-xl animate-pulse">
+            <Wifi className="w-8 h-8" />
+          </div>
+          <div className="text-center flex flex-col items-center gap-1">
+            <h2 className="text-2xl font-black text-white">Reconnecting…</h2>
+            <p className="text-sm text-slate-400">Restoring your session. Please wait.</p>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <ControllerLobby
         sessionId={sessionId}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { MessageType, ErrorCode } from '../protocol'
 import { createGameSocket, getBackendHttpOrigin } from '../wsClient'
 import { getMockStateForView } from '../mockData'
+import { loadReconnectState, saveReconnectState, clearReconnectState } from '../reconnectStorage'
 
 function inferRoleFromPath(pathname) {
   if (pathname.startsWith('/join')) {
@@ -31,17 +32,26 @@ export function useSessionAppController() {
   const [socketHandle, setSocketHandle] = useState(null)
   const [stateSync, setStateSync] = useState(null)
   const [errorText, setErrorText] = useState('')
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const connectionIdRef = useRef(0)
 
   const backendOrigin = useMemo(() => getBackendHttpOrigin(), [])
 
-  const disconnect = useCallback(() => {
+  const closeSocket = useCallback(() => {
     if (socketHandle) {
       socketHandle.close()
       setSocketHandle(null)
     }
+    setIsReconnecting(false)
     setConnectionState('disconnected')
   }, [socketHandle])
+
+  const disconnect = useCallback(() => {
+    closeSocket()
+    if (sessionId) {
+      clearReconnectState(sessionId)
+    }
+  }, [closeSocket, sessionId])
 
   const createNewSession = useCallback(async () => {
     setErrorText('')
@@ -63,7 +73,7 @@ export function useSessionAppController() {
   }, [backendOrigin])
 
   const connectSocket = useCallback(
-    ({ targetSessionId, name = '', isTrainer = false }) => {
+    ({ targetSessionId, name = '', isTrainer = false, reconnectToken = null }) => {
       const activeSession = targetSessionId || sessionId
       if (!activeSession) {
         setErrorText('Session ID is required.')
@@ -72,7 +82,7 @@ export function useSessionAppController() {
 
       const connectionId = connectionIdRef.current + 1
       connectionIdRef.current = connectionId
-      disconnect()
+      closeSocket()
       setErrorText('')
       setConnectionState('connecting')
 
@@ -84,6 +94,14 @@ export function useSessionAppController() {
           setConnectionState('connected')
           if (mode === 'display') {
             send({ type: MessageType.DISPLAY_REGISTER, sessionId: activeSession })
+          } else if (reconnectToken) {
+            // Reconnect: send token to restore player identity; never set requestedTrainer
+            send({
+              type: MessageType.CONTROLLER_JOIN,
+              sessionId: activeSession,
+              name: name.trim() || 'Player',
+              reconnectToken,
+            })
           } else {
             send({
               type: MessageType.CONTROLLER_JOIN,
@@ -98,10 +116,28 @@ export function useSessionAppController() {
           if (connectionIdRef.current !== connectionId) {
             return
           }
-          if (message.type === MessageType.STATE_SYNC) {
+          if (message.type === MessageType.CLIENT_REGISTERED) {
+            if (message.reconnectToken) {
+              saveReconnectState(activeSession, {
+                playerId: message.playerId || null,
+                reconnectToken: message.reconnectToken,
+                name: name.trim() || 'Player',
+              })
+            }
+            setIsReconnecting(false)
+          } else if (message.type === MessageType.STATE_SYNC) {
             setStateSync(message.state || null)
           } else if (message.type === MessageType.JOIN_ERROR) {
-            const code = message.code || ErrorCode.UNKNOWN_MESSAGE_TYPE
+            const code = message.code || ''
+            const isReconnectError = (
+              code === ErrorCode.INVALID_RECONNECT_TOKEN ||
+              code === ErrorCode.RECONNECT_REPLACED ||
+              code === ErrorCode.RECONNECT_SLOT_UNAVAILABLE
+            )
+            if (isReconnectError) {
+              clearReconnectState(activeSession)
+            }
+            setIsReconnecting(false)
             setErrorText(`${message.message || 'Error joining session.'} (${code})`)
             setConnectionState('disconnected')
           }
@@ -111,6 +147,20 @@ export function useSessionAppController() {
             return
           }
           setConnectionState('disconnected')
+
+          // Attempt silent reconnect using stored token
+          const stored = loadReconnectState(activeSession)
+          if (stored && stored.reconnectToken) {
+            setIsReconnecting(true)
+            setErrorText('')
+            connectSocket({
+              targetSessionId: activeSession,
+              name: stored.name || 'Player',
+              reconnectToken: stored.reconnectToken,
+            })
+          } else {
+            setIsReconnecting(false)
+          }
         },
         onError() {
           if (connectionIdRef.current !== connectionId) {
@@ -123,7 +173,7 @@ export function useSessionAppController() {
 
       setSocketHandle(handle)
     },
-    [sessionId, mode, disconnect]
+    [sessionId, mode, closeSocket]
   )
 
   const send = useCallback(
@@ -194,5 +244,6 @@ export function useSessionAppController() {
     send,
     handleControllerJoin,
     mockViewState,
+    isReconnecting,
   }
 }
