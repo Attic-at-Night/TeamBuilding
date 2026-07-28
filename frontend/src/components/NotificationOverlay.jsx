@@ -7,7 +7,6 @@ import {
   Radio,
   Clock,
   Megaphone,
-  X,
   AlertTriangle,
   Flame,
   CheckCircle2,
@@ -253,7 +252,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
           </div>
 
           {/* Text Content */}
-          <div className="flex-1 min-w-0 pr-6">
+          <div className="flex-1 min-w-0 pr-1">
             <div className="flex items-center gap-2 mb-1">
               <span
                 className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${currentStyle.badgeBg}`}
@@ -268,16 +267,6 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
               {notification.subtitle}
             </p>
           </div>
-
-          {/* Dismiss Button */}
-          <button
-            type="button"
-            onClick={handleClose}
-            className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors shrink-0"
-            aria-label="Dismiss notification"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
         {/* Timed Progress Bar Indicator */}
