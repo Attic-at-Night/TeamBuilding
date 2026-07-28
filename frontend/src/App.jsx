@@ -100,6 +100,7 @@ export default function App() {
               type: MessageType.CONTROLLER_JOIN,
               sessionId: activeSession,
               name: name.trim() || 'Player',
+              requestedTrainer: isTrainer,
               isTrainer,
             })
           }

@@ -146,19 +146,16 @@ export function DisplayLobby({
             )}
           </div>
 
-          {/* Start Game Button */}
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              disabled={players.length < 2}
-              onClick={onStartGame}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 text-white font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all"
-            >
-              <Play className="w-6 h-6 fill-white" />
-              <span>Start Game Session</span>
-            </button>
-            <p className="text-xs text-slate-500 text-center">
-              Requires at least 2 players to start.
+          {/* Waiting for Trainer Status Panel */}
+          <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-800/60 flex flex-col items-center justify-center gap-2 text-center">
+            <div className="flex items-center gap-2 text-indigo-300 font-bold text-sm">
+              <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+              <span>Waiting for Trainer to Start Session</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              {players.length >= 2
+                ? 'Players are ready! The Trainer can start the session from their dashboard.'
+                : 'At least 2 players are required to join before starting.'}
             </p>
           </div>
         </div>

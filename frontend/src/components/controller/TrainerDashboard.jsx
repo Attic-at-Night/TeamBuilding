@@ -26,11 +26,19 @@ export function TrainerDashboard({ stateSync, onSend }) {
 
   const status = stateSync?.status || 'lobby'
   const timer = stateSync?.timer || {}
+  const phaseFlow = stateSync?.phaseFlow || {}
+  const players = stateSync?.players || []
   const trainerMaze = stateSync?.trainerMaze || stateSync?.roleData?.trainerMaze
   const trainerEvents = stateSync?.trainerEvents || stateSync?.roleData?.trainerEvents || []
   const trainerRoleViews = stateSync?.trainerRoleViews || stateSync?.roleData?.trainerRoleViews || []
   const aiSuggestions = stateSync?.aiSuggestions || stateSync?.roleData?.aiSuggestions || []
   const highlightedIds = stateSync?.trainerHighlightEventIds || stateSync?.roleData?.trainerHighlightEventIds || []
+
+  // Timer calculation
+  const remainingMs = timer?.remainingMs ?? phaseFlow?.phaseRemainingMs ?? 0
+  const timerMinutes = Math.floor(remainingMs / 60000)
+  const timerSeconds = Math.floor((remainingMs % 60000) / 1000)
+  const timerFormatted = `${String(timerMinutes).padStart(2, '0')}:${String(timerSeconds).padStart(2, '0')}`
 
   function sendTimerStart() {
     onSend({ type: MessageType.TIMER_START, durationMs: timerInput * 60 * 1000 })
@@ -173,63 +181,110 @@ export function TrainerDashboard({ stateSync, onSend }) {
           </div>
         </div>
 
-        {/* Timer Control Bar */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="1"
-              max="60"
-              value={timerInput}
-              onChange={(e) => setTimerInput(Number(e.target.value))}
-              className="w-14 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs font-bold text-center text-white"
-            />
-            <span className="text-xs text-slate-400 font-medium">min</span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
+        {/* Start Game Session Banner for Trainer in Lobby */}
+        {status === 'lobby' && (
+          <div className="p-3.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-bold text-indigo-200 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                Session Lobby Active ({players.length}/4 Connected)
+              </span>
+              <span className="text-[11px] text-indigo-300/80">
+                Requires at least 2 players to start the 3-round session (15m, 10m, 5m).
+              </span>
+            </div>
             <button
               type="button"
-              onClick={sendTimerStart}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+              disabled={players.length < 2}
+              onClick={() => onSend({ type: MessageType.GAME_START })}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer"
             >
-              <Play className="w-3.5 h-3.5" /> Start
-            </button>
-            <button
-              type="button"
-              onClick={sendTimerStop}
-              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
-            >
-              <Pause className="w-3.5 h-3.5" /> Pause
-            </button>
-            <button
-              type="button"
-              onClick={sendTimerReset}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Reset
+              <Play className="w-4 h-4 fill-white" />
+              <span>Start Game Session</span>
             </button>
           </div>
+        )}
 
-          {status === 'follow_up' && (
-            <button
-              type="button"
-              onClick={sendEndFollowup}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
-            >
-              End Follow-up
-            </button>
-          )}
+        {/* Timer Control Bar & Clock Display */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 gap-3 flex-wrap">
+          {/* Live Timer Readout */}
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xl font-extrabold text-white shadow-inner">
+              {timerFormatted}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {phaseFlow?.phaseType === 'gameplay'
+                  ? `Round ${phaseFlow?.currentPhase || 1} of 3`
+                  : (status === 'follow_up' ? 'Follow-up' : 'Timer')}
+              </span>
+              <span className="text-[11px] font-semibold text-indigo-300">
+                {timer?.status ? timer.status.toUpperCase() : 'IDLE'}
+              </span>
+            </div>
+          </div>
 
-          {status === 'ended' && (
-            <button
-              type="button"
-              onClick={sendRestart}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold"
-            >
-              Restart Round
-            </button>
-          )}
+          {/* Duration Input & Controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={timerInput}
+                onChange={(e) => setTimerInput(Number(e.target.value))}
+                className="w-12 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs font-bold text-center text-white"
+              />
+              <span className="text-xs text-slate-400 font-medium">m</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={sendTimerStart}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                title="Start or Resume Timer"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" /> Start
+              </button>
+              <button
+                type="button"
+                onClick={sendTimerStop}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                title="Pause Timer"
+              >
+                <Pause className="w-3.5 h-3.5 fill-white" /> Pause
+              </button>
+              <button
+                type="button"
+                onClick={sendTimerReset}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                title="Reset Timer to input duration"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Reset
+              </button>
+            </div>
+
+            {status === 'follow_up' && (
+              <button
+                type="button"
+                onClick={sendEndFollowup}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
+              >
+                End Follow-up
+              </button>
+            )}
+
+            {status === 'ended' && (
+              <button
+                type="button"
+                onClick={sendRestart}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+              >
+                Restart Session
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

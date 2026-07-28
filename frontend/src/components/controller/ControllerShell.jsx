@@ -113,7 +113,7 @@ export function ControllerShell({
           </div>
 
           <p className="text-xs text-slate-400 text-center mt-3">
-            Waiting for Host on Big Display to start the game...
+            Waiting for Trainer to start the game session...
           </p>
         </div>
 

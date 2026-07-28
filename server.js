@@ -73,13 +73,13 @@ const handlers = {
     sessionManager.joinController(message.sessionId, {
       name: message.name,
       reconnectToken: message.reconnectToken,
-      requestedTrainer: message.requestedTrainer,
+      requestedTrainer: message.requestedTrainer ?? message.isTrainer,
     }, socket);
   },
 
   [MessageType.GAME_START](_message, socket) {
     const meta = socket.meta;
-    if (meta?.role === ClientRole.DISPLAY) {
+    if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
       sessionManager.startGame(meta.sessionId);
     }
   },
