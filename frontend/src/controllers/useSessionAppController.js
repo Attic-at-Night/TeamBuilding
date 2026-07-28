@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { MessageType, ErrorCode } from '../protocol'
 import { createGameSocket, getBackendHttpOrigin } from '../wsClient'
 import { getMockStateForView } from '../mockData'
@@ -31,6 +31,7 @@ export function useSessionAppController() {
   const [socketHandle, setSocketHandle] = useState(null)
   const [stateSync, setStateSync] = useState(null)
   const [errorText, setErrorText] = useState('')
+  const connectionIdRef = useRef(0)
 
   const backendOrigin = useMemo(() => getBackendHttpOrigin(), [])
 
@@ -69,12 +70,17 @@ export function useSessionAppController() {
         return
       }
 
+      const connectionId = connectionIdRef.current + 1
+      connectionIdRef.current = connectionId
       disconnect()
       setErrorText('')
       setConnectionState('connecting')
 
       const handle = createGameSocket({
         onOpen(send) {
+          if (connectionIdRef.current !== connectionId) {
+            return
+          }
           setConnectionState('connected')
           if (mode === 'display') {
             send({ type: MessageType.DISPLAY_REGISTER, sessionId: activeSession })
@@ -89,6 +95,9 @@ export function useSessionAppController() {
           }
         },
         onMessage(message) {
+          if (connectionIdRef.current !== connectionId) {
+            return
+          }
           if (message.type === MessageType.STATE_SYNC) {
             setStateSync(message.state || null)
           } else if (message.type === MessageType.JOIN_ERROR) {
@@ -98,9 +107,15 @@ export function useSessionAppController() {
           }
         },
         onClose() {
+          if (connectionIdRef.current !== connectionId) {
+            return
+          }
           setConnectionState('disconnected')
         },
         onError() {
+          if (connectionIdRef.current !== connectionId) {
+            return
+          }
           setConnectionState('disconnected')
           setErrorText('WebSocket connection error.')
         },
