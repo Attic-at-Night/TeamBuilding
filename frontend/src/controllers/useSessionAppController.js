@@ -99,7 +99,7 @@ export function useSessionAppController() {
             send({
               type: MessageType.CONTROLLER_JOIN,
               sessionId: activeSession,
-              name: name.trim() || 'Player',
+              name: (typeof name === 'string' ? name : String(name ?? '')).trim() || 'Player',
               reconnectToken,
             })
           } else {
