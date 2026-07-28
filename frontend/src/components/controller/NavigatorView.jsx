@@ -44,7 +44,7 @@ export function NavigatorView({ roleData, summary }) {
           goal={goal}
           fogRadius={null}
           mode="navigator"
-          accentColor="#14b8a6"
+          accentColor="#3b82f6"
         />
         <p className="text-xs text-slate-400 mt-2 text-center">
           You see the overall maze layout and breadcrumb history. Keep the team oriented!

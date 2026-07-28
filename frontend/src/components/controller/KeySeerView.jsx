@@ -45,7 +45,7 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
           reached={reached}
           fogRadius={null}
           mode="key-seer"
-          accentColor="#eab308"
+          accentColor="#3b82f6"
         />
         <p className="text-xs text-slate-400 mt-2 text-center">
           {keysCollected < 3

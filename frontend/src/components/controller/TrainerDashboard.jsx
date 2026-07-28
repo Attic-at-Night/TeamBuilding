@@ -354,7 +354,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
             reached={trainerMaze?.reached}
             fogRadius={null}
             mode="trainer"
-            accentColor="#6366f1"
+            accentColor="#3b82f6"
           />
         </div>
       )}
@@ -475,7 +475,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
               reached={pRoleData?.maze?.reached}
               fogRadius={null}
               mode={selectedPerspective}
-              accentColor="#818cf8"
+              accentColor="#3b82f6"
             />
           </div>
         </div>

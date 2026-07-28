@@ -51,7 +51,7 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
           reached={reached}
           fogRadius={null}
           mode="guide"
-          accentColor="#a855f7"
+          accentColor="#3b82f6"
         />
         <p className="text-xs text-slate-400 mt-2 text-center">
           You see the walls, ghosts, and hazards. Speak in real time to guide the Mover safely!
