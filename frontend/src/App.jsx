@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { DisplayShell } from './components/display/DisplayShell'
 import { ControllerShell } from './components/controller/ControllerShell'
 import { DevTools } from './components/devtools/DevTools'
 import { ThemeSelector } from './components/ThemeSelector'
+import { NotificationOverlay } from './components/NotificationOverlay'
 import { MessageType } from './protocol'
 import { useSessionAppController } from './controllers/useSessionAppController'
 
@@ -16,6 +18,8 @@ import { NavigatorView } from './components/controller/NavigatorView'
 import { TrainerDashboard } from './components/controller/TrainerDashboard'
 
 export default function App() {
+  const [customNotification, setCustomNotification] = useState(null)
+
   const {
     mode,
     setMode,
@@ -173,7 +177,12 @@ export default function App() {
         <ThemeSelector />
       </header>
 
-      <main className="w-full">
+      <main className="w-full relative">
+        <NotificationOverlay
+          stateSync={activeView === 'live' ? stateSync : mockViewState.stateSync}
+          customNotification={customNotification}
+          onDismiss={() => setCustomNotification(null)}
+        />
         {renderMainContent()}
       </main>
 
@@ -184,6 +193,7 @@ export default function App() {
         setActiveView={setActiveView}
         stateSync={stateSync}
         sessionId={sessionId}
+        onTriggerMockNotification={setCustomNotification}
       />
     </div>
   )

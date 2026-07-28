@@ -15,6 +15,12 @@ import {
   Eye,
   Map,
   GraduationCap,
+  Bell,
+  Skull,
+  HeartCrack,
+  Trophy,
+  Clock,
+  Megaphone,
 } from 'lucide-react'
 
 export const BIG_SCREEN_VIEWS = [
@@ -40,6 +46,7 @@ export function DevTools({
   setActiveView,
   stateSync,
   sessionId,
+  onTriggerMockNotification,
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [showJson, setShowJson] = useState(false)
@@ -151,6 +158,128 @@ export function DevTools({
                   </button>
                 )
               })}
+            </div>
+          </div>
+
+          {/* Test Overlay Notifications Panel */}
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+            <span className="text-[10px] uppercase font-black text-rose-400 tracking-wider flex items-center gap-1.5">
+              <Bell className="w-3.5 h-3.5" /> Test Overlay Notifications
+            </span>
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-2 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-death-${Date.now()}`,
+                    type: 'death',
+                    variant: 'danger',
+                    title: 'HAZARD HIT - LIFE LOST!',
+                    subtitle: '2 lives remaining. Returning to start position!',
+                    icon: Skull,
+                    duration: 4500,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Skull className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="truncate">Life Lost</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-defeat-${Date.now()}`,
+                    type: 'defeat',
+                    variant: 'danger',
+                    title: 'TEAM DEFEATED!',
+                    subtitle: 'All team lives lost. Review session debrief with trainer.',
+                    icon: HeartCrack,
+                    persistent: true,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-600 text-rose-100 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <HeartCrack className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                <span className="truncate">Team Defeat</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-victory-${Date.now()}`,
+                    type: 'win',
+                    variant: 'success',
+                    title: 'MAZE ESCAPED! VICTORY!',
+                    subtitle: 'All keys collected and exit reached safely. Outstanding teamwork!',
+                    icon: Trophy,
+                    persistent: true,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-700/80 text-emerald-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trophy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">Victory</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-followup-${Date.now()}`,
+                    type: 'follow_up',
+                    variant: 'info',
+                    title: 'FOLLOW-UP PHASE STARTED',
+                    subtitle: 'Gameplay paused. Proceeding into trainer guided debrief.',
+                    icon: Clock,
+                    duration: 6000,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900/80 border border-indigo-700/80 text-indigo-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate">Follow-Up</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-phase-${Date.now()}`,
+                    type: 'phase_change',
+                    variant: 'primary',
+                    title: 'PHASE 2 STARTED',
+                    subtitle: 'Navigating phase 2 of the session protocol!',
+                    icon: Radio,
+                    duration: 4000,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900/80 border border-blue-700/80 text-blue-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Radio className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="truncate">Phase Update</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerMockNotification?.({
+                    id: `test-broadcast-${Date.now()}`,
+                    type: 'broadcast',
+                    variant: 'warning',
+                    title: 'FACILITATOR ANNOUNCEMENT',
+                    subtitle: 'Trainer: Focus on communicating wall positions clearly!',
+                    icon: Megaphone,
+                    duration: 7000,
+                  })
+                }
+                className="p-1.5 rounded-xl bg-amber-950/80 hover:bg-amber-900/80 border border-amber-700/80 text-amber-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Megaphone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">Broadcast</span>
+              </button>
             </div>
           </div>
 
