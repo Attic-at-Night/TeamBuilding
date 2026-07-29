@@ -32,6 +32,14 @@ const sessionController = new SessionController({
 
 app.set('trust proxy', true);
 app.use(express.json());
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/join' || req.path.endsWith('.html') || req.path.endsWith('.js') || req.path.endsWith('.css')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 app.use(express.static(path.join(__dirname, 'public')));
 
