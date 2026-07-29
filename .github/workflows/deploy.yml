@@ -24,18 +24,25 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      
       - name: Run tests
         run: npm test
 
+      - name: Build frontend assets
+        run: npm run build
+      
       - name: Package application
         run: |
           mkdir -p dist
           tar \
             --exclude=.git \
             --exclude=node_modules \
+            --exclude=frontend/node_modules \
             --exclude=dist \
             -czf "dist/teambuilding-${GITHUB_SHA}.tar.gz" .
 
@@ -132,12 +139,12 @@ jobs:
             pm2 list
 
             if pm2 describe teambuilding >/dev/null 2>&1; then
-              echo "pm2 process 'teambuilding' exists; restarting with updated environment"
-              pm2 restart teambuilding --update-env
-            else
-              echo "pm2 process 'teambuilding' not found; starting server.js"
-              pm2 start server.js --name teambuilding --time --update-env
+              echo "pm2 process 'teambuilding' exists; replacing it with the new release"
+              pm2 delete teambuilding || true
             fi
+
+            echo "pm2 process 'teambuilding' not found; starting server.js from the current release"
+            pm2 start "$DEPLOY_PATH/current/server.js" --cwd "$DEPLOY_PATH/current" --name teambuilding --time --update-env
 
             echo "pm2 list after restart/start:"
             pm2 list
