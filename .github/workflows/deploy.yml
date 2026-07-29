@@ -108,9 +108,12 @@ jobs:
         if: steps.deploy-config.outputs.should_deploy == 'true'
         run: |
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' PUBLIC_ORIGIN='$PUBLIC_ORIGIN' PORT='${PORT:-3000}' GITHUB_SHA='${GITHUB_SHA}' bash -s" <<'EOF'
+            "DEPLOY_PATH='$DEPLOY_PATH' PUBLIC_ORIGIN='$PUBLIC_ORIGIN' PORT='${PORT:-3000}' GITHUB_SHA='${GITHUB_SHA}' DEPLOY_USER='$DEPLOY_USER' bash -s" <<'EOF'
           set -euo pipefail
-          mkdir -p "$DEPLOY_PATH/releases/$GITHUB_SHA"
+          DEPLOY_HOME="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
+          export HOME="$DEPLOY_HOME"
+          export PM2_HOME="${PM2_HOME:-$DEPLOY_HOME/.pm2}"
+          mkdir -p "$DEPLOY_PATH/releases/$GITHUB_SHA" "$PM2_HOME"
           tar -xzf "/tmp/teambuilding-$GITHUB_SHA.tar.gz" -C "$DEPLOY_PATH/releases/$GITHUB_SHA"
           cd "$DEPLOY_PATH/releases/$GITHUB_SHA"
           npm ci --omit=dev --cache /tmp/npm-cache-"$GITHUB_SHA"
@@ -128,6 +131,7 @@ jobs:
           echo "  hostname: $(hostname)"
           echo "  pwd: $(pwd)"
           echo "  DEPLOY_PATH: $DEPLOY_PATH"
+          echo "  HOME: $HOME"
           echo "  PM2_HOME: ${PM2_HOME:-"(unset; pm2 default is \$HOME/.pm2)"}"
 
           if PM2_BIN="$(command -v pm2)"; then
