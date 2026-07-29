@@ -38,19 +38,18 @@ jobs:
       
       - name: Package application
         run: |
-          mkdir -p dist
+          mkdir -p .release-artifacts
           tar \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude=frontend/node_modules \
-            --exclude=dist \
-            -czf "dist/teambuilding-${GITHUB_SHA}.tar.gz" .
+            --exclude=./.git \
+            --exclude=./node_modules \
+            --exclude=./frontend/node_modules \
+            -czf ".release-artifacts/teambuilding-${GITHUB_SHA}.tar.gz" .
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: teambuilding-package
-          path: dist/teambuilding-${{ github.sha }}.tar.gz
+          path: .release-artifacts/teambuilding-${{ github.sha }}.tar.gz
           if-no-files-found: error
 
   deploy:
@@ -71,7 +70,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: teambuilding-package
-          path: dist
+          path: .release-artifacts
 
       - name: Check deployment configuration
         id: deploy-config
@@ -102,7 +101,7 @@ jobs:
       - name: Upload release bundle
         if: steps.deploy-config.outputs.should_deploy == 'true'
         run: |
-          scp "dist/teambuilding-${GITHUB_SHA}.tar.gz" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/teambuilding-${GITHUB_SHA}.tar.gz"
+          scp ".release-artifacts/teambuilding-${GITHUB_SHA}.tar.gz" "$DEPLOY_USER@$DEPLOY_HOST:/tmp/teambuilding-${GITHUB_SHA}.tar.gz"
 
       - name: Deploy and restart app
         if: steps.deploy-config.outputs.should_deploy == 'true'
