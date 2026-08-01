@@ -15,8 +15,58 @@ import {
   Radio,
   Bookmark,
   Share2,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  LogOut,
 } from 'lucide-react'
 import { MessageType, CLARITY_TYPES } from '../../protocol'
+
+function classifyMoiEvent(entry) {
+  if (entry.event === 'hazard_hit') return entry.hazardType === 'wall' ? 'hazard_wall' : 'hazard_cross'
+  if (entry.event === 'input' && entry.result === 'key') return 'key'
+  if (entry.event === 'input' && entry.result === 'goal') return 'goal'
+  if (entry.event === 'timer_expired') return 'timer_expired'
+  if (entry.event === 'session_end' && entry.outcome === 'fail') return 'out_of_lives'
+  return null
+}
+
+function getMoiLabel(entry) {
+  if (entry.event === 'hazard_hit') return entry.hazardType === 'wall' ? 'Hit a wall' : 'Hit cross'
+  if (entry.event === 'input' && entry.result === 'key') {
+    const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
+    return `Got Key${n}`
+  }
+  if (entry.event === 'input' && entry.result === 'goal') return 'Reached Goal'
+  if (entry.event === 'timer_expired') return 'Out of time'
+  if (entry.event === 'session_end') return 'Out of lives'
+  return entry.event
+}
+
+function formatSeconds(seconds) {
+  const s = Math.max(0, Math.round(seconds))
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return `${m}m ${String(rem).padStart(2, '0')}s`
+}
+
+function getMoiEventsForPhase(log, followingPhase) {
+  if (!Array.isArray(log)) return []
+  let phaseStartIdx = -1
+  let phaseEndIdx = log.length
+  for (let i = 0; i < log.length; i++) {
+    const e = log[i]
+    if (e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) {
+      phaseStartIdx = i
+    }
+    if (phaseStartIdx >= 0 && i > phaseStartIdx && e.event === 'phase_start') {
+      phaseEndIdx = i
+      break
+    }
+  }
+  if (phaseStartIdx < 0) return []
+  return log.slice(phaseStartIdx + 1, phaseEndIdx).filter((e) => classifyMoiEvent(e) !== null)
+}
 
 export function TrainerDashboard({ stateSync, onSend }) {
   const [activeTab, setActiveTab] = useState('maze') // 'maze', 'events', 'perspectives', 'ai', 'broadcast'
@@ -33,6 +83,10 @@ export function TrainerDashboard({ stateSync, onSend }) {
   const trainerRoleViews = stateSync?.trainerRoleViews || stateSync?.roleData?.trainerRoleViews || []
   const aiSuggestions = stateSync?.aiSuggestions || stateSync?.roleData?.aiSuggestions || []
   const highlightedIds = stateSync?.trainerHighlightEventIds || stateSync?.roleData?.trainerHighlightEventIds || []
+  const followUpFocusedEventId = stateSync?.followUpFocusedEventId || null
+  const log = stateSync?.log || []
+  const followingPhase = phaseFlow?.followingPhase || null
+  const totalGameplayPhases = phaseFlow?.totalGameplayPhases || 3
 
   // Timer calculation
   const remainingMs = timer?.remainingMs ?? phaseFlow?.phaseRemainingMs ?? 0
@@ -58,6 +112,10 @@ export function TrainerDashboard({ stateSync, onSend }) {
 
   function sendEndFollowup() {
     onSend({ type: MessageType.FOLLOWUP_END })
+  }
+
+  function sendFollowupNavigate(direction) {
+    onSend({ type: MessageType.FOLLOWUP_NAVIGATE, direction })
   }
 
   function toggleHighlight(eventId) {
@@ -269,9 +327,15 @@ export function TrainerDashboard({ stateSync, onSend }) {
               <button
                 type="button"
                 onClick={sendEndFollowup}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
+                className={`px-3 py-1.5 rounded-lg text-white text-xs font-bold cursor-pointer ${
+                  followingPhase !== null && followingPhase < totalGameplayPhases
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-rose-700 hover:bg-rose-600'
+                }`}
               >
-                End Follow-up
+                {followingPhase !== null && followingPhase < totalGameplayPhases
+                  ? `Start Level ${followingPhase + 1}`
+                  : 'End Session'}
               </button>
             )}
 
@@ -288,7 +352,86 @@ export function TrainerDashboard({ stateSync, onSend }) {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Follow-up Panel: shown when in follow_up status */}
+      {status === 'follow_up' && (() => {
+        const moiEvents = getMoiEventsForPhase(log, followingPhase)
+        const focusedEvent = moiEvents.find((e) => e.eventId === followUpFocusedEventId) || moiEvents[0] || null
+        const focusedIndex = moiEvents.findIndex((e) => e.eventId === (focusedEvent?.eventId))
+
+        return (
+          <div className="flex flex-col gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-700 shadow-xl">
+            {/* Panel header */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Level {followingPhase} Follow-up · Timeline
+              </span>
+              <span className="text-xs text-slate-500">
+                {moiEvents.length} moment{moiEvents.length !== 1 ? 's' : ''} of interest
+              </span>
+            </div>
+
+            {/* Focused MOI card */}
+            {focusedEvent ? (
+              <div className="p-4 rounded-xl border border-rose-200/30 shadow-md" style={{ backgroundColor: 'rgba(254, 226, 226, 0.12)' }}>
+                <p className="text-sm font-black text-rose-200 leading-tight">
+                  {getMoiLabel(focusedEvent)}
+                </p>
+                {typeof focusedEvent.t === 'number' && (
+                  <p className="text-xs font-semibold text-rose-300/70 mt-0.5">
+                    {formatSeconds(focusedEvent.t - (
+                      log.find((e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase)?.t ?? 0
+                    ))}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic text-center py-2">No moments recorded for this level.</p>
+            )}
+
+            {/* Prev / Next navigation */}
+            <div className="flex items-center gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => sendFollowupNavigate('prev')}
+                disabled={moiEvents.length === 0 || focusedIndex <= 0}
+                className="flex flex-col items-center gap-1 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold active:scale-95 transition-all cursor-pointer border border-slate-700"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span>Prev Item</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => sendFollowupNavigate('next')}
+                disabled={moiEvents.length === 0 || focusedIndex >= moiEvents.length - 1}
+                className="flex flex-col items-center gap-1 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold active:scale-95 transition-all cursor-pointer border border-slate-700"
+              >
+                <ChevronRight className="w-5 h-5" />
+                <span>Next Item</span>
+              </button>
+            </div>
+
+            {/* Primary action button */}
+            <button
+              type="button"
+              onClick={sendEndFollowup}
+              className={`w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer shadow-lg ${
+                followingPhase !== null && followingPhase < totalGameplayPhases
+                  ? 'bg-emerald-600 hover:bg-emerald-500'
+                  : 'bg-rose-700 hover:bg-rose-600'
+              }`}
+            >
+              {followingPhase !== null && followingPhase < totalGameplayPhases ? (
+                <><ArrowRight className="w-4 h-4" /> Start Level {followingPhase + 1}</>
+              ) : (
+                <><LogOut className="w-4 h-4" /> End Session</>
+              )}
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* Navigation Tabs + Tab Content (hidden during follow-up) */}
+      {status !== 'follow_up' && (<>
       <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-bold">
         <button
           type="button"
@@ -333,8 +476,6 @@ export function TrainerDashboard({ stateSync, onSend }) {
           )}
         </button>
       </div>
-
-      {/* Tab 1: God-Mode Maze View */}
       {activeTab === 'maze' && (
         <div className="flex flex-col items-center bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div className="w-full flex items-center justify-between mb-2">
@@ -545,6 +686,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
           <Radio className="w-4 h-4" /> Broadcast
         </button>
       </form>
+      </>)}
     </div>
   )
 }

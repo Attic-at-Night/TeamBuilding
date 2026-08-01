@@ -10,6 +10,7 @@ import { useSessionAppController } from './controllers/useSessionAppController'
 import { DisplayLobby } from './components/display/DisplayLobby'
 import { DisplayPlaying } from './components/display/DisplayPlaying'
 import { DisplayDebrief } from './components/display/DisplayDebrief'
+import { DisplayFollowUp } from './components/display/DisplayFollowUp'
 import { ControllerLobby } from './components/controller/ControllerLobby'
 import { MoverView } from './components/controller/MoverView'
 import { GuideView } from './components/controller/GuideView'
@@ -84,6 +85,9 @@ export default function App() {
 
       case 'display_playing':
         return <DisplayPlaying stateSync={mock.stateSync} />
+
+      case 'display_followup':
+        return <DisplayFollowUp stateSync={mock.stateSync} onSend={() => {}} />
 
       case 'display_debrief':
         return <DisplayDebrief stateSync={mock.stateSync} onRestart={() => {}} />

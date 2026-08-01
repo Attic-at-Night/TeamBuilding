@@ -1,6 +1,7 @@
 import { DisplayLobby } from './DisplayLobby'
 import { DisplayPlaying } from './DisplayPlaying'
 import { DisplayDebrief } from './DisplayDebrief'
+import { DisplayFollowUp } from './DisplayFollowUp'
 import { GameStatus, MessageType } from '../../protocol'
 
 export function DisplayShell({
@@ -33,6 +34,10 @@ export function DisplayShell({
 
   if (status === GameStatus.PLAYING) {
     return <DisplayPlaying stateSync={stateSync} />
+  }
+
+  if (status === GameStatus.FOLLOW_UP) {
+    return <DisplayFollowUp stateSync={stateSync} onSend={onSend} />
   }
 
   return <DisplayDebrief stateSync={stateSync} onRestart={onRestart} />
