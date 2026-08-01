@@ -608,6 +608,13 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.equal(sync.state.phaseFlow.terminalReason, 'grid_hazard');
   assert.equal(sync.state.summary.livesRemaining, 0);
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.outcome === 'fail'));
+  assert.equal(manager.endFollowUp(sessionId), true);
+
+  const finalState = display.sent.at(-1).state;
+  assert.equal(finalState.status, GameStatus.ENDED);
+  assert.equal(finalState.summary.outcome, 'fail');
+  assert.equal(finalState.summary.livesRemaining, 0);
+  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
 });
 
 test('ending terminal follow-up preserves terminal outcome instead of advancing phases', () => {
