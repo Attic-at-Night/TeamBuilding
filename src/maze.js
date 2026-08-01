@@ -365,7 +365,39 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
     row: cell.row,
     col: cell.col,
   }));
-  hazards = ensureTargetsReachable(cells, height, width, hazards, [...keys, goal]);
+  const reachabilityTargets = [...keys, goal];
+  hazards = ensureTargetsReachable(cells, height, width, hazards, reachabilityTargets);
+
+// If ensureTargetsReachable removed hazards to preserve reachability, try to
+// backfill from remaining free cells to reach hazardCount when possible.
+  if (hazards.length < hazardCount) {
+const occupiedSet = new Set([
+  ...safeSet,
+  ...hazards.map((h) => cellKey(h.row, h.col)),
+  ...keys.map((k) => cellKey(k.row, k.col)),
+  ...lifePickups.map((l) => cellKey(l.row, l.col)),
+  ...ghosts.map((g) => cellKey(g.row, g.col)),
+  cellKey(0, 0),
+  cellKey(goal.row, goal.col),
+]);
+    const freeCells = [];
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        if (!occupiedSet.has(cellKey(r, c))) {
+          freeCells.push({ row: r, col: c });
+        }
+      }
+    }
+    shuffle(freeCells);
+    for (const cell of freeCells) {
+      if (hazards.length >= hazardCount) break;
+      const candidate = [...hazards, cell];
+      const verified = ensureTargetsReachable(cells, height, width, candidate, reachabilityTargets);
+      if (verified.length === candidate.length) {
+        hazards = verified;
+      }
+    }
+  }
 
   return {
     seed: randomId(),
