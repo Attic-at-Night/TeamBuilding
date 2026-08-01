@@ -163,6 +163,39 @@ export function getMockStateForView(viewKey) {
     }
   }
 
+  if (viewKey === 'display_followup') {
+    const phaseStartT = 0
+    const mockLog = [
+      { eventId: 'pstart1', event: 'phase_start', phaseType: 'gameplay', phase: 1, durationMs: 900000, t: phaseStartT },
+      { eventId: 'e1', event: 'hazard_hit', hazardType: 'wall', t: phaseStartT + 237, ts: Date.now() - 600000, livesRemaining: 2 },
+      { eventId: 'e2', event: 'input', result: 'key', keyIndex: 0, t: phaseStartT + 410, ts: Date.now() - 500000 },
+      { eventId: 'e3', event: 'hazard_hit', hazardType: 'cross', t: phaseStartT + 582, ts: Date.now() - 400000, livesRemaining: 1 },
+      { eventId: 'e4', event: 'input', result: 'key', keyIndex: 1, t: phaseStartT + 700, ts: Date.now() - 300000 },
+      { eventId: 'e5', event: 'hazard_hit', hazardType: 'wall', t: phaseStartT + 795, ts: Date.now() - 200000, livesRemaining: 0 },
+      { eventId: 'e6', event: 'input', result: 'goal', t: phaseStartT + 840, ts: Date.now() - 100000 },
+      { eventId: 'pstart_fu', event: 'phase_start', phaseType: 'follow_up', followingPhase: 1, t: phaseStartT + 900 },
+    ]
+    return {
+      stateSync: {
+        ...fullStateSync,
+        status: 'follow_up',
+        log: mockLog,
+        phaseFlow: {
+          phaseType: 'follow_up',
+          currentPhase: null,
+          followingPhase: 1,
+          totalGameplayPhases: 3,
+          phaseDurationMs: null,
+          phaseRemainingMs: null,
+          phaseStartedAt: Date.now() - 5000,
+          phaseEndsAt: null,
+        },
+        followUpFocusedEventId: 'e1',
+      },
+      roleData: {},
+    }
+  }
+
   if (viewKey === 'display_debrief') {
     return {
       stateSync: {

@@ -142,6 +142,23 @@ export function ControllerShell({
     )
   }
 
+  // Follow-up phase: direct players to the main screen
+  if (status === 'follow_up') {
+    return (
+      <div className="flex flex-col gap-6 w-full max-w-md mx-auto p-6 text-slate-100 min-h-[80vh] justify-center items-center">
+        <div className="w-16 h-16 rounded-3xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shadow-xl">
+          <Shield className="w-8 h-8" />
+        </div>
+        <div className="text-center flex flex-col items-center gap-2">
+          <h2 className="text-2xl font-black text-white">Level Follow-up</h2>
+          <p className="text-sm text-slate-400 max-w-xs text-center leading-relaxed">
+            Please direct your attention to the main screen.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   // Active Role Views
   return (
     <div className="w-full flex flex-col items-center gap-2 pb-8">

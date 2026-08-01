@@ -714,40 +714,69 @@ test('phase timers auto-advance through gameplay phases and enter follow-up', ()
   assert.equal(state.phaseFlow.currentPhase, 1);
   const phase1End = state.timer.expiresAt;
 
+  // Phase 1 expires → FOLLOW_UP (level 1 follow-up)
   assert.equal(manager.tickTimers(phase1End), 1);
+  state = display.sent.at(-1).state;
+  assert.equal(state.status, GameStatus.FOLLOW_UP);
+  assert.equal(state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(state.phaseFlow.followingPhase, 1);
+
+  // Trainer ends follow-up → PLAYING phase 2
+  assert.equal(manager.endFollowUp(sessionId), true);
   state = display.sent.at(-1).state;
   assert.equal(state.status, GameStatus.PLAYING);
   assert.equal(state.phaseFlow.currentPhase, 2);
   assert.equal(state.timer.durationMs, 10 * 60 * 1000);
   const phase2End = state.timer.expiresAt;
 
+  // Phase 2 expires → FOLLOW_UP (level 2 follow-up)
   assert.equal(manager.tickTimers(phase2End), 1);
+  state = display.sent.at(-1).state;
+  assert.equal(state.status, GameStatus.FOLLOW_UP);
+  assert.equal(state.phaseFlow.followingPhase, 2);
+
+  // Trainer ends follow-up → PLAYING phase 3
+  assert.equal(manager.endFollowUp(sessionId), true);
   state = display.sent.at(-1).state;
   assert.equal(state.status, GameStatus.PLAYING);
   assert.equal(state.phaseFlow.currentPhase, 3);
   assert.equal(state.timer.durationMs, 5 * 60 * 1000);
   const phase3End = state.timer.expiresAt;
 
+  // Phase 3 expires → FOLLOW_UP (level 3 follow-up — final)
   assert.equal(manager.tickTimers(phase3End), 1);
   state = display.sent.at(-1).state;
   assert.equal(state.status, GameStatus.FOLLOW_UP);
   assert.equal(state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(state.phaseFlow.followingPhase, 3);
   assert.equal(state.timer.status, 'idle');
 });
 
 test('follow-up can be manually ended by the host/trainer path', () => {
   const { manager, display, sessionId } = bootstrapGame(2);
 
+  // Navigate through phase 1 and its follow-up
   const phase1End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase1End);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 1);
+  manager.endFollowUp(sessionId); // → phase 2
+
+  // Navigate through phase 2 and its follow-up
   const phase2End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase2End);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 2);
+  manager.endFollowUp(sessionId); // → phase 3
+
+  // Navigate through phase 3 and its follow-up (final)
   const phase3End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase3End);
-
   assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
-  assert.equal(manager.endFollowUp(sessionId), true);
+  assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
 
+  // End the final follow-up → session ends
+  assert.equal(manager.endFollowUp(sessionId), true);
   const finalState = display.sent.at(-1).state;
   assert.equal(finalState.status, GameStatus.ENDED);
   assert.equal(finalState.summary.outcome, 'success');
@@ -787,12 +816,9 @@ test('manual timer controls still work for scripted gameplay phases', () => {
 test('follow-up still blocks timer controls', () => {
   const { manager, display, sessionId } = bootstrapGame(2);
 
+  // Just expire phase 1 to enter follow-up
   const phase1End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase1End);
-  const phase2End = display.sent.at(-1).state.timer.expiresAt;
-  manager.tickTimers(phase2End);
-  const phase3End = display.sent.at(-1).state.timer.expiresAt;
-  manager.tickTimers(phase3End);
 
   assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
   assert.equal(manager.startTimer(sessionId, 30000), false);
@@ -807,13 +833,16 @@ test('restart after follow-up returns to phase 1 and cycles roles', () => {
     latestState(socket).roleData.assignedRoles.slice(),
   ]));
 
+  // Navigate through all 3 phases and their follow-ups to reach ENDED
   const phase1End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase1End);
+  manager.endFollowUp(sessionId); // → phase 2
   const phase2End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase2End);
+  manager.endFollowUp(sessionId); // → phase 3
   const phase3End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase3End);
-  assert.equal(manager.endFollowUp(sessionId), true);
+  assert.equal(manager.endFollowUp(sessionId), true); // → ENDED
   assert.equal(manager.restartGame(sessionId), true);
 
   const restartedState = display.sent.at(-1).state;

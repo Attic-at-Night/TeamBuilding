@@ -270,6 +270,7 @@ function buildDisplayState(state, session) {
     canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
     pendingReset: state.pendingReset || null,
+    followUpFocusedEventId: state.followUpFocusedEventId || null,
   };
 }
 
@@ -512,6 +513,7 @@ function buildTrainerState(state, session) {
     canBroadcast: true,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
+    followUpFocusedEventId: state.followUpFocusedEventId || null,
   };
 }
 
@@ -671,6 +673,7 @@ function beginGameState(session, startedAt, options = {}) {
   session.state.trainerBroadcast = null;
   session.state.trainerHighlightEventIds = [];
   session.state.pendingReset = null;
+  session.state.followUpFocusedEventId = null;
   session.state.summary = {
     ...createSummaryState(START_LIVES),
     startedAt,
@@ -693,6 +696,50 @@ function beginGameState(session, startedAt, options = {}) {
   });
 
   beginGameplayPhase(session.state, 1, startedAt);
+}
+
+const MOI_EVENT_TYPES = new Set([
+  'hazard_hit',
+  'key_collected',
+  'goal_reached',
+  'timer_expired',
+  'session_end',
+]);
+
+function isMoiEvent(entry) {
+  if (entry.event === 'hazard_hit') return true;
+  if (entry.event === 'key_pickup') return true;
+  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return true;
+  if (entry.event === 'timer_expired') return true;
+  if (entry.event === 'session_end' && entry.outcome === 'fail') return true;
+  return false;
+}
+
+function getPhaseLogBoundaries(log, phase) {
+  let startIndex = -1;
+  let endIndex = log.length;
+  for (let i = 0; i < log.length; i++) {
+    const entry = log[i];
+    if (entry.event === 'phase_start' && entry.phaseType === 'gameplay' && entry.phase === phase) {
+      startIndex = i;
+    }
+    if (startIndex >= 0 && i > startIndex && entry.event === 'phase_start') {
+      endIndex = i;
+      break;
+    }
+  }
+  return { startIndex, endIndex };
+}
+
+function getMoiEventsForPhase(log, phase) {
+  if (!Number.isInteger(phase) || phase < 1) {
+    return log.filter(isMoiEvent);
+  }
+  const { startIndex, endIndex } = getPhaseLogBoundaries(log, phase);
+  if (startIndex < 0) {
+    return [];
+  }
+  return log.slice(startIndex + 1, endIndex).filter(isMoiEvent);
 }
 
 function beginGameplayPhase(state, phase, startedAt = Date.now()) {
@@ -727,21 +774,25 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
   return true;
 }
 
-function beginFollowUpPhase(state, startedAt = Date.now()) {
+function beginFollowUpPhase(state, followingPhase, startedAt = Date.now()) {
   state.status = GameStatus.FOLLOW_UP;
   state.phaseFlow = createPhaseFlowState({
     phaseType: 'follow_up',
     currentPhase: null,
+    followingPhase: Number.isInteger(followingPhase) ? followingPhase : null,
     phaseDurationMs: null,
     phaseRemainingMs: null,
     phaseStartedAt: startedAt,
     phaseEndsAt: null,
   });
   state.timer = createTimerState();
+  const moiEvents = getMoiEventsForPhase(state.log, followingPhase);
+  state.followUpFocusedEventId = moiEvents.length > 0 ? moiEvents[0].eventId : null;
   appendLog(state, {
     ts: startedAt,
     event: 'phase_start',
     phaseType: 'follow_up',
+    followingPhase: Number.isInteger(followingPhase) ? followingPhase : null,
   });
 }
 
@@ -1199,12 +1250,12 @@ class SessionManager {
       const phaseFlow = session.state.phaseFlow || createPhaseFlowState();
       if (didExpire && session.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
         const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
-        const nextPhase = currentPhase + 1;
-        if (nextPhase <= GAMEPLAY_PHASE_DURATIONS_MS.length) {
-          beginGameplayPhase(session.state, nextPhase, now);
-        } else {
-          beginFollowUpPhase(session.state, now);
-        }
+        appendLog(session.state, {
+          ts: now,
+          event: 'timer_expired',
+          durationMs: timer.durationMs,
+        });
+        beginFollowUpPhase(session.state, currentPhase, now);
         this.broadcastState(sessionId);
         changed += 1;
         continue;
@@ -1247,11 +1298,50 @@ class SessionManager {
       return false;
     }
 
+    const now = Date.now();
+    const phaseFlow = session.state.phaseFlow || {};
+    const followingPhase = phaseFlow.followingPhase;
+    const totalPhases = phaseFlow.totalGameplayPhases || GAMEPLAY_PHASE_DURATIONS_MS.length;
+
     appendLog(session.state, {
-      ts: Date.now(),
+      ts: now,
       event: 'follow_up_end',
+      followingPhase: followingPhase || null,
     });
-    finishGame(session.state, 'success', 'follow_up_completed');
+
+    if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
+      beginGameplayPhase(session.state, followingPhase + 1, now);
+    } else {
+      finishGame(session.state, 'success', 'follow_up_completed');
+    }
+
+    this.broadcastState(sessionId);
+    return true;
+  }
+
+  navigateFollowUp(sessionId, direction) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.state.status !== GameStatus.FOLLOW_UP) {
+      return false;
+    }
+
+    const state = session.state;
+    const phaseFlow = state.phaseFlow || {};
+    const followingPhase = phaseFlow.followingPhase;
+    const moiEvents = getMoiEventsForPhase(state.log, followingPhase);
+    if (moiEvents.length === 0) {
+      return false;
+    }
+
+    const currentIndex = moiEvents.findIndex((e) => e.eventId === state.followUpFocusedEventId);
+    let nextIndex;
+    if (direction === 'prev') {
+      nextIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
+    } else {
+      nextIndex = currentIndex >= moiEvents.length - 1 ? moiEvents.length - 1 : currentIndex + 1;
+    }
+
+    state.followUpFocusedEventId = moiEvents[nextIndex].eventId;
     this.broadcastState(sessionId);
     return true;
   }

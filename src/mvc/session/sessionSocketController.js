@@ -64,6 +64,13 @@ function createSessionSocketController({ sessionManager, logger = console } = {}
       }
     },
 
+    [MessageType.FOLLOWUP_NAVIGATE](message, socket) {
+      const meta = socket.meta;
+      if (meta?.role === ClientRole.CONTROLLER && meta.isTrainer) {
+        sessionManager.navigateFollowUp(meta.sessionId, message.direction);
+      }
+    },
+
     [MessageType.PLAYER_INPUT](message, socket) {
       const meta = socket.meta;
       if (meta?.role === ClientRole.CONTROLLER) {

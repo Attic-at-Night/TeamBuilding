@@ -14,6 +14,7 @@ function createPhaseFlowState(overrides = {}) {
     phaseRemainingMs: null,
     phaseStartedAt: null,
     phaseEndsAt: null,
+    followingPhase: null,
     ...overrides,
   };
 }
@@ -34,6 +35,7 @@ function makeInitialState() {
     timer: createTimerState(),
     phaseFlow: createPhaseFlowState(),
     pendingReset: null,
+    followUpFocusedEventId: null,
   };
 }
 
