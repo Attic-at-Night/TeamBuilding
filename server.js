@@ -42,13 +42,17 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
-app.get('/join', (req, res) => {
-  const distJoinPath = path.join(__dirname, 'frontend/dist/index.html');
-  if (fs.existsSync(distJoinPath)) {
-    return res.sendFile(distJoinPath);
+const distIndexPath = path.join(__dirname, 'frontend/dist/index.html');
+const distIndexExists = fs.existsSync(distIndexPath);
+const sendIndexOrServiceUnavailable = (req, res) => {
+  if (distIndexExists) {
+    return res.sendFile(distIndexPath);
   }
   res.status(503).send('Frontend build not found. Run "npm run build" first.');
-});
+};
+
+app.get('/', sendIndexOrServiceUnavailable);
+app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
