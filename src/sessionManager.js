@@ -625,7 +625,22 @@ function applyHazardOutcome(state, controller, playerId, input, hazardType, posi
   });
 
   if (state.summary.livesRemaining <= 0) {
-    finishGame(state, 'fail', `${hazardType}_hazard`);
+    const phaseFlow = state.phaseFlow || createPhaseFlowState();
+    if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+      const ts = Date.now();
+      const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+      appendLog(state, {
+        ts,
+        event: 'session_end',
+        outcome: 'fail',
+        reason: `${hazardType}_hazard`,
+        keys: state.summary.keysCollected,
+        lives: state.summary.livesRemaining,
+      });
+      beginFollowUpPhase(state, currentPhase, ts);
+    } else {
+      finishGame(state, 'fail', `${hazardType}_hazard`);
+    }
     return false;
   }
 
@@ -1761,7 +1776,22 @@ class SessionManager {
 
     if (maze.reached) {
       if (exitUnlocked) {
-        finishGame(state, 'success', 'goal_reached');
+        const phaseFlow = state.phaseFlow || createPhaseFlowState();
+        if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+          const endedAt = Date.now();
+          const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+          appendLog(state, {
+            ts: endedAt,
+            event: 'session_end',
+            outcome: 'success',
+            reason: 'goal_reached',
+            keys: state.summary.keysCollected,
+            lives: state.summary.livesRemaining,
+          });
+          beginFollowUpPhase(state, currentPhase, endedAt);
+        } else {
+          finishGame(state, 'success', 'goal_reached');
+        }
       } else {
         maze.reached = false;
       }

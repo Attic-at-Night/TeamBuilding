@@ -545,9 +545,10 @@ test('goal unlocks only after three keys are collected', () => {
   assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
   const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.ENDED);
-  assert.equal(sync.state.summary.outcome, 'success');
-  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
+  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
+  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(sync.state.phaseFlow.followingPhase, 1);
+  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
 });
 
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
@@ -595,10 +596,11 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
   const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.ENDED);
-  assert.equal(sync.state.summary.outcome, 'fail');
+  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
+  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(sync.state.phaseFlow.followingPhase, 1);
   assert.equal(sync.state.summary.livesRemaining, 0);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end'));
+  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.outcome === 'fail'));
 });
 
 test('ended sessions can restart into a fresh round', () => {
@@ -609,8 +611,12 @@ test('ended sessions can restart into a fresh round', () => {
     goal: { row: 0, col: 1 },
   });
   session.state.summary.keysCollected = 3;
+  session.state.phaseFlow.currentPhase = 3;
 
   assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
+  assert.equal(manager.endFollowUp(sessionId), true);
   assert.equal(latestState(trainer).canRestart, true);
   assert.equal(manager.restartGame(sessionId), true);
 
