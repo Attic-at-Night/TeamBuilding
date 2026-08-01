@@ -10,7 +10,7 @@ const { SessionController } = require('./src/mvc/session/sessionController');
 const { registerSessionRoutes } = require('./src/mvc/session/sessionRoutes');
 const { createSessionSocketController } = require('./src/mvc/session/sessionSocketController');
 const { detectNetworkConnection } = require('./src/network');
-const { getJoinRedirectLocation, getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
+const { getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
 
 const app = express();
 const logStore = new SessionLogStore();
@@ -41,14 +41,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
-app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/join', (req, res) => {
   const distJoinPath = path.join(__dirname, 'frontend/dist/index.html');
   if (fs.existsSync(distJoinPath)) {
     return res.sendFile(distJoinPath);
   }
-  res.redirect(302, getJoinRedirectLocation(req.originalUrl));
+  res.status(503).send('Frontend build not found. Run "npm run build" first.');
 });
 
 registerSessionRoutes(app, sessionController);

@@ -203,7 +203,7 @@ The maze game is already implemented as the first minigame.  It follows this pat
 1. Add minigame state fields to the session's `state` object in `SessionManager`.
 2. Handle `player_input` in `handleInput()` to update state server-side.
 3. Call `broadcastState()` after each update — all clients receive `state_sync`.
-4. Add display-side rendering in `public/display.js` and controller UI in `public/join.js`.
+4. Add display-side rendering in `frontend/src/components/display/` and controller UI in `frontend/src/components/controller/`.
 
 The shared message type constants live in `src/protocol.js`.
 
@@ -261,16 +261,13 @@ src/
   network.js           Local IP / SSID detection for the QR code URL
   session/
     sessionIdentity.js  Session/reconnect token helpers
-  url.js               Join URL redirect helper
-public/
-  index.html           Display screen
-  config/viewSettings.js Runtime view config (display/controller)
-  dependencies/screenDependencies.js Display/controller dependency factories
-  dependencies/controllerRoleDependencies.js Trainer/player dependency split
-  display.js           Display client (registers as display, shows state, inputs)
-  join.html            Controller screen
-  join.js              Controller client (joins session, sends player_input)
-  host.js              Legacy host script (superseded by display.js)
+  url.js               Public/session origin helpers
+frontend/              React + Vite SPA served from frontend/dist (display + controller UI)
+  src/
+    App.jsx             Root component; switches between display and controller modes
+    components/display/ Display (big screen) views
+    components/controller/ Controller (phone) views per role
+    controllers/useSessionAppController.js WebSocket/session state hook
 test/
   sessionManager.test.js
   network.test.js
