@@ -1337,6 +1337,9 @@ class SessionManager {
     if (terminalOutcome) {
       finishGame(session.state, terminalOutcome, terminalReason || 'follow_up_completed');
     } else if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
+      session.state.summary.keysCollected = 0;
+      session.state.summary.resets = 0;
+      session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
       finishGame(session.state, 'success', 'follow_up_completed');
