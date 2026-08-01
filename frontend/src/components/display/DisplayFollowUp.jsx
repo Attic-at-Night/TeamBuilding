@@ -66,6 +66,17 @@ function getMoiEventsForPhase(log, followingPhase) {
   return log.slice(phaseStartIdx + 1, phaseEndIdx).filter((e) => classifyMoiEvent(e) !== null)
 }
 
+// Returns the actual played duration in seconds, derived from the last phase-ending MOI event.
+// Falls back to the configured max duration when no ending event is found.
+function getActualPlayedSecs(moiEvents, phaseStartT, maxDurationSecs) {
+  const endingEvents = ['goal', 'timer_expired', 'out_of_lives']
+  const lastEnder = [...moiEvents].reverse().find((e) => endingEvents.includes(classifyMoiEvent(e)))
+  if (lastEnder) {
+    return Math.max(1, (lastEnder.t ?? 0) - phaseStartT)
+  }
+  return maxDurationSecs
+}
+
 function getPhaseStartEntry(log, followingPhase) {
   if (!Array.isArray(log)) return null
   return log.find((e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) || null
@@ -79,17 +90,19 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
   const focusedEventId = stateSync?.followUpFocusedEventId || null
 
   const phaseStartEntry = getPhaseStartEntry(log, followingPhase)
-  const phaseDurationSecs = phaseStartEntry?.durationMs ? phaseStartEntry.durationMs / 1000 : null
+  const maxDurationSecs = phaseStartEntry?.durationMs ? phaseStartEntry.durationMs / 1000 : null
   const phaseStartT = phaseStartEntry?.t ?? 0
 
   const moiEvents = getMoiEventsForPhase(log, followingPhase)
   const focusedEvent = moiEvents.find((e) => e.eventId === focusedEventId) || moiEvents[0] || null
   const isLastPhase = followingPhase >= totalPhases
 
+  const timelineSecs = getActualPlayedSecs(moiEvents, phaseStartT, maxDurationSecs)
+
   // Position percentage for the focused callout (0–100)
   const focusedPct = focusedEvent
-    ? (phaseDurationSecs && phaseDurationSecs > 0
-      ? Math.min(98, Math.max(2, ((focusedEvent.t ?? 0) - phaseStartT) / phaseDurationSecs * 100))
+    ? (timelineSecs && timelineSecs > 0
+      ? Math.min(98, Math.max(2, ((focusedEvent.t ?? 0) - phaseStartT) / timelineSecs * 100))
       : 50)
     : 50
 
@@ -118,8 +131,8 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
               const moiType = classifyMoiEvent(entry)
               const color = MOI_COLORS[moiType] || '#64748b'
               const tOffset = (entry.t ?? 0) - phaseStartT
-              const pct = phaseDurationSecs && phaseDurationSecs > 0
-                ? Math.min(100, Math.max(0, (tOffset / phaseDurationSecs) * 100))
+              const pct = timelineSecs && timelineSecs > 0
+                ? Math.min(100, Math.max(0, (tOffset / timelineSecs) * 100))
                 : 0
               const isFocused = entry.eventId === focusedEventId
 
@@ -172,7 +185,7 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
         {/* Time labels */}
         <div className="flex justify-between text-xs font-mono text-slate-500 px-4">
           <span>0:00</span>
-          {phaseDurationSecs && <span>{formatSeconds(phaseDurationSecs)}</span>}
+          {timelineSecs && <span>{formatSeconds(timelineSecs)}</span>}
         </div>
 
         {/* Empty state */}
