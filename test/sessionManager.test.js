@@ -548,7 +548,12 @@ test('goal unlocks only after three keys are collected', () => {
   assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
   assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
   assert.equal(sync.state.phaseFlow.followingPhase, 1);
+  assert.equal(sync.state.phaseFlow.terminalOutcome, 'success');
+  assert.equal(sync.state.phaseFlow.terminalReason, 'goal_reached');
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
+  assert.equal(manager.endFollowUp(sessionId), true);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.ENDED);
+  assert.equal(display.sent.at(-1).state.summary.outcome, 'success');
 });
 
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
@@ -599,8 +604,29 @@ test('lives reaching zero ends the session as a failure', () => {
   assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
   assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
   assert.equal(sync.state.phaseFlow.followingPhase, 1);
+  assert.equal(sync.state.phaseFlow.terminalOutcome, 'fail');
+  assert.equal(sync.state.phaseFlow.terminalReason, 'grid_hazard');
   assert.equal(sync.state.summary.livesRemaining, 0);
   assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.outcome === 'fail'));
+});
+
+test('ending terminal follow-up preserves terminal outcome instead of advancing phases', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeOpenMaze({
+    hazards: [{ row: 0, col: 1 }],
+  });
+  session.state.summary.livesRemaining = 1;
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(manager.endFollowUp(sessionId), true);
+
+  const finalState = display.sent.at(-1).state;
+  assert.equal(finalState.status, GameStatus.ENDED);
+  assert.equal(finalState.summary.outcome, 'fail');
+  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
 });
 
 test('ended sessions can restart into a fresh round', () => {

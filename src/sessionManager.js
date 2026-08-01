@@ -629,15 +629,19 @@ function applyHazardOutcome(state, controller, playerId, input, hazardType, posi
     if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
       const ts = Date.now();
       const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+      const terminalReason = `${hazardType}_hazard`;
       appendLog(state, {
         ts,
         event: 'session_end',
         outcome: 'fail',
-        reason: `${hazardType}_hazard`,
+        reason: terminalReason,
         keys: state.summary.keysCollected,
         lives: state.summary.livesRemaining,
       });
-      beginFollowUpPhase(state, currentPhase, ts);
+      beginFollowUpPhase(state, currentPhase, ts, {
+        terminalOutcome: 'fail',
+        terminalReason,
+      });
     } else {
       finishGame(state, 'fail', `${hazardType}_hazard`);
     }
@@ -789,7 +793,9 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
   return true;
 }
 
-function beginFollowUpPhase(state, followingPhase, startedAt = Date.now()) {
+function beginFollowUpPhase(state, followingPhase, startedAt = Date.now(), options = {}) {
+  const terminalOutcome = options?.terminalOutcome || null;
+  const terminalReason = options?.terminalReason || null;
   state.status = GameStatus.FOLLOW_UP;
   state.phaseFlow = createPhaseFlowState({
     phaseType: 'follow_up',
@@ -799,6 +805,8 @@ function beginFollowUpPhase(state, followingPhase, startedAt = Date.now()) {
     phaseRemainingMs: null,
     phaseStartedAt: startedAt,
     phaseEndsAt: null,
+    terminalOutcome,
+    terminalReason,
   });
   state.timer = createTimerState();
   const moiEvents = getMoiEventsForPhase(state.log, followingPhase);
@@ -1317,6 +1325,8 @@ class SessionManager {
     const phaseFlow = session.state.phaseFlow || {};
     const followingPhase = phaseFlow.followingPhase;
     const totalPhases = phaseFlow.totalGameplayPhases || GAMEPLAY_PHASE_DURATIONS_MS.length;
+    const terminalOutcome = phaseFlow.terminalOutcome;
+    const terminalReason = phaseFlow.terminalReason;
 
     appendLog(session.state, {
       ts: now,
@@ -1324,7 +1334,9 @@ class SessionManager {
       followingPhase: followingPhase || null,
     });
 
-    if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
+    if (terminalOutcome) {
+      finishGame(session.state, terminalOutcome, terminalReason || 'follow_up_completed');
+    } else if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
       finishGame(session.state, 'success', 'follow_up_completed');
@@ -1780,15 +1792,19 @@ class SessionManager {
         if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
           const endedAt = Date.now();
           const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+          const terminalReason = 'goal_reached';
           appendLog(state, {
             ts: endedAt,
             event: 'session_end',
             outcome: 'success',
-            reason: 'goal_reached',
+            reason: terminalReason,
             keys: state.summary.keysCollected,
             lives: state.summary.livesRemaining,
           });
-          beginFollowUpPhase(state, currentPhase, endedAt);
+          beginFollowUpPhase(state, currentPhase, endedAt, {
+            terminalOutcome: 'success',
+            terminalReason,
+          });
         } else {
           finishGame(state, 'success', 'goal_reached');
         }

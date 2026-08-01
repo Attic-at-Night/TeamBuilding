@@ -15,6 +15,8 @@ function createPhaseFlowState(overrides = {}) {
     phaseStartedAt: null,
     phaseEndsAt: null,
     followingPhase: null,
+    terminalOutcome: null,
+    terminalReason: null,
     ...overrides,
   };
 }
