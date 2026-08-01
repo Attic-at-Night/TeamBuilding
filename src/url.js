@@ -1,9 +1,3 @@
-function getJoinRedirectLocation(originalUrl) {
-  const queryIndex = String(originalUrl || '').indexOf('?');
-  const query = queryIndex >= 0 ? String(originalUrl).slice(queryIndex) : '';
-  return `/join.html${query}`;
-}
-
 function normalizeOrigin(origin) {
   return String(origin || '').replace(/\/+$/, '');
 }
@@ -70,7 +64,6 @@ function getSessionOrigin({
 
 module.exports = {
   getPublicSessionOrigin,
-  getJoinRedirectLocation,
   getSessionOrigin,
   isLoopbackHostname,
 };
