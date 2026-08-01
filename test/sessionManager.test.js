@@ -560,6 +560,34 @@ test('phase 1 goal completion advances to phase 2 after follow-up ends', () => {
   assert.equal(phase2State.summary.outcome, null);
 });
 
+test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+  const session = manager.sessions.get(sessionId);
+  session.state.phaseFlow.currentPhase = 2;
+  session.state.maze = makeOpenMaze({
+    goal: { row: 0, col: 1 },
+  });
+  session.state.summary.keysCollected = 3;
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
+  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
+  assert.equal(sync.state.phaseFlow.followingPhase, 2);
+  assert.equal(sync.state.phaseFlow.terminalOutcome, null);
+  assert.equal(sync.state.phaseFlow.terminalReason, null);
+  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
+  assert.equal(manager.endFollowUp(sessionId), true);
+
+  const phase3State = display.sent.at(-1).state;
+  assert.equal(phase3State.status, GameStatus.PLAYING);
+  assert.equal(phase3State.phaseFlow.phaseType, 'gameplay');
+  assert.equal(phase3State.phaseFlow.currentPhase, 3);
+  assert.equal(phase3State.summary.outcome, null);
+});
+
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
