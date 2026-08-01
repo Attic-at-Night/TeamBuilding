@@ -1,13 +1,20 @@
 
-// MOI dot color by event type and sub-type
+// MOI dot color classes — Tailwind bg class + hex for inline (dynamic sizing requires inline)
 const MOI_COLORS = {
-  hazard_wall: '#ef4444',   // red
-  hazard_cross: '#ef4444',  // red
-  key: '#eab308',           // yellow
-  goal: '#22c55e',          // green
-  timer_expired: '#475569', // slate-600
-  out_of_lives: '#1e293b',  // slate-900 / dark
+  hazard_wall: '#ef4444',
+  hazard_cross: '#ef4444',
+  key: '#eab308',
+  goal: '#22c55e',
+  timer_expired: '#475569',
+  out_of_lives: '#1e293b',
 }
+
+const MOI_LEGEND = [
+  { color: MOI_COLORS.hazard_wall, label: 'Hit Wall / Cross' },
+  { color: MOI_COLORS.key, label: 'Got Key' },
+  { color: MOI_COLORS.goal, label: 'Reached Goal' },
+  { color: MOI_COLORS.timer_expired, label: 'Out of Time' },
+]
 
 function classifyMoiEvent(entry) {
   if (entry.event === 'hazard_hit') {
@@ -28,8 +35,8 @@ function getMoiLabel(entry) {
   }
   if (entry.event === 'input') {
     if (entry.result === 'key') {
-      const keyNum = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
-      return `Got Key${keyNum}`
+      const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
+      return `Got Key${n}`
     }
     if (entry.result === 'goal') return 'Reached Goal'
   }
@@ -47,11 +54,8 @@ function formatSeconds(seconds) {
 
 function getMoiEventsForPhase(log, followingPhase) {
   if (!Array.isArray(log)) return []
-
-  // Find the start log index for the gameplay phase
   let phaseStartIdx = -1
   let phaseEndIdx = log.length
-
   for (let i = 0; i < log.length; i++) {
     const e = log[i]
     if (e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) {
@@ -62,9 +66,7 @@ function getMoiEventsForPhase(log, followingPhase) {
       break
     }
   }
-
   if (phaseStartIdx < 0) return []
-
   return log.slice(phaseStartIdx + 1, phaseEndIdx).filter((e) => classifyMoiEvent(e) !== null)
 }
 
@@ -85,30 +87,37 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
   const phaseStartT = phaseStartEntry?.t ?? 0
 
   const moiEvents = getMoiEventsForPhase(log, followingPhase)
-
   const focusedEvent = moiEvents.find((e) => e.eventId === focusedEventId) || moiEvents[0] || null
-
   const isLastPhase = followingPhase >= totalPhases
 
+  // Position percentage for the focused callout (0–100)
+  const focusedPct = focusedEvent
+    ? (phaseDurationSecs && phaseDurationSecs > 0
+      ? Math.min(98, Math.max(2, ((focusedEvent.t ?? 0) - phaseStartT) / phaseDurationSecs * 100))
+      : 50)
+    : 50
+
   return (
-    <div className="flex flex-col gap-8 w-full max-w-6xl mx-auto p-10 text-slate-100 min-h-screen justify-center">
+    <div className="flex flex-col gap-8 w-full max-w-6xl mx-auto p-8 text-slate-100 min-h-screen justify-center">
+
       {/* Header */}
-      <div className="text-center">
+      <div className="text-center flex flex-col items-center gap-2">
         <h1 className="text-5xl font-black text-white tracking-tight">
           Level {followingPhase} Follow-up
         </h1>
-        <p className="text-xl font-semibold text-slate-400 mt-2">{mode}</p>
+        <p className="text-lg font-semibold text-slate-400">{mode}</p>
       </div>
 
-      {/* Timeline */}
-      <div className="relative w-full bg-slate-900/80 border border-slate-800 rounded-3xl p-10 shadow-2xl">
-        {/* Track */}
-        <div className="relative flex items-center w-full">
+      {/* Timeline Card */}
+      <div className="w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col gap-6">
+
+        {/* Track row */}
+        <div className="flex items-center gap-2">
           {/* Left cap */}
           <div className="w-3 h-3 rounded-full bg-slate-500 shrink-0" />
 
-          {/* Bar + dots */}
-          <div className="relative flex-1 h-2 bg-slate-700 rounded-full mx-2">
+          {/* Bar — this is the reference element for dot positions */}
+          <div className="relative flex-1 h-2 bg-slate-700 rounded-full">
             {moiEvents.map((entry) => {
               const moiType = classifyMoiEvent(entry)
               const color = MOI_COLORS[moiType] || '#64748b'
@@ -121,16 +130,18 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
               return (
                 <div
                   key={entry.eventId}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 top-1/2"
+                  className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${pct}%` }}
                 >
                   <div
-                    className="rounded-full transition-all"
+                    className="rounded-full transition-all duration-200"
                     style={{
                       width: isFocused ? 22 : 14,
                       height: isFocused ? 22 : 14,
                       backgroundColor: color,
-                      boxShadow: isFocused ? `0 0 0 4px rgba(255,255,255,0.25), 0 0 14px ${color}` : 'none',
+                      boxShadow: isFocused
+                        ? `0 0 0 4px rgba(255,255,255,0.2), 0 0 16px ${color}88`
+                        : undefined,
                     }}
                   />
                 </div>
@@ -142,73 +153,51 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
           <div className="w-3 h-3 rounded-full bg-slate-500 shrink-0" />
         </div>
 
-        {/* Callout for focused item */}
-        {focusedEvent && (() => {
-          const tOffset = (focusedEvent.t ?? 0) - phaseStartT
-          const pct = phaseDurationSecs && phaseDurationSecs > 0
-            ? Math.min(100, Math.max(0, (tOffset / phaseDurationSecs) * 100))
-            : 0
-
-          return (
+        {/* Callout row — anchored to bar percentage */}
+        {focusedEvent && (
+          <div className="relative h-20">
             <div
-              className="absolute mt-4"
-              style={{
-                left: `calc(${pct}% + 2.5rem)`,
-                top: '50%',
-                transform: 'translateX(-50%)',
-              }}
+              className="absolute flex flex-col items-center"
+              style={{ left: `${focusedPct}%`, transform: 'translateX(-50%)' }}
             >
-              {/* Connector line */}
-              <div className="flex flex-col items-center">
-                <div className="w-px h-6 bg-slate-500" />
-                <div
-                  className="px-5 py-3 rounded-2xl shadow-2xl border border-rose-300/30 min-w-[140px]"
-                  style={{ backgroundColor: 'rgba(253, 230, 230, 0.95)', color: '#1e293b' }}
-                >
-                  <p className="font-black text-base leading-tight">
-                    {getMoiLabel(focusedEvent)}
-                  </p>
-                  <p className="text-sm font-semibold text-slate-600 mt-0.5">
-                    {formatSeconds(tOffset)}
-                  </p>
-                </div>
+              <div className="w-px h-5 bg-slate-500" />
+              <div className="px-5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200/60 shadow-2xl min-w-[140px] text-center">
+                <p className="font-black text-base text-slate-900 leading-tight whitespace-nowrap">
+                  {getMoiLabel(focusedEvent)}
+                </p>
+                <p className="text-sm font-semibold text-slate-500 mt-0.5">
+                  {formatSeconds((focusedEvent.t ?? 0) - phaseStartT)}
+                </p>
               </div>
             </div>
-          )
-        })()}
+          </div>
+        )}
 
-        {/* Timeline labels */}
-        <div className="flex justify-between mt-16 text-xs font-mono text-slate-500">
+        {/* Time labels */}
+        <div className="flex justify-between text-xs font-mono text-slate-500 px-4">
           <span>0:00</span>
-          {phaseDurationSecs && (
-            <span>{formatSeconds(phaseDurationSecs)}</span>
-          )}
+          {phaseDurationSecs && <span>{formatSeconds(phaseDurationSecs)}</span>}
         </div>
 
         {/* Empty state */}
         {moiEvents.length === 0 && (
-          <p className="text-center text-slate-500 text-sm mt-6 italic">
+          <p className="text-center text-slate-500 text-sm italic">
             No moments of interest recorded for this level.
           </p>
         )}
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-6 flex-wrap text-xs font-semibold text-slate-400">
-        {[
-          { color: MOI_COLORS.hazard_wall, label: 'Hit Wall / Cross' },
-          { color: MOI_COLORS.key, label: 'Got Key' },
-          { color: MOI_COLORS.goal, label: 'Reached Goal' },
-          { color: MOI_COLORS.timer_expired, label: 'Out of Time' },
-        ].map(({ color, label }) => (
-          <div key={label} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+      <div className="flex items-center justify-center gap-6 flex-wrap">
+        {MOI_LEGEND.map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
             <span>{label}</span>
           </div>
         ))}
       </div>
 
-      {/* Bottom hint */}
+      {/* Footer hint */}
       <p className="text-center text-slate-500 text-sm">
         {isLastPhase
           ? 'All levels complete — trainer will wrap up the session.'

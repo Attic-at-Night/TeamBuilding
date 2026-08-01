@@ -372,7 +372,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
 
             {/* Focused MOI card */}
             {focusedEvent ? (
-              <div className="p-4 rounded-xl border border-rose-200/30 shadow-md" style={{ backgroundColor: 'rgba(254, 226, 226, 0.12)' }}>
+              <div className="p-4 rounded-xl border border-rose-200/30 shadow-md bg-rose-950/20">
                 <p className="text-sm font-black text-rose-200 leading-tight">
                   {getMoiLabel(focusedEvent)}
                 </p>
