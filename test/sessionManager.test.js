@@ -558,6 +558,17 @@ test('phase 1 goal completion advances to phase 2 after follow-up ends', () => {
   assert.equal(phase2State.phaseFlow.phaseType, 'gameplay');
   assert.equal(phase2State.phaseFlow.currentPhase, 2);
   assert.equal(phase2State.summary.outcome, null);
+  // Per-phase state must be fresh: keys reset, maze generated, goal not pre-reached
+  assert.equal(phase2State.summary.keysCollected, 0);
+  assert.ok(phase2State.displayMaze, 'a new maze must be present for phase 2');
+  assert.equal(phase2State.displayMaze.reached, false);
+  assert.ok(phase2State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
+  // Player must be able to provide input immediately
+  assert.equal(
+    manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }),
+    true,
+    'input must be accepted in phase 2',
+  );
 });
 
 test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
@@ -586,6 +597,11 @@ test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
   assert.equal(phase3State.phaseFlow.phaseType, 'gameplay');
   assert.equal(phase3State.phaseFlow.currentPhase, 3);
   assert.equal(phase3State.summary.outcome, null);
+  // Per-phase state must be fresh
+  assert.equal(phase3State.summary.keysCollected, 0);
+  assert.ok(phase3State.displayMaze, 'a new maze must be present for phase 3');
+  assert.equal(phase3State.displayMaze.reached, false);
+  assert.ok(phase3State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
 });
 
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
