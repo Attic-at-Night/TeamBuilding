@@ -1792,6 +1792,7 @@ class SessionManager {
         if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
           const endedAt = Date.now();
           const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+          const totalPhases = phaseFlow.totalGameplayPhases || GAMEPLAY_PHASE_DURATIONS_MS.length;
           const terminalReason = 'goal_reached';
           appendLog(state, {
             ts: endedAt,
@@ -1801,10 +1802,14 @@ class SessionManager {
             keys: state.summary.keysCollected,
             lives: state.summary.livesRemaining,
           });
-          beginFollowUpPhase(state, currentPhase, endedAt, {
-            terminalOutcome: 'success',
-            terminalReason,
-          });
+          if (currentPhase >= totalPhases) {
+            beginFollowUpPhase(state, currentPhase, endedAt, {
+              terminalOutcome: 'success',
+              terminalReason,
+            });
+          } else {
+            beginFollowUpPhase(state, currentPhase, endedAt);
+          }
         } else {
           finishGame(state, 'success', 'goal_reached');
         }
