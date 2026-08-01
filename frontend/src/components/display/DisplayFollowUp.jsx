@@ -20,10 +20,8 @@ function classifyMoiEvent(entry) {
   if (entry.event === 'hazard_hit') {
     return entry.hazardType === 'wall' ? 'hazard_wall' : 'hazard_cross'
   }
-  if (entry.event === 'input') {
-    if (entry.result === 'key') return 'key'
-    if (entry.result === 'goal') return 'goal'
-  }
+  if (entry.event === 'key_pickup') return 'key'
+  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'goal'
   if (entry.event === 'timer_expired') return 'timer_expired'
   if (entry.event === 'session_end' && entry.outcome === 'fail') return 'out_of_lives'
   return null
@@ -33,13 +31,11 @@ function getMoiLabel(entry) {
   if (entry.event === 'hazard_hit') {
     return entry.hazardType === 'wall' ? 'Hit a wall' : 'Hit cross'
   }
-  if (entry.event === 'input') {
-    if (entry.result === 'key') {
-      const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
-      return `Got Key${n}`
-    }
-    if (entry.result === 'goal') return 'Reached Goal'
+  if (entry.event === 'key_pickup') {
+    const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
+    return `Got Key${n}`
   }
+  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'Reached Goal'
   if (entry.event === 'timer_expired') return 'Out of time'
   if (entry.event === 'session_end') return 'Out of lives'
   return entry.event

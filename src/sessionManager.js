@@ -513,6 +513,7 @@ function buildTrainerState(state, session) {
     canBroadcast: true,
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
+    followUpFocusedEventId: state.followUpFocusedEventId || null,
   };
 }
 
@@ -707,7 +708,8 @@ const MOI_EVENT_TYPES = new Set([
 
 function isMoiEvent(entry) {
   if (entry.event === 'hazard_hit') return true;
-  if (entry.event === 'input' && (entry.result === 'key' || entry.result === 'goal')) return true;
+  if (entry.event === 'key_pickup') return true;
+  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return true;
   if (entry.event === 'timer_expired') return true;
   if (entry.event === 'session_end' && entry.outcome === 'fail') return true;
   return false;
@@ -1248,6 +1250,11 @@ class SessionManager {
       const phaseFlow = session.state.phaseFlow || createPhaseFlowState();
       if (didExpire && session.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
         const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+        appendLog(session.state, {
+          ts: now,
+          event: 'timer_expired',
+          durationMs: timer.durationMs,
+        });
         beginFollowUpPhase(session.state, currentPhase, now);
         this.broadcastState(sessionId);
         changed += 1;
