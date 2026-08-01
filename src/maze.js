@@ -368,8 +368,8 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
   const reachabilityTargets = [...keys, goal];
   hazards = ensureTargetsReachable(cells, height, width, hazards, reachabilityTargets);
 
-  // If ensureTargetsReachable removed hazards to preserve reachability, try to
-  // backfill from remaining free cells so the final count equals hazardCount.
+// If ensureTargetsReachable removed hazards to preserve reachability, try to
+// backfill from remaining free cells to reach hazardCount when possible.
   if (hazards.length < hazardCount) {
 const occupiedSet = new Set([
   ...safeSet,
