@@ -689,6 +689,30 @@ test('ended sessions can restart into a fresh round', () => {
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
   const session = manager.sessions.get(sessionId);
   session.state.maze = makeOpenMaze({
+    hazards: [{ row: 0, col: 1 }],
+  });
+  session.state.summary.livesRemaining = 1;
+
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+  assert.equal(display.sent.at(-1).state.phaseFlow.terminalOutcome, 'fail');
+  assert.equal(manager.endFollowUp(sessionId), true);
+  assert.equal(latestState(trainer).canRestart, true);
+  assert.equal(manager.restartGame(sessionId), true);
+
+  const sync = display.sent.at(-1);
+  assert.equal(sync.state.status, GameStatus.PLAYING);
+  assert.equal(sync.state.summary.outcome, null);
+  assert.equal(sync.state.summary.keysCollected, 0);
+  assert.equal(sync.state.summary.resets, 0);
+  assert.ok(sync.state.log.some((entry) => entry.event === 'game_start'));
+});
+
+test('final follow-up restarts a fresh round instead of ending the session', () => {
+  const { manager, display, controllers, sessionId } = bootstrapGame(2);
+  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+  const session = manager.sessions.get(sessionId);
+  session.state.maze = makeOpenMaze({
     goal: { row: 0, col: 1 },
   });
   session.state.summary.keysCollected = 3;
@@ -698,11 +722,11 @@ test('ended sessions can restart into a fresh round', () => {
   assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
   assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
   assert.equal(manager.endFollowUp(sessionId), true);
-  assert.equal(latestState(trainer).canRestart, true);
-  assert.equal(manager.restartGame(sessionId), true);
 
   const sync = display.sent.at(-1);
   assert.equal(sync.state.status, GameStatus.PLAYING);
+  assert.equal(sync.state.phaseFlow.phaseType, 'gameplay');
+  assert.equal(sync.state.phaseFlow.currentPhase, 1);
   assert.equal(sync.state.summary.outcome, null);
   assert.equal(sync.state.summary.keysCollected, 0);
   assert.equal(sync.state.summary.resets, 0);
@@ -862,13 +886,14 @@ test('follow-up can be manually ended by the host/trainer path', () => {
   assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
   assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
 
-  // End the final follow-up → session ends
+  // End the final follow-up → a fresh round starts immediately
   assert.equal(manager.endFollowUp(sessionId), true);
   const finalState = display.sent.at(-1).state;
-  assert.equal(finalState.status, GameStatus.ENDED);
-  assert.equal(finalState.summary.outcome, 'success');
-  assert.ok(finalState.log.some((entry) => entry.event === 'follow_up_end'));
-  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'follow_up_completed'));
+  assert.equal(finalState.status, GameStatus.PLAYING);
+  assert.equal(finalState.phaseFlow.phaseType, 'gameplay');
+  assert.equal(finalState.phaseFlow.currentPhase, 1);
+  assert.equal(finalState.summary.outcome, null);
+  assert.ok(finalState.log.some((entry) => entry.event === 'game_start'));
 });
 
 test('manual timer controls still work for scripted gameplay phases', () => {
@@ -920,7 +945,7 @@ test('restart after follow-up returns to phase 1 and cycles roles', () => {
     latestState(socket).roleData.assignedRoles.slice(),
   ]));
 
-  // Navigate through all 3 phases and their follow-ups to reach ENDED
+  // Navigate through all 3 phases and their follow-ups to start a fresh round
   const phase1End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase1End);
   manager.endFollowUp(sessionId); // → phase 2
@@ -929,8 +954,7 @@ test('restart after follow-up returns to phase 1 and cycles roles', () => {
   manager.endFollowUp(sessionId); // → phase 3
   const phase3End = display.sent.at(-1).state.timer.expiresAt;
   manager.tickTimers(phase3End);
-  assert.equal(manager.endFollowUp(sessionId), true); // → ENDED
-  assert.equal(manager.restartGame(sessionId), true);
+  assert.equal(manager.endFollowUp(sessionId), true); // → fresh round
 
   const restartedState = display.sent.at(-1).state;
   assert.equal(restartedState.status, GameStatus.PLAYING);

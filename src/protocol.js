@@ -13,7 +13,7 @@
  * timer_start       – display starts or resumes the session timer
  * timer_stop        – display pauses the session timer
  * timer_reset       – display resets the session timer
- * followup_end      – display/trainer ends the follow-up phase
+ * followup_end      – display/trainer ends the follow-up phase; the last follow-up restarts a fresh round
  * player_input      – controller sends an action to the server
  * resync_request    – any client requests a full state_sync (e.g. on reconnect)
  *
