@@ -371,14 +371,15 @@ function generateMaze(width, height, hazardCount = 12, keyCount = 3, lifePickupC
   // If ensureTargetsReachable removed hazards to preserve reachability, try to
   // backfill from remaining free cells so the final count equals hazardCount.
   if (hazards.length < hazardCount) {
-    const occupiedSet = new Set([
-      ...hazards.map((h) => cellKey(h.row, h.col)),
-      ...keys.map((k) => cellKey(k.row, k.col)),
-      ...lifePickups.map((l) => cellKey(l.row, l.col)),
-      ...ghosts.map((g) => cellKey(g.row, g.col)),
-      cellKey(0, 0),
-      cellKey(goal.row, goal.col),
-    ]);
+const occupiedSet = new Set([
+  ...safeSet,
+  ...hazards.map((h) => cellKey(h.row, h.col)),
+  ...keys.map((k) => cellKey(k.row, k.col)),
+  ...lifePickups.map((l) => cellKey(l.row, l.col)),
+  ...ghosts.map((g) => cellKey(g.row, g.col)),
+  cellKey(0, 0),
+  cellKey(goal.row, goal.col),
+]);
     const freeCells = [];
     for (let r = 0; r < height; r++) {
       for (let c = 0; c < width; c++) {
