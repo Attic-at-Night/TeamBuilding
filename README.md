@@ -110,8 +110,9 @@ game_start ───────→ status → playing
                                           ←─── state_sync (playing)
 
 phase flow ───────→ phase 1 (15:00) → phase 2 (10:00) → phase 3 (5:00)
-                  then status → follow_up (non-gameplay debrief)
-                  display/trainer can send followup_end → status → ended
+                  then follow-up 1 → follow-up 2 → follow-up 3
+                  the final follow-up restarts the loop into a fresh round
+                  terminal failures still end the session
 
                                                player_input ──→
                   ←─ player_input (forwarded)
@@ -128,7 +129,7 @@ phase flow ───────→ phase 1 (15:00) → phase 2 (10:00) → phas
 | Client → Server | `timer_start` | Display starts or resumes the session timer |
 | Client → Server | `timer_stop` | Display pauses the session timer |
 | Client → Server | `timer_reset` | Display resets the session timer |
-| Client → Server | `followup_end` | Display or trainer ends follow-up and completes the session |
+| Client → Server | `followup_end` | Display or trainer ends follow-up; the last follow-up restarts a fresh round, while terminal failures end the session |
 | Client → Server | `player_input` | Controller sends an action (e.g. `{ action: "buzz" }`) |
 | Client → Server | `resync_request` | Any client requests a full state re-send (reconnect) |
 | Server → Client | `client_registered` | Acknowledges display/controller registration |
@@ -168,9 +169,10 @@ lifecycle states. Timer transitions are included in synchronized state and persi
 The display exposes start / pause / reset timer controls, and controllers show compact timer status.
 
 Gameplay sessions now run on a fixed flow after `game_start`: **phase 1 (15 min)**, **phase 2 (10 min)**,
-**phase 3 (5 min)**, then a **follow-up** phase where gameplay is paused and clients show a compact follow-up
-indicator while hiding normal gameplay UI.
-The trainer can still pause, resume, and reset the active gameplay phase timer when facilitation needs it.
+**phase 3 (5 min)**, each followed by a **follow-up** phase where gameplay is paused and clients show a compact
+follow-up indicator while hiding normal gameplay UI. The final follow-up immediately restarts a fresh round;
+terminal failures still end the session. The trainer can still pause, resume, and reset the active gameplay phase
+timer when facilitation needs it.
 
 ### Game state shape
 

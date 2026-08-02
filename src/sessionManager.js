@@ -1342,7 +1342,10 @@ class SessionManager {
       session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
-      finishGame(session.state, 'success', 'follow_up_completed');
+      beginGameState(session, now, {
+        cycleRoles: true,
+        previousRoles: session.state.roles,
+      });
     }
 
     this.broadcastState(sessionId);
@@ -1805,14 +1808,7 @@ class SessionManager {
             keys: state.summary.keysCollected,
             lives: state.summary.livesRemaining,
           });
-          if (currentPhase >= totalPhases) {
-            beginFollowUpPhase(state, currentPhase, endedAt, {
-              terminalOutcome: 'success',
-              terminalReason,
-            });
-          } else {
-            beginFollowUpPhase(state, currentPhase, endedAt);
-          }
+          beginFollowUpPhase(state, currentPhase, endedAt);
         } else {
           finishGame(state, 'success', 'goal_reached');
         }
