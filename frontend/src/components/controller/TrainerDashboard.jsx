@@ -222,7 +222,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
     const moiEvents = getMoiEventsForPhase(log, followingPhase)
     const focusedEvent = moiEvents.find((e) => e.eventId === followUpFocusedEventId) || moiEvents[0] || null
     const focusedIndex = moiEvents.findIndex((e) => e.eventId === focusedEvent?.eventId)
-    const isLastPhase = followingPhase !== null && followingPhase >= totalGameplayPhases
+    const isLastPhase = !Number.isInteger(followingPhase) || followingPhase >= totalGameplayPhases
     const phaseStartEntry = log.find(
       (e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase
     )
