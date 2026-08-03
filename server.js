@@ -64,7 +64,8 @@ app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
-server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+const listenHost = process.env.HOST || undefined;
+server = app.listen(process.env.PORT || 3000, listenHost, () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
   // eslint-disable-next-line no-console
