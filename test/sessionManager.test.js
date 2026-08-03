@@ -245,20 +245,34 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
 });
 
 test('gameplay phase records mode, level, and movement moments of interest', () => {
-  const { manager, controllers, sessionId } = bootstrapGame(2);
-  const mover = findControllerByRole(controllers, MazeRole.MOVER);
-  const playerId = registerPlayerId(mover);
-  const state = manager.sessions.get(sessionId).state;
-  const direction = getValidMoveDirection(state.maze);
+  const originalNow = Date.now;
+  try {
+    let now = 1000;
+    Date.now = () => now;
 
-  assert.ok(direction, 'expected a valid move direction');
-  manager.handleInput(sessionId, playerId, { action: 'move', dir: direction });
+    const { manager, controllers, sessionId } = bootstrapGame(2);
+    const mover = findControllerByRole(controllers, MazeRole.MOVER);
+    const playerId = registerPlayerId(mover);
+    const state = manager.sessions.get(sessionId).state;
 
-  const log = manager.sessions.get(sessionId).state.log;
-  assert.ok(log.some((entry) => entry.event === 'mode_set'));
-  assert.ok(log.some((entry) => entry.event === 'level_progression' && entry.level === 1));
-  assert.ok(log.some((entry) => entry.event === 'level_start' && entry.level === 1));
-  assert.ok(log.some((entry) => entry.event === 'first_movement'));
+    let direction = getValidMoveDirection(state.maze);
+    assert.ok(direction, 'expected a valid move direction');
+    manager.handleInput(sessionId, playerId, { action: 'move', dir: direction });
+
+    now += 15 * 1000;
+    direction = getValidMoveDirection(state.maze);
+    assert.ok(direction, 'expected a second valid move direction');
+    manager.handleInput(sessionId, playerId, { action: 'move', dir: direction });
+
+    const log = manager.sessions.get(sessionId).state.log;
+    assert.ok(log.some((entry) => entry.event === 'mode_set'));
+    assert.ok(log.some((entry) => entry.event === 'level_progression' && entry.level === 1));
+    assert.ok(log.some((entry) => entry.event === 'level_start' && entry.level === 1));
+    assert.ok(log.some((entry) => entry.event === 'first_movement'));
+    assert.ok(log.some((entry) => entry.event === 'movement_pause' && entry.durationMs >= 15 * 1000));
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test('two-player sessions merge roles into mover+key-seer and guide+navigator', () => {
