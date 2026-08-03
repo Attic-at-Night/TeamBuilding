@@ -20,10 +20,10 @@ const MOI_LEGEND = [
   { color: MOI_COLORS.movement_pause, label: 'Movement Pause/Break' },
   { color: MOI_COLORS.hazard_wall, label: 'Hit Wall' },
   { color: MOI_COLORS.hazard_cross, label: 'Hit Cross' },
-  { color: MOI_COLORS.key, label: 'Hit Key' },
-  { color: MOI_COLORS.goal, label: 'Hit Goal' },
+  { color: MOI_COLORS.key, label: 'Got Key' },
+  { color: MOI_COLORS.goal, label: 'Reached Goal' },
   { color: MOI_COLORS.timer_expired, label: 'Out of time' },
-  { color: MOI_COLORS.out_of_lives, label: 'Out of lives' },
+  { color: MOI_COLORS.out_of_lives, label: 'Out of lives' }
 ]
 
 function classifyMoiEvent(entry) {
