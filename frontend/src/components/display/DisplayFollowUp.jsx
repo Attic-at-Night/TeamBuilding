@@ -73,12 +73,13 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
                 ? Math.min(100, Math.max(0, (tOffset / timelineSecs) * 100))
                 : 0
               const isFocused = entry.eventId === focusedEventId
+              const dotPct = isFocused ? focusedPct : pct
 
               return (
                 <div
                   key={entry.eventId}
                   className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${pct}%` }}
+                  style={{ left: `${dotPct}%` }}
                 >
                   <div
                     className="rounded-full transition-all duration-200"
@@ -119,7 +120,7 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
         </div>
 
         {/* Spacer — keeps consistent gap above time labels whether callout is shown or not */}
-        {focusedEvent && <div className="h-16" />}
+        {focusedEvent && <div className="h-20" />}
 
         {/* Time labels */}
         <div className="flex justify-between text-xs font-mono text-slate-500 px-4">
