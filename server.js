@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
@@ -42,21 +43,12 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 const distIndexPath = path.join(__dirname, 'frontend/dist/index.html');
+const distIndexExists = fs.existsSync(distIndexPath);
 const sendIndexOrServiceUnavailable = (req, res) => {
-  res.sendFile(distIndexPath, (error) => {
-    if (!error) {
-      return;
-    }
-
-    if (error.code === 'ENOENT') {
-      res.status(503).send('Frontend build not found. Run "npm run build" first.');
-      return;
-    }
-
-    // eslint-disable-next-line no-console
-    console.error('Failed serving frontend index', error);
-    res.status(500).end();
-  });
+  if (distIndexExists) {
+    return res.sendFile(distIndexPath);
+  }
+  res.status(503).send('Frontend build not found. Run "npm run build" first.');
 };
 
 app.get('/', sendIndexOrServiceUnavailable);
@@ -64,8 +56,7 @@ app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
-const listenHost = process.env.HOST || undefined;
-server = app.listen(process.env.PORT || 3000, listenHost, () => {
+server = app.listen(process.env.PORT || 3000, () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
   // eslint-disable-next-line no-console
