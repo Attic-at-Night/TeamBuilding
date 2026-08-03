@@ -217,6 +217,101 @@ export function TrainerDashboard({ stateSync, onSend }) {
   )
   const pRoleData = perspectiveView?.roleData || getSyntheticRoleData(selectedPerspective, trainerMaze, stateSync?.summary)
 
+  // --- Dedicated follow-up view (replaces full dashboard during follow_up phase) ---
+  if (status === 'follow_up') {
+    const moiEvents = getMoiEventsForPhase(log, followingPhase)
+    const focusedEvent = moiEvents.find((e) => e.eventId === followUpFocusedEventId) || moiEvents[0] || null
+    const focusedIndex = moiEvents.findIndex((e) => e.eventId === focusedEvent?.eventId)
+    const isLastPhase = !Number.isInteger(followingPhase) || followingPhase >= totalGameplayPhases
+    const phaseStartEntry = log.find(
+      (e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase
+    )
+    const phaseStartT = phaseStartEntry?.t ?? 0
+
+    return (
+      <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
+
+        {/* Header strip */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/40 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-indigo-600/30 border border-indigo-500/40">
+                <GraduationCap className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 block">Facilitator View</span>
+                <span className="text-lg font-extrabold text-white">Level {followingPhase} Follow-up</span>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/60 border border-indigo-700/50 text-indigo-200">
+              Follow-up
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-slate-400 mt-1 ml-11">Communication &amp; Clarity</p>
+        </div>
+
+        {/* Event counter */}
+        {moiEvents.length > 0 && (
+          <p className="text-xs text-slate-500 text-center font-mono">
+            {focusedIndex >= 0 ? focusedIndex + 1 : '–'} of {moiEvents.length} moment{moiEvents.length !== 1 ? 's' : ''}
+          </p>
+        )}
+
+        {/* Focused MOI event card */}
+        {focusedEvent ? (
+          <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-200/30 shadow-xl flex flex-col gap-1">
+            <p className="text-base font-black text-rose-200 leading-tight">{getMoiLabel(focusedEvent)}</p>
+            {typeof focusedEvent.t === 'number' && (
+              <p className="text-sm font-semibold text-rose-300/70">{formatSeconds(focusedEvent.t - phaseStartT)}</p>
+            )}
+          </div>
+        ) : (
+          <div className="p-5 rounded-2xl bg-slate-800/60 border border-slate-700 text-center">
+            <p className="text-sm text-slate-500 italic">No moments of interest recorded for this level.</p>
+          </div>
+        )}
+
+        {/* Prev / Next navigation */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => sendFollowupNavigate('prev')}
+            disabled={moiEvents.length === 0 || focusedIndex <= 0}
+            className="flex flex-col items-center gap-1.5 py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold active:scale-95 transition-all cursor-pointer shadow-lg"
+          >
+            <ChevronLeft className="w-6 h-6" />
+            <span className="text-xs">Prev Item</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => sendFollowupNavigate('next')}
+            disabled={moiEvents.length === 0 || focusedIndex >= moiEvents.length - 1}
+            className="flex flex-col items-center gap-1.5 py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold active:scale-95 transition-all cursor-pointer shadow-lg"
+          >
+            <ChevronRight className="w-6 h-6" />
+            <span className="text-xs">Next Item</span>
+          </button>
+        </div>
+
+        {/* Primary CTA */}
+        <button
+          type="button"
+          onClick={sendEndFollowup}
+          className={`w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer shadow-lg ${
+            !isLastPhase ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-700 hover:bg-rose-600'
+          }`}
+        >
+          {!isLastPhase ? (
+            <><ArrowRight className="w-5 h-5" /> Start Level {followingPhase + 1}</>
+          ) : (
+            <><LogOut className="w-5 h-5" /> End Session</>
+          )}
+        </button>
+
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto p-4 text-slate-100">
       {/* Facilitator Header & Timer Controls */}
@@ -323,22 +418,6 @@ export function TrainerDashboard({ stateSync, onSend }) {
               </button>
             </div>
 
-            {status === 'follow_up' && (
-              <button
-                type="button"
-                onClick={sendEndFollowup}
-                className={`px-3 py-1.5 rounded-lg text-white text-xs font-bold cursor-pointer ${
-                  followingPhase !== null && followingPhase < totalGameplayPhases
-                    ? 'bg-emerald-600 hover:bg-emerald-500'
-                    : 'bg-rose-700 hover:bg-rose-600'
-                }`}
-              >
-                {followingPhase !== null && followingPhase < totalGameplayPhases
-                  ? `Start Level ${followingPhase + 1}`
-                  : 'End Session'}
-              </button>
-            )}
-
             {status === 'ended' && (
               <button
                 type="button"
@@ -352,86 +431,8 @@ export function TrainerDashboard({ stateSync, onSend }) {
         </div>
       </div>
 
-      {/* Follow-up Panel: shown when in follow_up status */}
-      {status === 'follow_up' && (() => {
-        const moiEvents = getMoiEventsForPhase(log, followingPhase)
-        const focusedEvent = moiEvents.find((e) => e.eventId === followUpFocusedEventId) || moiEvents[0] || null
-        const focusedIndex = moiEvents.findIndex((e) => e.eventId === (focusedEvent?.eventId))
-
-        return (
-          <div className="flex flex-col gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-700 shadow-xl">
-            {/* Panel header */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Level {followingPhase} Follow-up · Timeline
-              </span>
-              <span className="text-xs text-slate-500">
-                {moiEvents.length} moment{moiEvents.length !== 1 ? 's' : ''} of interest
-              </span>
-            </div>
-
-            {/* Focused MOI card */}
-            {focusedEvent ? (
-              <div className="p-4 rounded-xl border border-rose-200/30 shadow-md bg-rose-950/20">
-                <p className="text-sm font-black text-rose-200 leading-tight">
-                  {getMoiLabel(focusedEvent)}
-                </p>
-                {typeof focusedEvent.t === 'number' && (
-                  <p className="text-xs font-semibold text-rose-300/70 mt-0.5">
-                    {formatSeconds(focusedEvent.t - (
-                      log.find((e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase)?.t ?? 0
-                    ))}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic text-center py-2">No moments recorded for this level.</p>
-            )}
-
-            {/* Prev / Next navigation */}
-            <div className="flex items-center gap-3 justify-center">
-              <button
-                type="button"
-                onClick={() => sendFollowupNavigate('prev')}
-                disabled={moiEvents.length === 0 || focusedIndex <= 0}
-                className="flex flex-col items-center gap-1 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold active:scale-95 transition-all cursor-pointer border border-slate-700"
-              >
-                <ChevronLeft className="w-5 h-5" />
-                <span>Prev Item</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => sendFollowupNavigate('next')}
-                disabled={moiEvents.length === 0 || focusedIndex >= moiEvents.length - 1}
-                className="flex flex-col items-center gap-1 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold active:scale-95 transition-all cursor-pointer border border-slate-700"
-              >
-                <ChevronRight className="w-5 h-5" />
-                <span>Next Item</span>
-              </button>
-            </div>
-
-            {/* Primary action button */}
-            <button
-              type="button"
-              onClick={sendEndFollowup}
-              className={`w-full py-3.5 rounded-xl text-white font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer shadow-lg ${
-                followingPhase !== null && followingPhase < totalGameplayPhases
-                  ? 'bg-emerald-600 hover:bg-emerald-500'
-                  : 'bg-rose-700 hover:bg-rose-600'
-              }`}
-            >
-              {followingPhase !== null && followingPhase < totalGameplayPhases ? (
-                <><ArrowRight className="w-4 h-4" /> Start Level {followingPhase + 1}</>
-              ) : (
-                <><LogOut className="w-4 h-4" /> End Session</>
-              )}
-            </button>
-          </div>
-        )
-      })()}
-
-      {/* Navigation Tabs + Tab Content (hidden during follow-up) */}
-      {status !== 'follow_up' && (<>
+      {/* Navigation Tabs + Tab Content */}
+      <>
       <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-bold">
         <button
           type="button"
@@ -686,7 +687,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
           <Radio className="w-4 h-4" /> Broadcast
         </button>
       </form>
-      </>)}
+      </>
     </div>
   )
 }
