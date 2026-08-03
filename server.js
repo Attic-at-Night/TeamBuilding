@@ -43,9 +43,8 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 const distIndexPath = path.join(__dirname, 'frontend/dist/index.html');
-const distIndexExists = fs.existsSync(distIndexPath);
 const sendIndexOrServiceUnavailable = (req, res) => {
-  if (distIndexExists) {
+  if (fs.existsSync(distIndexPath)) {
     return res.sendFile(distIndexPath);
   }
   res.status(503).send('Frontend build not found. Run "npm run build" first.');
@@ -56,7 +55,7 @@ app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
-server = app.listen(process.env.PORT || 3000, () => {
+server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
   // eslint-disable-next-line no-console

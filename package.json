@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "QR-based TV host and mobile join flow for TeamBuilding sessions",
   "main": "server.js",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
+    "dev": "npm --prefix frontend run build && node server.js",
     "start": "node server.js",
     "build": "npm --prefix frontend run build",
     "gcp-build": "npm --prefix frontend ci --include=dev && npm --prefix frontend run build",
