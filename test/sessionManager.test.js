@@ -87,6 +87,16 @@ function findControllerByRole(controllers, role) {
   return controllers.find((socket) => latestState(socket).viewerRole === role) || null;
 }
 
+function getValidMoveDirection(maze) {
+  const { row, col } = maze.playerPos;
+  const cell = maze.cells[row][col];
+  if (cell && cell.walls && !cell.walls.e) return 'e';
+  if (cell && cell.walls && !cell.walls.s) return 's';
+  if (cell && cell.walls && !cell.walls.w) return 'w';
+  if (cell && cell.walls && !cell.walls.n) return 'n';
+  return null;
+}
+
 function bootstrapGame(gameplayPlayerCount) {
   const manager = new SessionManager();
   const display = createFakeSocket();
@@ -232,6 +242,23 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
   assert.equal(display.sent.at(-1).state.phaseFlow.currentPhase, 1);
   assert.equal(display.sent.at(-1).state.timer.durationMs, 15 * 60 * 1000);
   assert.equal(display.sent.at(-1).state.timer.status, 'running');
+});
+
+test('gameplay phase records mode, level, and movement moments of interest', () => {
+  const { manager, controllers, sessionId } = bootstrapGame(2);
+  const mover = findControllerByRole(controllers, MazeRole.MOVER);
+  const playerId = registerPlayerId(mover);
+  const state = manager.sessions.get(sessionId).state;
+  const direction = getValidMoveDirection(state.maze);
+
+  assert.ok(direction, 'expected a valid move direction');
+  manager.handleInput(sessionId, playerId, { action: 'move', dir: direction });
+
+  const log = manager.sessions.get(sessionId).state.log;
+  assert.ok(log.some((entry) => entry.event === 'mode_set'));
+  assert.ok(log.some((entry) => entry.event === 'level_progression' && entry.level === 1));
+  assert.ok(log.some((entry) => entry.event === 'level_start' && entry.level === 1));
+  assert.ok(log.some((entry) => entry.event === 'first_movement'));
 });
 
 test('two-player sessions merge roles into mover+key-seer and guide+navigator', () => {
