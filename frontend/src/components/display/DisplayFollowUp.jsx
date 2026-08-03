@@ -1,4 +1,4 @@
-import { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase } from './moiUtils'
+import { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from './moiUtils'
 
 // Returns the actual played duration in seconds, derived from the last phase-ending MOI event.
 // Falls back to the configured max duration when no ending event is found.
