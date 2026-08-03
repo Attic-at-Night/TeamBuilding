@@ -26,6 +26,27 @@ const MOI_LEGEND = [
   { color: MOI_COLORS.out_of_lives, label: 'Out of lives' }
 ]
 
+function normalizeMode(mode) {
+  if (typeof mode !== 'string') return 'communication & clarity'
+  const trimmed = mode.trim().toLowerCase()
+  if (trimmed === 'collaboration & teamwork' || trimmed === 'collaboration') {
+    return 'collaboration & teamwork'
+  }
+  return 'communication & clarity'
+}
+
+function getModeDisplayName(mode) {
+  return normalizeMode(mode) === 'collaboration & teamwork'
+    ? 'Collaboration & Teamwork'
+    : 'Communication & Clarity'
+}
+
+function getModeFocusText(mode) {
+  return normalizeMode(mode) === 'collaboration & teamwork'
+    ? 'Focus on coordination, shared progress, and role shifts.'
+    : 'Focus on clarity, listening, and stable roles.'
+}
+
 function classifyMoiEvent(entry) {
   if (!entry || typeof entry !== 'object') return null
   if (entry.event === 'mode_set') return 'mode_set'
@@ -41,11 +62,11 @@ function classifyMoiEvent(entry) {
   return null
 }
 
-function getMoiLabel(entry) {
+function getMoiLabel(entry, mode = null) {
   if (!entry || typeof entry !== 'object') return 'Event'
   switch (entry.event) {
     case 'mode_set':
-      return 'Mode Set'
+      return `Mode Set • ${getModeDisplayName(entry.mode || mode)}`
     case 'level_progression':
       return `Level ${entry.level ?? entry.phase ?? 1}`
     case 'level_start':
@@ -114,4 +135,4 @@ function getMoiEventsForPhase(log, followingPhase) {
   return [...prePhaseEvents, ...phaseEvents].sort((a, b) => (a.t ?? 0) - (b.t ?? 0))
 }
 
-export { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, getMoiLabel, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase }
+export { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, getMoiLabel, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getModeDisplayName, getModeFocusText }

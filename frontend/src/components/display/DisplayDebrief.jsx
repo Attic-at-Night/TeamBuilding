@@ -1,10 +1,13 @@
 import { Trophy, RotateCcw, AlertTriangle, Key, Clock, Share2, Sparkles, CheckCircle2, XCircle } from 'lucide-react'
+import { getModeDisplayName, getModeFocusText } from './moiUtils'
 
 export function DisplayDebrief({ stateSync, onRestart }) {
   const summary = stateSync?.summary || {}
   const log = stateSync?.log || []
   const trainerBroadcast = stateSync?.trainerBroadcast || null
   const outcome = summary?.outcome || (summary?.livesRemaining > 0 ? 'success' : 'failure')
+  const activeMode = getModeDisplayName(stateSync?.gameMode)
+  const modeFocusText = getModeFocusText(stateSync?.gameMode)
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-5xl mx-auto p-8 text-slate-100 min-h-screen justify-center items-center">
@@ -23,10 +26,11 @@ export function DisplayDebrief({ stateSync, onRestart }) {
         <h1 className="text-4xl font-black text-white">
           {outcome === 'success' ? 'Mission Complete!' : 'Challenge Ended'}
         </h1>
+        <p className="text-indigo-300 text-sm font-semibold uppercase tracking-wider">{activeMode}</p>
         <p className="text-slate-400 text-sm max-w-md">
           {outcome === 'success'
-            ? 'Great team coordination! All 3 keys were retrieved and the Mover reached the exit safely.'
-            : 'The team encountered obstacles or ran out of lives. Review the retrospective debrief below.'}
+            ? `Great team coordination! All 3 keys were retrieved and the Mover reached the exit safely. ${modeFocusText}`
+            : `The team encountered obstacles or ran out of lives. Review the retrospective debrief below. ${modeFocusText}`}
         </p>
       </div>
 

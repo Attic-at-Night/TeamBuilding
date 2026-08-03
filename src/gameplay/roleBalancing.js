@@ -1,6 +1,6 @@
 'use strict';
 
-const { MazeRole } = require('../protocol');
+const { MazeRole, GameMode } = require('../protocol');
 const { getRoleOrder } = require('../roles/roleAssignments');
 
 function normalizeRoleArray(value) {
@@ -17,7 +17,15 @@ function roleGroupKey(roles) {
   return normalizeRoleArray(roles).join('|');
 }
 
-function buildCycledRoles(activePlayers, previousRoles = {}) {
+function shouldCycleRolesForMode(gameMode) {
+  return gameMode === GameMode.COLLABORATION_TEAMWORK;
+}
+
+function buildCycledRoles(activePlayers, previousRoles = {}, gameMode = GameMode.COMMUNICATION_CLARITY) {
+  if (!shouldCycleRolesForMode(gameMode)) {
+   return null;
+  }
+
   const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
   const groupKeys = roleGroups.map((group) => roleGroupKey(group));
   if (!roleGroups.length) {
@@ -40,7 +48,46 @@ function buildCycledRoles(activePlayers, previousRoles = {}) {
   return nextRoles;
 }
 
-function rebalanceRoles(activePlayers, previousRoles = {}) {
+function rebalanceRoles(activePlayers, previousRoles = {}, gameMode = GameMode.COMMUNICATION_CLARITY) {
+  if (!shouldCycleRolesForMode(gameMode)) {
+   const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
+   const nextRoles = {};
+   const assignedGroupIndexes = new Set();
+
+   const existingPlayers = [];
+   const newPlayers = [];
+   for (const player of activePlayers) {
+     const previous = normalizeRoleArray(previousRoles[player.id]);
+     if (previous.length) {
+       existingPlayers.push(player);
+     } else {
+       newPlayers.push(player);
+     }
+   }
+
+   for (const player of existingPlayers) {
+     const previous = normalizeRoleArray(previousRoles[player.id]);
+     const preferredIndex = roleGroups.findIndex((group) => roleGroupKey(group) === roleGroupKey(previous));
+     const availableIndex = preferredIndex >= 0 && !assignedGroupIndexes.has(preferredIndex)
+       ? preferredIndex
+       : roleGroups.findIndex((_group, index) => !assignedGroupIndexes.has(index));
+     if (availableIndex >= 0) {
+       nextRoles[player.id] = roleGroups[availableIndex].slice();
+       assignedGroupIndexes.add(availableIndex);
+     }
+   }
+
+   for (const player of newPlayers) {
+     const availableIndex = roleGroups.findIndex((_group, index) => !assignedGroupIndexes.has(index));
+     if (availableIndex >= 0) {
+       nextRoles[player.id] = roleGroups[availableIndex].slice();
+       assignedGroupIndexes.add(availableIndex);
+     }
+   }
+
+   return Object.keys(nextRoles).length ? nextRoles : {};
+  }
+
   const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
   const playerMap = new Map(activePlayers.map((player) => [player.id, player]));
   const remainingPlayerIds = activePlayers.map((player) => player.id);
@@ -95,4 +142,5 @@ module.exports = {
   normalizeRoleArray,
   buildCycledRoles,
   rebalanceRoles,
+  shouldCycleRolesForMode,
 };

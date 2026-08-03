@@ -1,4 +1,5 @@
-import { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from './moiUtils'
+import { GameMode } from '../../protocol'
+import { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel, getModeDisplayName, getModeFocusText } from './moiUtils'
 
 // Returns the actual played duration in seconds, derived from the last phase-ending MOI event.
 // Falls back to the configured max duration when no ending event is found.
@@ -16,12 +17,14 @@ function getPhaseStartEntry(log, followingPhase) {
   return log.find((e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) || null
 }
 
-export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' }) {
+export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARITY }) {
   const log = stateSync?.log || []
   const phaseFlow = stateSync?.phaseFlow || {}
   const followingPhase = phaseFlow.followingPhase || 1
   const totalPhases = phaseFlow.totalGameplayPhases || 3
   const focusedEventId = stateSync?.followUpFocusedEventId || null
+  const activeMode = getModeDisplayName(stateSync?.gameMode || mode)
+  const modeFocusText = getModeFocusText(stateSync?.gameMode || mode)
 
   const phaseStartEntry = getPhaseStartEntry(log, followingPhase)
   const maxDurationSecs = phaseStartEntry?.durationMs ? phaseStartEntry.durationMs / 1000 : null
@@ -48,7 +51,8 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
         <h1 className="text-5xl font-black text-white tracking-tight">
           Level {followingPhase} Follow-up
         </h1>
-        <p className="text-lg font-semibold text-slate-400">{mode}</p>
+        <p className="text-lg font-semibold text-indigo-300">{activeMode}</p>
+        <p className="text-sm font-medium text-slate-400">{modeFocusText}</p>
       </div>
 
       {/* Timeline Card */}
@@ -106,7 +110,7 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
               <div className="w-px h-5 bg-slate-500" />
               <div className="px-5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200/60 shadow-2xl min-w-[140px] text-center">
                 <p className="font-black text-base text-slate-900 leading-tight whitespace-nowrap">
-                  {getMoiLabel(focusedEvent)}
+                  {getMoiLabel(focusedEvent, stateSync?.gameMode || mode)}
                 </p>
                 <p className="text-sm font-semibold text-slate-500 mt-0.5">
                   {formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}
