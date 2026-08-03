@@ -1,9 +1,8 @@
 import { GridCanvas } from '../maze/GridCanvas'
-import { Compass, Map, History } from 'lucide-react'
+import { Compass, Map } from 'lucide-react'
 
 export function NavigatorView({ roleData, summary }) {
   const maze = roleData?.maze
-  const hazardLog = roleData?.hazardLog || []
   const hazards = roleData?.hazards || []
   const ghosts = roleData?.ghosts || []
   const keys = roleData?.keys || []
@@ -49,26 +48,6 @@ export function NavigatorView({ roleData, summary }) {
         <p className="text-xs text-slate-400 mt-2 text-center">
           You see the overall maze layout and breadcrumb history. Keep the team oriented!
         </p>
-      </div>
-
-      {/* Hazard Log / Path History */}
-      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          <History className="w-4 h-4 text-teal-400" />
-          <span>Recent Path Friction & Resets</span>
-        </div>
-        <div className="max-h-28 overflow-y-auto flex flex-col gap-1.5 text-xs">
-          {hazardLog.length === 0 ? (
-            <span className="text-slate-500 italic p-1">No wall hits or hazard resets yet.</span>
-          ) : (
-            hazardLog.slice(-5).map((entry, idx) => (
-              <div key={idx} className="p-2 rounded bg-slate-800/60 border border-slate-700/50 flex items-center justify-between">
-                <span className="text-rose-300 font-semibold">{entry.reason || 'Hazard Reset'}</span>
-                <span className="text-slate-400 font-mono text-[10px]">{new Date(entry.ts || Date.now()).toLocaleTimeString()}</span>
-              </div>
-            ))
-          )}
-        </div>
       </div>
     </div>
   )
