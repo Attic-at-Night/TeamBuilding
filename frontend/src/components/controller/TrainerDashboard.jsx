@@ -21,52 +21,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { MessageType, CLARITY_TYPES } from '../../protocol'
-
-function classifyMoiEvent(entry) {
-  if (entry.event === 'hazard_hit') return entry.hazardType === 'wall' ? 'hazard_wall' : 'hazard_cross'
-  if (entry.event === 'key_pickup') return 'key'
-  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'goal'
-  if (entry.event === 'timer_expired') return 'timer_expired'
-  if (entry.event === 'session_end' && entry.outcome === 'fail') return 'out_of_lives'
-  return null
-}
-
-function getMoiLabel(entry) {
-  if (entry.event === 'hazard_hit') return entry.hazardType === 'wall' ? 'Hit a wall' : 'Hit cross'
-  if (entry.event === 'key_pickup') {
-    const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
-    return `Got Key${n}`
-  }
-  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'Reached Goal'
-  if (entry.event === 'timer_expired') return 'Out of time'
-  if (entry.event === 'session_end') return 'Out of lives'
-  return entry.event
-}
-
-function formatSeconds(seconds) {
-  const s = Math.max(0, Math.round(seconds))
-  const m = Math.floor(s / 60)
-  const rem = s % 60
-  return `${m}m ${String(rem).padStart(2, '0')}s`
-}
-
-function getMoiEventsForPhase(log, followingPhase) {
-  if (!Array.isArray(log)) return []
-  let phaseStartIdx = -1
-  let phaseEndIdx = log.length
-  for (let i = 0; i < log.length; i++) {
-    const e = log[i]
-    if (e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) {
-      phaseStartIdx = i
-    }
-    if (phaseStartIdx >= 0 && i > phaseStartIdx && e.event === 'phase_start') {
-      phaseEndIdx = i
-      break
-    }
-  }
-  if (phaseStartIdx < 0) return []
-  return log.slice(phaseStartIdx + 1, phaseEndIdx).filter((e) => classifyMoiEvent(e) !== null)
-}
+import { formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from '../display/moiUtils'
 
 export function TrainerDashboard({ stateSync, onSend }) {
   const [activeTab, setActiveTab] = useState('maze') // 'maze', 'events', 'perspectives', 'ai', 'broadcast'
@@ -262,7 +217,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
           <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-200/30 shadow-xl flex flex-col gap-1">
             <p className="text-base font-black text-rose-200 leading-tight">{getMoiLabel(focusedEvent)}</p>
             {typeof focusedEvent.t === 'number' && (
-              <p className="text-sm font-semibold text-rose-300/70">{formatSeconds(focusedEvent.t - phaseStartT)}</p>
+             <p className="text-sm font-semibold text-rose-300/70">{formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}</p>
             )}
           </div>
         ) : (

@@ -21,6 +21,8 @@ const DEFAULT_TIMER_DURATION_MS = gameplaySettings.timer.defaultDurationMs;
 const GAMEPLAY_PHASE_DURATIONS_MS = gameplaySettings.timer.gameplayPhaseDurationsMs;
 const RESET_FEEDBACK_MS = gameplaySettings.events.resetFeedbackMs;
 const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = gameplaySettings.session.abandonedTimeoutMs;
+const MOVEMENT_PAUSE_THRESHOLD_MS = 15 * 1000;
+const DEFAULT_GAME_MODE = 'communication & clarity';
 
 function sendJson(socket, payload) {
   if (!socket || typeof socket.send !== 'function') {
@@ -669,6 +671,36 @@ function applyGhostHazard(state, ghost) {
   );
 }
 
+function initializeMovementAnalytics(state) {
+  state.movementAnalytics = {
+    firstMovementLogged: false,
+    lastMovementAt: null,
+  };
+}
+
+function recordMovementMoments(state, ts) {
+  const analytics = state.movementAnalytics || (state.movementAnalytics = {});
+  if (!analytics.firstMovementLogged) {
+    analytics.firstMovementLogged = true;
+    analytics.lastMovementAt = ts;
+    appendLog(state, {
+      ts,
+      event: 'first_movement',
+    });
+    return;
+  }
+
+  if (typeof analytics.lastMovementAt === 'number' && ts - analytics.lastMovementAt >= MOVEMENT_PAUSE_THRESHOLD_MS) {
+    appendLog(state, {
+      ts,
+      event: 'movement_pause',
+      durationMs: ts - analytics.lastMovementAt,
+    });
+  }
+
+  analytics.lastMovementAt = ts;
+}
+
 function beginGameState(session, startedAt, options = {}) {
   const players = session.controllers.size ? [...session.controllers.values()] : [];
   const activePlayers = players.filter((player) => !player.isTrainer);
@@ -702,7 +734,13 @@ function beginGameState(session, startedAt, options = {}) {
     phaseType: 'gameplay',
     currentPhase: 1,
   });
+  initializeMovementAnalytics(session.state);
 
+  appendLog(session.state, {
+    ts: startedAt,
+    event: 'mode_set',
+    mode: DEFAULT_GAME_MODE,
+  });
   appendLog(session.state, {
     ts: startedAt,
     event: 'game_start',
@@ -718,14 +756,23 @@ function beginGameState(session, startedAt, options = {}) {
 }
 
 const MOI_EVENT_TYPES = new Set([
+  'mode_set',
+  'level_progression',
+  'level_start',
+  'first_movement',
+  'movement_pause',
   'hazard_hit',
-  'key_collected',
-  'goal_reached',
-  'timer_expired',
+  'key_pickup',
   'session_end',
+  'timer_expired',
 ]);
 
 function isMoiEvent(entry) {
+  if (entry.event === 'mode_set') return true;
+  if (entry.event === 'level_progression') return true;
+  if (entry.event === 'level_start') return true;
+  if (entry.event === 'first_movement') return true;
+  if (entry.event === 'movement_pause') return true;
   if (entry.event === 'hazard_hit') return true;
   if (entry.event === 'key_pickup') return true;
   if (entry.event === 'session_end' && entry.reason === 'goal_reached') return true;
@@ -758,7 +805,11 @@ function getMoiEventsForPhase(log, phase) {
   if (startIndex < 0) {
     return [];
   }
-  return log.slice(startIndex + 1, endIndex).filter(isMoiEvent);
+  const phaseEvents = log.slice(startIndex + 1, endIndex).filter(isMoiEvent);
+  const prePhaseEvents = phase === 1
+    ? log.slice(0, startIndex).filter((entry) => entry.event === 'mode_set' && isMoiEvent(entry))
+    : [];
+  return [...prePhaseEvents, ...phaseEvents].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
 }
 
 function beginGameplayPhase(state, phase, startedAt = Date.now()) {
@@ -783,12 +834,25 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
     expiresAt: startedAt + phaseDurationMs,
     stoppedAt: null,
   });
+  initializeMovementAnalytics(state);
   appendLog(state, {
     ts: startedAt,
     event: 'phase_start',
     phaseType: 'gameplay',
     phase,
     durationMs: phaseDurationMs,
+  });
+  appendLog(state, {
+    ts: startedAt,
+    event: 'level_progression',
+    phase,
+    level: phase,
+  });
+  appendLog(state, {
+    ts: startedAt,
+    event: 'level_start',
+    phase,
+    level: phase,
   });
   return true;
 }
@@ -1711,6 +1775,10 @@ class SessionManager {
     const moveResult = movePlayer(maze, input.dir);
     const exitUnlocked = state.summary.keysCollected >= KEY_COUNT;
     const moveResultLabel = moveResult.result === 'goal' && !exitUnlocked ? 'ok' : moveResult.result;
+    if (moveResult.result !== 'invalid') {
+      recordMovementMoments(state, ts);
+    }
+
     appendLog(state, {
       ts,
       event: 'move',
@@ -1751,6 +1819,7 @@ class SessionManager {
         key: key.key || null,
         keyId: key.id,
         position,
+        keyIndex: state.summary.keysCollected - 1,
         keysCollected: state.summary.keysCollected,
       });
     }

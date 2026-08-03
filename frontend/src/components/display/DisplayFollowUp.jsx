@@ -1,70 +1,4 @@
-
-// MOI dot color classes — Tailwind bg class + hex for inline (dynamic sizing requires inline)
-const MOI_COLORS = {
-  hazard_wall: '#ef4444',
-  hazard_cross: '#ef4444',
-  key: '#eab308',
-  goal: '#22c55e',
-  timer_expired: '#475569',
-  out_of_lives: '#1e293b',
-}
-
-const MOI_LEGEND = [
-  { color: MOI_COLORS.hazard_wall, label: 'Hit Wall / Cross' },
-  { color: MOI_COLORS.key, label: 'Got Key' },
-  { color: MOI_COLORS.goal, label: 'Reached Goal' },
-  { color: MOI_COLORS.timer_expired, label: 'Out of Time' },
-]
-
-function classifyMoiEvent(entry) {
-  if (entry.event === 'hazard_hit') {
-    return entry.hazardType === 'wall' ? 'hazard_wall' : 'hazard_cross'
-  }
-  if (entry.event === 'key_pickup') return 'key'
-  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'goal'
-  if (entry.event === 'timer_expired') return 'timer_expired'
-  if (entry.event === 'session_end' && entry.outcome === 'fail') return 'out_of_lives'
-  return null
-}
-
-function getMoiLabel(entry) {
-  if (entry.event === 'hazard_hit') {
-    return entry.hazardType === 'wall' ? 'Hit a wall' : 'Hit cross'
-  }
-  if (entry.event === 'key_pickup') {
-    const n = entry.keyIndex != null ? ` ${entry.keyIndex + 1}` : ''
-    return `Got Key${n}`
-  }
-  if (entry.event === 'session_end' && entry.reason === 'goal_reached') return 'Reached Goal'
-  if (entry.event === 'timer_expired') return 'Out of time'
-  if (entry.event === 'session_end') return 'Out of lives'
-  return entry.event
-}
-
-function formatSeconds(seconds) {
-  const s = Math.max(0, Math.round(seconds))
-  const m = Math.floor(s / 60)
-  const rem = s % 60
-  return `${m}m ${String(rem).padStart(2, '0')}s`
-}
-
-function getMoiEventsForPhase(log, followingPhase) {
-  if (!Array.isArray(log)) return []
-  let phaseStartIdx = -1
-  let phaseEndIdx = log.length
-  for (let i = 0; i < log.length; i++) {
-    const e = log[i]
-    if (e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase) {
-      phaseStartIdx = i
-    }
-    if (phaseStartIdx >= 0 && i > phaseStartIdx && e.event === 'phase_start') {
-      phaseEndIdx = i
-      break
-    }
-  }
-  if (phaseStartIdx < 0) return []
-  return log.slice(phaseStartIdx + 1, phaseEndIdx).filter((e) => classifyMoiEvent(e) !== null)
-}
+import { MOI_COLORS, MOI_LEGEND, classifyMoiEvent, formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from './moiUtils'
 
 // Returns the actual played duration in seconds, derived from the last phase-ending MOI event.
 // Falls back to the configured max duration when no ending event is found.
@@ -175,7 +109,7 @@ export function DisplayFollowUp({ stateSync, mode = 'Communication & Clarity' })
                   {getMoiLabel(focusedEvent)}
                 </p>
                 <p className="text-sm font-semibold text-slate-500 mt-0.5">
-                  {formatSeconds((focusedEvent.t ?? 0) - phaseStartT)}
+                  {formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}
                 </p>
               </div>
             </div>
