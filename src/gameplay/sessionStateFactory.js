@@ -1,6 +1,6 @@
 'use strict';
 
-const { GameStatus } = require('../protocol');
+const { GameStatus, GameMode } = require('../protocol');
 const { generateMaze } = require('../maze');
 const { createSummaryState, createTimerState } = require('./stateSchema');
 const { gameplaySettings } = require('../config/gameplaySettings');
@@ -36,6 +36,7 @@ function makeInitialState() {
     summary: createSummaryState(gameplaySettings.lives.start),
     timer: createTimerState(),
     phaseFlow: createPhaseFlowState(),
+    gameMode: GameMode.COMMUNICATION_CLARITY,
     pendingReset: null,
     followUpFocusedEventId: null,
   };

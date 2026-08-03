@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { MessageType, GameStatus, ClientRole, MazeRole, ErrorCode } = require('./protocol');
+const { MessageType, GameStatus, GameMode, ClientRole, MazeRole, ErrorCode } = require('./protocol');
 const { movePlayer, moveGhosts, findKeyAt, findLifeAt, findGhostAt } = require('./maze');
 const { getRoleOrder, shufflePlayers } = require('./roles/roleAssignments');
 const { createSummaryState, createTimerState } = require('./gameplay/stateSchema');
@@ -22,7 +22,7 @@ const GAMEPLAY_PHASE_DURATIONS_MS = gameplaySettings.timer.gameplayPhaseDuration
 const RESET_FEEDBACK_MS = gameplaySettings.events.resetFeedbackMs;
 const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = gameplaySettings.session.abandonedTimeoutMs;
 const MOVEMENT_PAUSE_THRESHOLD_MS = 15 * 1000;
-const DEFAULT_GAME_MODE = 'communication & clarity';
+const DEFAULT_GAME_MODE = GameMode.COMMUNICATION_CLARITY;
 
 function sendJson(socket, payload) {
   if (!socket || typeof socket.send !== 'function') {
@@ -47,10 +47,78 @@ function normalizeCleanupTimeoutMs(value) {
   return Math.max(1000, Math.floor(value));
 }
 
+function normalizeGameMode(mode) {
+  if (typeof mode !== 'string') {
+    return null;
+  }
+  const trimmed = mode.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const lookup = {
+    [GameMode.COMMUNICATION_CLARITY.toLowerCase()]: GameMode.COMMUNICATION_CLARITY,
+    [GameMode.COLLABORATION_TEAMWORK.toLowerCase()]: GameMode.COLLABORATION_TEAMWORK,
+  };
+  return lookup[trimmed.toLowerCase()] || null;
+}
+
+function getStateGameMode(state) {
+  const normalized = normalizeGameMode(state && state.gameMode);
+  return normalized || DEFAULT_GAME_MODE;
+}
+
+function cloneRoleAssignment(roleAssignment) {
+  if (Array.isArray(roleAssignment)) {
+    return roleAssignment.slice();
+  }
+  if (typeof roleAssignment === 'string' && roleAssignment.length > 0) {
+    return roleAssignment;
+  }
+  return null;
+}
+
+function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_GAME_MODE, shouldCycleRoles = false) {
+  if (shouldCycleRoles && gameMode === GameMode.COLLABORATION_TEAMWORK) {
+    const roles = buildCycledRoles(activePlayers, previousRoles, gameMode);
+    if (roles && Object.keys(roles).length) {
+      return roles;
+    }
+  }
+
+  if (shouldCycleRoles && gameMode === GameMode.COMMUNICATION_CLARITY) {
+    const canPreserveRoles = activePlayers.length > 0
+      && activePlayers.every((player) => {
+        const previousAssignment = cloneRoleAssignment(previousRoles[player.id]);
+        return Array.isArray(previousAssignment)
+          ? previousAssignment.length > 0
+          : typeof previousAssignment === 'string' && previousAssignment.length > 0;
+      });
+    if (canPreserveRoles) {
+      const preservedRoles = {};
+      for (const player of activePlayers) {
+        const assigned = cloneRoleAssignment(previousRoles[player.id]);
+        if (assigned) {
+          preservedRoles[player.id] = assigned;
+        }
+      }
+      return preservedRoles;
+    }
+  }
+
+  const roleOrder = getRoleOrder(activePlayers.length);
+  const randomizedPlayers = shufflePlayers(activePlayers);
+  const roles = {};
+  randomizedPlayers.forEach((player, index) => {
+    roles[player.id] = roleOrder[index] || [];
+  });
+  return roles;
+}
+
 function buildEventSnapshot(state) {
   return cloneJsonValue({
     players: state.players,
     roles: state.roles,
+    gameMode: getStateGameMode(state),
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -258,6 +326,7 @@ function buildDisplayState(state, session) {
   return {
     status: state.status,
     players: state.players,
+    gameMode: getStateGameMode(state),
     trainers,
     summary: state.summary,
     timer: state.timer,
@@ -486,6 +555,7 @@ function buildTrainerState(state, session) {
   return {
     status: state.status,
     players: state.players,
+    gameMode: getStateGameMode(state),
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -527,6 +597,7 @@ function buildControllerState(state, session, playerId) {
   return {
     status: state.status,
     players: state.players,
+    gameMode: getStateGameMode(state),
     summary: controllerSummary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -706,16 +777,8 @@ function beginGameState(session, startedAt, options = {}) {
   const activePlayers = players.filter((player) => !player.isTrainer);
   const shouldCycleRoles = Boolean(options.cycleRoles);
   const previousRoles = options.previousRoles || {};
-  const roles = shouldCycleRoles
-    ? (buildCycledRoles(activePlayers, previousRoles) || {})
-    : {};
-  if (!Object.keys(roles).length) {
-    const roleOrder = getRoleOrder(activePlayers.length);
-    const randomizedPlayers = shufflePlayers(activePlayers);
-    randomizedPlayers.forEach((player, index) => {
-      roles[player.id] = roleOrder[index] || [];
-    });
-  }
+  const gameMode = getStateGameMode(session.state);
+  const roles = buildRoundRoles(activePlayers, previousRoles, gameMode, shouldCycleRoles);
 
   session.state.roles = roles;
   session.state.maze = createRoundMazeForState(session.state);
@@ -739,7 +802,7 @@ function beginGameState(session, startedAt, options = {}) {
   appendLog(session.state, {
     ts: startedAt,
     event: 'mode_set',
-    mode: DEFAULT_GAME_MODE,
+    mode: gameMode,
   });
   appendLog(session.state, {
     ts: startedAt,
@@ -1102,6 +1165,41 @@ class SessionManager {
     if (!isTrainer && session.state.status === GameStatus.PLAYING) {
       this._rebalanceActiveGameRoles(session.state, sessionId, 'player_joined');
     }
+    this.broadcastState(sessionId);
+    return true;
+  }
+
+  setGameMode(sessionId, mode, options = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    if (session.state.status !== GameStatus.LOBBY) {
+      return false;
+    }
+
+    const normalizedMode = normalizeGameMode(mode);
+    if (!normalizedMode) {
+      return false;
+    }
+
+    const trainerId = options.playerId || session.trainerId || session.state.trainer?.id || null;
+    const isTrainer = Boolean(options.isTrainer);
+    if (!isTrainer || !trainerId || (session.trainerId && trainerId !== session.trainerId)) {
+      return false;
+    }
+
+    if (session.state.gameMode === normalizedMode) {
+      return true;
+    }
+
+    session.state.gameMode = normalizedMode;
+    appendLog(session.state, {
+      ts: Date.now(),
+      event: 'mode_set',
+      mode: normalizedMode,
+    });
     this.broadcastState(sessionId);
     return true;
   }
@@ -2087,7 +2185,7 @@ class SessionManager {
       return false;
     }
 
-    const nextRoles = rebalanceRoles(players, state.roles || {});
+    const nextRoles = rebalanceRoles(players, state.roles || {}, getStateGameMode(state));
     state.roles = nextRoles;
     appendLog(state, {
       ts: Date.now(),
@@ -2327,6 +2425,7 @@ class SessionManager {
       outcome: summary.outcome,
       timer: state.timer || null,
       phase_flow: state.phaseFlow || null,
+      game_mode: getStateGameMode(state),
       trainer: state.trainer,
       highlighted_event_ids: state.trainerHighlightEventIds,
       observer_signals: buildObserverSignals(state),

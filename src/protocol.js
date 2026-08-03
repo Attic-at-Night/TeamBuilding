@@ -31,6 +31,7 @@ const MessageType = {
   CONTROLLER_JOIN: 'controller_join',
   GAME_START: 'game_start',
   GAME_RESTART: 'game_restart',
+  SET_GAME_MODE: 'set_game_mode',
   TIMER_START: 'timer_start',
   TIMER_STOP: 'timer_stop',
   TIMER_RESET: 'timer_reset',
@@ -53,6 +54,11 @@ const GameStatus = {
   PLAYING: 'playing',
   FOLLOW_UP: 'follow_up',
   ENDED: 'ended',
+};
+
+const GameMode = {
+  COMMUNICATION_CLARITY: 'communication & clarity',
+  COLLABORATION_TEAMWORK: 'collaboration & teamwork',
 };
 
 const ClientRole = {
@@ -82,4 +88,4 @@ const ErrorCode = {
   RECONNECT_REPLACED: 'reconnect_replaced',
 };
 
-module.exports = { MessageType, GameStatus, ClientRole, MazeRole, ErrorCode, PROTOCOL_VERSION };
+module.exports = { MessageType, GameStatus, GameMode, ClientRole, MazeRole, ErrorCode, PROTOCOL_VERSION };

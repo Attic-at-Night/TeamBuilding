@@ -5,6 +5,7 @@ export const MessageType = {
   CONTROLLER_JOIN: 'controller_join',
   GAME_START: 'game_start',
   GAME_RESTART: 'game_restart',
+  SET_GAME_MODE: 'set_game_mode',
   TIMER_START: 'timer_start',
   TIMER_STOP: 'timer_stop',
   TIMER_RESET: 'timer_reset',
@@ -23,6 +24,11 @@ export const GameStatus = {
   PLAYING: 'playing',
   FOLLOW_UP: 'follow_up',
   ENDED: 'ended',
+}
+
+export const GameMode = {
+  COMMUNICATION_CLARITY: 'communication & clarity',
+  COLLABORATION_TEAMWORK: 'collaboration & teamwork',
 }
 
 export const ClientRole = {

@@ -1,8 +1,10 @@
 const test = require('node:test');
 const { mock } = require('node:test');
+const { EventEmitter } = require('node:events');
 const assert = require('node:assert/strict');
 const { SessionManager } = require('../src/sessionManager');
-const { MessageType, GameStatus, ClientRole, MazeRole } = require('../src/protocol');
+const { createSessionSocketController } = require('../src/mvc/session/sessionSocketController');
+const { MessageType, GameStatus, GameMode, ClientRole, MazeRole } = require('../src/protocol');
 
 function createFakeSocket() {
   return {
@@ -15,6 +17,23 @@ function createFakeSocket() {
       this.closed = true;
     },
   };
+}
+
+function createSocketHarness() {
+  const socket = new EventEmitter();
+  socket.sent = [];
+  socket.closed = false;
+  socket.send = function send(message) {
+    this.sent.push(JSON.parse(message));
+  };
+  socket.close = function close() {
+    this.closed = true;
+  };
+  socket.ping = function ping() {};
+  socket.terminate = function terminate() {
+    this.closed = true;
+  };
+  return socket;
 }
 
 function openCellWalls(n, e, s, w) {
@@ -162,6 +181,129 @@ test('session allows multiple explicit trainer joins', () => {
   assert.equal(manager.joinController(sessionId, { name: 'Sam', requestedTrainer: true }, secondTrainer), true);
   assert.equal(latestState(trainer).viewerRole, 'trainer');
   assert.equal(latestState(secondTrainer).viewerRole, 'trainer');
+});
+
+test('trainer can set the game mode before the round starts', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const trainer = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
+
+  const trainerId = registerPlayerId(trainer);
+  assert.equal(manager.setGameMode(sessionId, GameMode.COLLABORATION_TEAMWORK, { playerId: trainerId, isTrainer: true }), true);
+
+  const state = manager.sessions.get(sessionId).state;
+  assert.equal(state.gameMode, GameMode.COLLABORATION_TEAMWORK);
+  assert.ok(state.log.some((entry) => entry.event === 'mode_set' && entry.mode === GameMode.COLLABORATION_TEAMWORK));
+  assert.equal(latestState(trainer).gameMode, GameMode.COLLABORATION_TEAMWORK);
+});
+
+test('communication mode preserves roles when restarting a round', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const trainer = createFakeSocket();
+  const playerOne = createFakeSocket();
+  const playerTwo = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
+  assert.equal(manager.joinController(sessionId, 'P1', playerOne), true);
+  assert.equal(manager.joinController(sessionId, 'P2', playerTwo), true);
+
+  const trainerId = registerPlayerId(trainer);
+  assert.equal(manager.setGameMode(sessionId, GameMode.COMMUNICATION_CLARITY, { playerId: trainerId, isTrainer: true }), true);
+  assert.equal(manager.startGame(sessionId), true);
+
+  const state = manager.sessions.get(sessionId).state;
+  state.status = GameStatus.ENDED;
+  state.roles = {
+    [registerPlayerId(playerOne)]: [MazeRole.MOVER],
+    [registerPlayerId(playerTwo)]: [MazeRole.GUIDE],
+  };
+
+  assert.equal(manager.restartGame(sessionId), true);
+  const restartedRoles = manager.sessions.get(sessionId).state.roles;
+  assert.deepEqual(restartedRoles[registerPlayerId(playerOne)], [MazeRole.MOVER]);
+  assert.deepEqual(restartedRoles[registerPlayerId(playerTwo)], [MazeRole.GUIDE]);
+});
+
+test('communication mode falls back to fresh roles when any active player lacks a prior assignment', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const trainer = createFakeSocket();
+  const playerOne = createFakeSocket();
+  const playerTwo = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
+  assert.equal(manager.joinController(sessionId, 'P1', playerOne), true);
+  assert.equal(manager.joinController(sessionId, 'P2', playerTwo), true);
+
+  const trainerId = registerPlayerId(trainer);
+  assert.equal(manager.setGameMode(sessionId, GameMode.COMMUNICATION_CLARITY, { playerId: trainerId, isTrainer: true }), true);
+  assert.equal(manager.startGame(sessionId), true);
+
+  const state = manager.sessions.get(sessionId).state;
+  state.status = GameStatus.ENDED;
+  state.roles = {
+    [registerPlayerId(playerOne)]: [MazeRole.MOVER],
+    [registerPlayerId(playerTwo)]: [],
+  };
+
+  assert.equal(manager.restartGame(sessionId), true);
+  const restartedRoles = manager.sessions.get(sessionId).state.roles;
+  assert.notDeepEqual(restartedRoles[registerPlayerId(playerOne)], [MazeRole.MOVER]);
+  assert.notDeepEqual(restartedRoles[registerPlayerId(playerTwo)], []);
+});
+
+test('trainer can select a mode through the socket controller and gameplay roles remain stable in communication mode', () => {
+  const manager = new SessionManager();
+  const controller = createSessionSocketController({ sessionManager: manager });
+  const displaySocket = createSocketHarness();
+  const trainerSocket = createSocketHarness();
+  const playerOneSocket = createSocketHarness();
+  const playerTwoSocket = createSocketHarness();
+  const connectionHandler = controller.createConnectionHandler();
+  [displaySocket, trainerSocket, playerOneSocket, playerTwoSocket].forEach((socket) => connectionHandler(socket));
+
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  displaySocket.emit('message', JSON.stringify({ type: MessageType.DISPLAY_REGISTER, sessionId }));
+  trainerSocket.emit('message', JSON.stringify({ type: MessageType.CONTROLLER_JOIN, sessionId, name: 'Trainer', requestedTrainer: true }));
+  playerOneSocket.emit('message', JSON.stringify({ type: MessageType.CONTROLLER_JOIN, sessionId, name: 'P1' }));
+  playerTwoSocket.emit('message', JSON.stringify({ type: MessageType.CONTROLLER_JOIN, sessionId, name: 'P2' }));
+
+  trainerSocket.emit('message', JSON.stringify({ type: MessageType.SET_GAME_MODE, mode: GameMode.COMMUNICATION_CLARITY }));
+  trainerSocket.emit('message', JSON.stringify({ type: MessageType.GAME_START }));
+
+  const session = manager.sessions.get(sessionId);
+  const playerOneId = playerOneSocket.meta.playerId;
+  const playerTwoId = playerTwoSocket.meta.playerId;
+  const initialRoles = session.state.roles;
+  const playerOneRoles = initialRoles[playerOneId];
+  const playerTwoRoles = initialRoles[playerTwoId];
+
+  assert.equal(session.state.gameMode, GameMode.COMMUNICATION_CLARITY);
+  assert.equal(session.state.status, GameStatus.PLAYING);
+  assert.ok(displaySocket.sent.some((message) => message.type === MessageType.STATE_SYNC && message.state.gameMode === GameMode.COMMUNICATION_CLARITY));
+  assert.ok(Array.isArray(playerOneRoles));
+  assert.ok(Array.isArray(playerTwoRoles));
+
+  session.state.status = GameStatus.ENDED;
+  session.state.roles = {
+    [playerOneId]: playerOneRoles,
+    [playerTwoId]: playerTwoRoles,
+  };
+
+  assert.equal(manager.restartGame(sessionId), true);
+  const restartedRoles = manager.sessions.get(sessionId).state.roles;
+  assert.deepEqual(restartedRoles[playerOneId], playerOneRoles);
+  assert.deepEqual(restartedRoles[playerTwoId], playerTwoRoles);
 });
 
 test('session rejects joins after four players', () => {
@@ -979,7 +1121,7 @@ test('follow-up still blocks timer controls', () => {
   assert.equal(manager.resetTimer(sessionId, 30000), false);
 });
 
-test('restart after follow-up returns to phase 1 and cycles roles', () => {
+test('restart after follow-up preserves roles in the default communication mode', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const firstRoundRoles = new Map(controllers.map((socket) => [
     registerPlayerId(socket),
@@ -1008,8 +1150,8 @@ test('restart after follow-up returns to phase 1 and cycles roles', () => {
     latestState(socket).roleData.assignedRoles.slice(),
   ]));
   const [firstPlayerId, secondPlayerId] = controllers.map((socket) => registerPlayerId(socket));
-  assert.deepEqual(restartedRoles.get(firstPlayerId), firstRoundRoles.get(secondPlayerId));
-  assert.deepEqual(restartedRoles.get(secondPlayerId), firstRoundRoles.get(firstPlayerId));
+  assert.deepEqual(restartedRoles.get(firstPlayerId), firstRoundRoles.get(firstPlayerId));
+  assert.deepEqual(restartedRoles.get(secondPlayerId), firstRoundRoles.get(secondPlayerId));
 });
 
 test('trainer can share full session export to display state', () => {

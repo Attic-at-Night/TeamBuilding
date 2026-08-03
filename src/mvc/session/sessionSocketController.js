@@ -22,6 +22,16 @@ function createSessionSocketController({ sessionManager, logger = console } = {}
       }, socket);
     },
 
+    [MessageType.SET_GAME_MODE](message, socket) {
+      const meta = socket.meta;
+      if (meta?.role === ClientRole.CONTROLLER && meta.isTrainer) {
+        sessionManager.setGameMode(meta.sessionId, message.mode, {
+          playerId: meta.playerId,
+          isTrainer: true,
+        });
+      }
+    },
+
     [MessageType.GAME_START](_message, socket) {
       const meta = socket.meta;
       if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {

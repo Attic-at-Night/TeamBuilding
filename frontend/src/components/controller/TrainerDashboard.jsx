@@ -20,7 +20,7 @@ import {
   ArrowRight,
   LogOut,
 } from 'lucide-react'
-import { MessageType, CLARITY_TYPES } from '../../protocol'
+import { MessageType, CLARITY_TYPES, GameMode } from '../../protocol'
 import { formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from '../display/moiUtils'
 
 export function TrainerDashboard({ stateSync, onSend }) {
@@ -42,12 +42,17 @@ export function TrainerDashboard({ stateSync, onSend }) {
   const log = stateSync?.log || []
   const followingPhase = phaseFlow?.followingPhase || null
   const totalGameplayPhases = phaseFlow?.totalGameplayPhases || 3
+  const selectedGameMode = stateSync?.gameMode || GameMode.COMMUNICATION_CLARITY
 
   // Timer calculation
   const remainingMs = timer?.remainingMs ?? phaseFlow?.phaseRemainingMs ?? 0
   const timerMinutes = Math.floor(remainingMs / 60000)
   const timerSeconds = Math.floor((remainingMs % 60000) / 1000)
   const timerFormatted = `${String(timerMinutes).padStart(2, '0')}:${String(timerSeconds).padStart(2, '0')}`
+
+  function selectGameMode(mode) {
+    onSend({ type: MessageType.SET_GAME_MODE, mode })
+  }
 
   function sendTimerStart() {
     onSend({ type: MessageType.TIMER_START, durationMs: timerInput * 60 * 1000 })
@@ -215,7 +220,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
         {/* Focused MOI event card */}
         {focusedEvent ? (
           <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-200/30 shadow-xl flex flex-col gap-1">
-            <p className="text-base font-black text-rose-200 leading-tight">{getMoiLabel(focusedEvent)}</p>
+            <p className="text-base font-black text-rose-200 leading-tight">{getMoiLabel(focusedEvent, selectedGameMode)}</p>
             {typeof focusedEvent.t === 'number' && (
              <p className="text-sm font-semibold text-rose-300/70">{formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}</p>
             )}
@@ -291,7 +296,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
 
         {/* Start Game Session Banner for Trainer in Lobby */}
         {status === 'lobby' && (
-          <div className="p-3.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+          <div className="p-3.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 shadow-lg">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-bold text-indigo-200 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
@@ -301,15 +306,44 @@ export function TrainerDashboard({ stateSync, onSend }) {
                 Requires at least 2 players to start the 3-round session (15m, 10m, 5m).
               </span>
             </div>
-            <button
-              type="button"
-              disabled={players.length < 2}
-              onClick={() => onSend({ type: MessageType.GAME_START })}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer"
-            >
-              <Play className="w-4 h-4 fill-white" />
-              <span>Start Game Session</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
+              <div className="flex flex-col gap-1.5 rounded-xl border border-indigo-700/60 bg-slate-950/70 px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-300">Learning Mode</span>
+                <div className="flex flex-wrap gap-2">
+                  {Object.values(GameMode).map((mode) => {
+                    const isActive = selectedGameMode === mode
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => selectGameMode(mode)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-all ${
+                          isActive
+                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
+                            : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    )
+                  })}
+                </div>
+                <span className="text-[10px] text-indigo-300/80">
+                  {selectedGameMode === GameMode.COMMUNICATION_CLARITY
+                    ? 'Roles stay stable for clearer communication and focus.'
+                    : 'Roles rotate to encourage collaboration and teamwork.'}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={players.length < 2}
+                onClick={() => onSend({ type: MessageType.GAME_START })}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>Start Game Session</span>
+              </button>
+            </div>
           </div>
         )}
 
