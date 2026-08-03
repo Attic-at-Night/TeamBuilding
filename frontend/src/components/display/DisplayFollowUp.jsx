@@ -63,8 +63,8 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
           {/* Left cap */}
           <div className="w-3 h-3 rounded-full bg-slate-500 shrink-0" />
 
-          {/* Bar — this is the reference element for dot positions */}
-          <div className="relative flex-1 h-2 bg-slate-700 rounded-full">
+          {/* Bar — this is the reference element for dot and callout positions */}
+          <div className="relative flex-1 h-2 bg-slate-700 rounded-full overflow-visible">
             {moiEvents.map((entry) => {
               const moiType = classifyMoiEvent(entry)
               const color = MOI_COLORS[moiType] || '#64748b'
@@ -73,12 +73,13 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
                 ? Math.min(100, Math.max(0, (tOffset / timelineSecs) * 100))
                 : 0
               const isFocused = entry.eventId === focusedEventId
+              const dotPct = isFocused ? focusedPct : pct
 
               return (
                 <div
                   key={entry.eventId}
                   className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${pct}%` }}
+                  style={{ left: `${dotPct}%` }}
                 >
                   <div
                     className="rounded-full transition-all duration-200"
@@ -94,31 +95,32 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
                 </div>
               )
             })}
+
+            {/* Callout — anchored inside the bar so % aligns with the dot */}
+            {focusedEvent && (
+              <div
+                className="absolute flex flex-col items-center"
+                style={{ left: `${focusedPct}%`, top: '50%', transform: 'translateX(-50%)' }}
+              >
+                <div className="w-px h-5 bg-slate-500" />
+                <div className="px-5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200/60 shadow-2xl min-w-[140px] text-center">
+                  <p className="font-black text-base text-slate-900 leading-tight whitespace-nowrap">
+                    {getMoiLabel(focusedEvent, stateSync?.gameMode || mode)}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-500 mt-0.5">
+                    {formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right cap */}
           <div className="w-3 h-3 rounded-full bg-slate-500 shrink-0" />
         </div>
 
-        {/* Callout row — anchored to bar percentage */}
-        {focusedEvent && (
-          <div className="relative h-20">
-            <div
-              className="absolute flex flex-col items-center"
-              style={{ left: `${focusedPct}%`, transform: 'translateX(-50%)' }}
-            >
-              <div className="w-px h-5 bg-slate-500" />
-              <div className="px-5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200/60 shadow-2xl min-w-[140px] text-center">
-                <p className="font-black text-base text-slate-900 leading-tight whitespace-nowrap">
-                  {getMoiLabel(focusedEvent, stateSync?.gameMode || mode)}
-                </p>
-                <p className="text-sm font-semibold text-slate-500 mt-0.5">
-                  {formatSeconds(getMoiDisplayTime(focusedEvent, phaseStartT))}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Spacer — keeps consistent gap above time labels whether callout is shown or not */}
+        {focusedEvent && <div className="h-20" />}
 
         {/* Time labels */}
         <div className="flex justify-between text-xs font-mono text-slate-500 px-4">
