@@ -86,14 +86,21 @@ function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_G
   }
 
   if (shouldCycleRoles && gameMode === GameMode.COMMUNICATION_CLARITY) {
-    const preservedRoles = {};
-    for (const player of activePlayers) {
-      const assigned = cloneRoleAssignment(previousRoles[player.id]);
-      if (assigned) {
-        preservedRoles[player.id] = assigned;
+    const canPreserveRoles = activePlayers.length > 0
+      && activePlayers.every((player) => {
+        const previousAssignment = cloneRoleAssignment(previousRoles[player.id]);
+        return Array.isArray(previousAssignment)
+          ? previousAssignment.length > 0
+          : typeof previousAssignment === 'string' && previousAssignment.length > 0;
+      });
+    if (canPreserveRoles) {
+      const preservedRoles = {};
+      for (const player of activePlayers) {
+        const assigned = cloneRoleAssignment(previousRoles[player.id]);
+        if (assigned) {
+          preservedRoles[player.id] = assigned;
+        }
       }
-    }
-    if (Object.keys(preservedRoles).length) {
       return preservedRoles;
     }
   }

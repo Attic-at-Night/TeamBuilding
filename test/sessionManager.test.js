@@ -231,6 +231,36 @@ test('communication mode preserves roles when restarting a round', () => {
   assert.deepEqual(restartedRoles[registerPlayerId(playerTwo)], [MazeRole.GUIDE]);
 });
 
+test('communication mode falls back to fresh roles when any active player lacks a prior assignment', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const trainer = createFakeSocket();
+  const playerOne = createFakeSocket();
+  const playerTwo = createFakeSocket();
+  const { sessionId } = manager.createSession('http://localhost:3000');
+
+  manager.registerDisplay(sessionId, display);
+  assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
+  assert.equal(manager.joinController(sessionId, 'P1', playerOne), true);
+  assert.equal(manager.joinController(sessionId, 'P2', playerTwo), true);
+
+  const trainerId = registerPlayerId(trainer);
+  assert.equal(manager.setGameMode(sessionId, GameMode.COMMUNICATION_CLARITY, { playerId: trainerId, isTrainer: true }), true);
+  assert.equal(manager.startGame(sessionId), true);
+
+  const state = manager.sessions.get(sessionId).state;
+  state.status = GameStatus.ENDED;
+  state.roles = {
+    [registerPlayerId(playerOne)]: [MazeRole.MOVER],
+    [registerPlayerId(playerTwo)]: [],
+  };
+
+  assert.equal(manager.restartGame(sessionId), true);
+  const restartedRoles = manager.sessions.get(sessionId).state.roles;
+  assert.notDeepEqual(restartedRoles[registerPlayerId(playerOne)], [MazeRole.MOVER]);
+  assert.notDeepEqual(restartedRoles[registerPlayerId(playerTwo)], []);
+});
+
 test('trainer can select a mode through the socket controller and gameplay roles remain stable in communication mode', () => {
   const manager = new SessionManager();
   const controller = createSessionSocketController({ sessionManager: manager });
