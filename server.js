@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
@@ -44,10 +43,20 @@ app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 const distIndexPath = path.join(__dirname, 'frontend/dist/index.html');
 const sendIndexOrServiceUnavailable = (req, res) => {
-  if (fs.existsSync(distIndexPath)) {
-    return res.sendFile(distIndexPath);
-  }
-  res.status(503).send('Frontend build not found. Run "npm run build" first.');
+  res.sendFile(distIndexPath, (error) => {
+    if (!error) {
+      return;
+    }
+
+    if (error.code === 'ENOENT') {
+      res.status(503).send('Frontend build not found. Run "npm run build" first.');
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.error('Failed serving frontend index', error);
+    res.status(500).end();
+  });
 };
 
 app.get('/', sendIndexOrServiceUnavailable);
