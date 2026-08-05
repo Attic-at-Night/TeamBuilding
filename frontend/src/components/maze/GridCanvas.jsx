@@ -505,7 +505,7 @@ export function GridCanvas({
   }, [])
 
   return (
-    <div className="relative w-full aspect-square max-w-[600px] mx-auto flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
+    <div className="relative w-full max-h-full aspect-square sm:max-w-[600px] mx-auto flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
       <canvas ref={canvasRef} className="w-full h-full block touch-none" />
     </div>
   )

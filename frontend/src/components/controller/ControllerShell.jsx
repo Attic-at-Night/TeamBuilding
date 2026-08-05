@@ -161,10 +161,10 @@ export function ControllerShell({
 
   // Active Role Views
   return (
-    <div className="w-full flex flex-col items-center gap-2 pb-8">
+    <div className="w-full flex flex-col items-center sm:gap-2 pb-2 sm:pb-8">
       {/* Facilitator Broadcast Banner */}
       {trainerBroadcast && (
-        <div className="w-full max-w-md my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-950 to-indigo-950 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-2 shadow-lg animate-bounce">
+        <div className="w-full max-w-md my-2 p-3 rounded-2xl bg-gradient-to-r from-amber-950 to-indigo-950 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-2 shadow-lg animate-bounce shrink-0 z-50 absolute top-4">
           <Radio className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{trainerBroadcast.message}</span>
         </div>
