@@ -48,6 +48,7 @@ export default function App() {
           sessionId={sessionId}
           joinUrl={joinUrl}
           qrCodeDataUrl={qrCodeDataUrl}
+          errorText={errorText}
           onStartGame={() => send({ type: MessageType.GAME_START })}
           onRestart={() => send({ type: MessageType.GAME_RESTART })}
           onSend={send}

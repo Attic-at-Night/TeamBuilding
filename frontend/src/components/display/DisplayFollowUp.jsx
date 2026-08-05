@@ -99,8 +99,8 @@ export function DisplayFollowUp({ stateSync, mode = GameMode.COMMUNICATION_CLARI
             {/* Callout — anchored inside the bar so % aligns with the dot */}
             {focusedEvent && (
               <div
-                className="absolute flex flex-col items-center"
-                style={{ left: `${focusedPct}%`, top: '50%', transform: 'translateX(-50%)' }}
+                className="absolute flex flex-col items-center mt-3"
+                style={{ left: `${focusedPct}%`, top: '100%', transform: 'translateX(-50%)' }}
               >
                 <div className="w-px h-5 bg-slate-500" />
                 <div className="px-5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200/60 shadow-2xl min-w-[140px] text-center">

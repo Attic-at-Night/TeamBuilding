@@ -32,7 +32,7 @@ class SessionController {
     const connection = publicOrigin ? null : await this.detectNetworkConnection();
     const origin = this.getSessionOrigin({
       publicOrigin: this.publicOrigin,
-      requestProtocol: req.protocol,
+      requestProtocol,
       requestHost,
       requestHostname,
       port,

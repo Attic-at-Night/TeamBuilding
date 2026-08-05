@@ -13,9 +13,9 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
   const roleTitle = assignedRoles.map((r) => r.toUpperCase()).join(' + ')
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-md mx-auto p-4 text-slate-100">
+    <div className="flex flex-col w-full max-w-md mx-auto p-2 sm:p-4 text-slate-100 h-[100dvh] sm:h-auto overflow-hidden">
       {/* HUD Header */}
-      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md">
+      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md shrink-0">
         <div className="flex items-center gap-2">
           <Eye className="w-5 h-5 text-purple-400" />
           <div>
@@ -23,7 +23,6 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
             <span className="text-sm font-bold text-purple-300">{roleTitle}</span>
           </div>
         </div>
-
         <div className="flex items-center gap-3 text-xs text-slate-300">
           <div className="flex items-center gap-1 bg-purple-950/60 border border-purple-800/50 px-2 py-1 rounded-lg">
             <Ghost className="w-3.5 h-3.5 text-purple-400" />
@@ -37,8 +36,8 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
       </div>
 
       {/* Guide Map (Static Walls + Ghosts + Hazards + Mover Pos + Breadcrumbs + Keys/Goal if merged) */}
-      <div className="flex flex-col items-center">
-        <GridCanvas
+      <div className="flex flex-col items-center flex-1 min-h-0 justify-center my-2 sm:my-4">
+        <GridCanvas keysCollected={summary?.keysCollected}
           width={roleData?.maze?.width || 15}
           height={roleData?.maze?.height || 15}
           cells={roleData?.maze?.cells}
@@ -52,7 +51,7 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
           mode="guide"
           accentColor="#3b82f6"
         />
-        <p className="text-xs text-slate-400 mt-2 text-center">
+        <p className="text-xs text-slate-400 mt-2 text-center shrink-0 hidden sm:block">
           You see the walls, ghosts, and hazards. Speak in real time to guide the Mover safely!
         </p>
       </div>

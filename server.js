@@ -16,6 +16,26 @@ const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
+
+function parsePort(value, fallbackPort = 3000) {
+  if (typeof value !== 'string') {
+    return fallbackPort;
+  }
+
+  const trimmedValue = value.trim();
+  if (!/^\d+$/.test(trimmedValue)) {
+    return fallbackPort;
+  }
+
+  const numericValue = Number.parseInt(trimmedValue, 10);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 65535) {
+    return fallbackPort;
+  }
+
+  return numericValue;
+}
+
+const fallbackPort = parsePort(process.env.PORT, 3000);
 let server;
 const sessionController = new SessionController({
   sessionModel,
@@ -25,7 +45,7 @@ const sessionController = new SessionController({
   toQrDataUrl: (value, options) => QRCode.toDataURL(value, options),
   resolveServerPort: () => {
     const address = server && typeof server.address === 'function' ? server.address() : null;
-    return address && typeof address === 'object' && address.port ? address.port : Number(process.env.PORT || 3000);
+    return address && typeof address === 'object' && typeof address.port === 'number' ? address.port : fallbackPort;
   },
   publicOrigin: process.env.PUBLIC_ORIGIN || null,
 });
@@ -43,9 +63,8 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 const distIndexPath = path.join(__dirname, 'frontend/dist/index.html');
-const distIndexExists = fs.existsSync(distIndexPath);
 const sendIndexOrServiceUnavailable = (req, res) => {
-  if (distIndexExists) {
+  if (fs.existsSync(distIndexPath)) {
     return res.sendFile(distIndexPath);
   }
   res.status(503).send('Frontend build not found. Run "npm run build" first.');
@@ -56,9 +75,9 @@ app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
-server = app.listen(process.env.PORT || 3000, () => {
+server = app.listen(fallbackPort, () => {
   const address = server.address();
-  const port = address && typeof address === 'object' ? address.port : process.env.PORT || 3000;
+  const port = address && typeof address === 'object' ? address.port : fallbackPort;
   // eslint-disable-next-line no-console
   console.log(`Server running on http://localhost:${port}`);
 });

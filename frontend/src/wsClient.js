@@ -24,7 +24,12 @@ export function getBackendWsUrl() {
   if (explicitWsUrl) {
     return explicitWsUrl
   }
-  return toWsUrl(getBackendHttpOrigin())
+  const httpOrigin = getBackendHttpOrigin()
+  if (!httpOrigin) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}`
+  }
+  return toWsUrl(httpOrigin)
 }
 
 export function createGameSocket({ onOpen, onMessage, onClose, onError }) {

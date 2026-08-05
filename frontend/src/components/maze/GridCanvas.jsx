@@ -11,6 +11,7 @@ export function GridCanvas({
   cells,
   playerPos,
   keys = [],
+  keysCollected = 0,
   goal = null,
   hazards = [],
   ghosts = [],
@@ -23,9 +24,27 @@ export function GridCanvas({
   const canvasRef = useRef(null)
   const animPlayerPosRef = useRef(null)
   const propsRef = useRef({})
+  const prevKeysCollectedRef = useRef(keysCollected)
+  const keyAnimationsRef = useRef([])
 
   // Keep latest props available to the requestAnimationFrame loop without triggering frame teardowns
   useEffect(() => {
+    // Check for newly collected keys using the summary count to spawn animations for ALL players
+    if (keysCollected > prevKeysCollectedRef.current) {
+      // Spawn at the current player position since the player just moved onto the key
+      const p = playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
+      const diff = keysCollected - prevKeysCollectedRef.current
+      for (let i = 0; i < diff; i++) {
+        keyAnimationsRef.current.push({
+          row: p.row,
+          col: p.col,
+          startTime: performance.now(),
+          duration: 1200 // ms
+        })
+      }
+    }
+    prevKeysCollectedRef.current = keysCollected
+
     propsRef.current = {
       width,
       height,
@@ -423,6 +442,54 @@ export function GridCanvas({
         ctx.fillText('🏃', cx, cy + floatY)
       }
 
+      // 13. Draw Key Pickup Animations (Rendered on top of player)
+      for (let i = keyAnimationsRef.current.length - 1; i >= 0; i--) {
+        const anim = keyAnimationsRef.current[i]
+        const elapsed = time - anim.startTime
+        if (elapsed > anim.duration) {
+          keyAnimationsRef.current.splice(i, 1)
+          continue
+        }
+        if (isVisible(anim.row, anim.col)) {
+          const progress = elapsed / anim.duration
+          const scale = 1 + progress * 1.5
+          const alpha = 1 - progress
+          
+          // Add a slight upward float effect
+          const floatUp = progress * cellSize * 0.5
+
+          const cx = anim.col * cellSize + cellSize / 2
+          const cy = anim.row * cellSize + cellSize / 2 - floatUp
+
+          ctx.save()
+          ctx.globalAlpha = alpha
+          ctx.translate(cx, cy)
+          
+          // Glowing aura behind key
+          const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, cellSize * 0.5 * scale)
+          glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.8)') // Amber/Gold glow
+          glowGrad.addColorStop(1, 'rgba(234, 179, 8, 0)')
+          ctx.fillStyle = glowGrad
+          ctx.beginPath()
+          ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+          ctx.fill()
+          
+          // Actual key circle
+          ctx.fillStyle = '#eab308'
+          ctx.beginPath()
+          ctx.arc(0, 0, cellSize * 0.3 * scale, 0, Math.PI * 2)
+          ctx.fill()
+          
+          ctx.fillStyle = '#ffffff'
+          ctx.font = `bold ${Math.max(10, cellSize * 0.4 * scale)}px sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText('🔑', 0, 0)
+          
+          ctx.restore()
+        }
+      }
+
       ctx.restore()
 
       animationFrameId = requestAnimationFrame(render)
@@ -438,7 +505,7 @@ export function GridCanvas({
   }, [])
 
   return (
-    <div className="relative w-full aspect-square max-w-[600px] mx-auto flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
+    <div className="relative w-full max-h-full aspect-square sm:max-w-[600px] mx-auto flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
       <canvas ref={canvasRef} className="w-full h-full block touch-none" />
     </div>
   )
