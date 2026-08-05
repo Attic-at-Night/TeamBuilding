@@ -2,3 +2,5 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 session-logs/
+node-compile-cache/
+bun.lock
