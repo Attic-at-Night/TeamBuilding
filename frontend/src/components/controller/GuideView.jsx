@@ -38,7 +38,7 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
 
       {/* Guide Map (Static Walls + Ghosts + Hazards + Mover Pos + Breadcrumbs + Keys/Goal if merged) */}
       <div className="flex flex-col items-center">
-        <GridCanvas
+        <GridCanvas keysCollected={summary?.keysCollected}
           width={roleData?.maze?.width || 15}
           height={roleData?.maze?.height || 15}
           cells={roleData?.maze?.cells}

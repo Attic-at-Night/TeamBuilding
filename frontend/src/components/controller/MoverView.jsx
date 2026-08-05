@@ -37,7 +37,7 @@ export function MoverView({ roleData, summary, timer, onSendInput, status }) {
 
       {/* Mover Maze View */}
       <div className="flex flex-col items-center">
-        <GridCanvas
+        <GridCanvas keysCollected={summary?.keysCollected}
           width={roleData?.maze?.width || 15}
           height={roleData?.maze?.height || 15}
           cells={roleData?.maze?.cells}

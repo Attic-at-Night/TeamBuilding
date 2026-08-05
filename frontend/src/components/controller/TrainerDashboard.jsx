@@ -472,7 +472,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">God-Mode Master View</span>
             <span className="text-xs text-indigo-300 font-mono">Full Asymmetrical Overlay</span>
           </div>
-          <GridCanvas
+          <GridCanvas keysCollected={stateSync?.summary?.keysCollected}
             width={trainerMaze?.width || 15}
             height={trainerMaze?.height || 15}
             cells={trainerMaze?.cells}
@@ -593,7 +593,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
             <span className="text-xs font-semibold text-slate-400 uppercase mb-2">
               Previewing {selectedPerspective.toUpperCase()} View
             </span>
-            <GridCanvas
+            <GridCanvas keysCollected={stateSync?.summary?.keysCollected}
               width={pRoleData?.maze?.width || 15}
               height={pRoleData?.maze?.height || 15}
               cells={pRoleData?.maze?.cells}

@@ -16,7 +16,14 @@ function toWsUrl(httpOrigin) {
 }
 
 export function getBackendHttpOrigin() {
-  return normalizeBackendOrigin(import.meta.env.VITE_BACKEND_ORIGIN)
+  const origin = import.meta.env.VITE_BACKEND_ORIGIN
+  if (origin) {
+    return origin.replace(/\/+$/, '')
+  }
+  if (import.meta.env.DEV) {
+    return ''
+  }
+  return ''
 }
 
 export function getBackendWsUrl() {
@@ -24,7 +31,12 @@ export function getBackendWsUrl() {
   if (explicitWsUrl) {
     return explicitWsUrl
   }
-  return toWsUrl(getBackendHttpOrigin())
+  const httpOrigin = getBackendHttpOrigin()
+  if (!httpOrigin) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}`
+  }
+  return toWsUrl(httpOrigin)
 }
 
 export function createGameSocket({ onOpen, onMessage, onClose, onError }) {

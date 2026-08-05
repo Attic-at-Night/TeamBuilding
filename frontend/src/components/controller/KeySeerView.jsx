@@ -33,7 +33,7 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
 
       {/* Key-Seer Map (Keys + Exit Goal + Mover Pos + Merged Role Data) */}
       <div className="flex flex-col items-center">
-        <GridCanvas
+        <GridCanvas keysCollected={summary?.keysCollected}
           width={roleData?.maze?.width || 15}
           height={roleData?.maze?.height || 15}
           cells={roleData?.maze?.cells}

@@ -9,6 +9,7 @@ export function DisplayShell({
   sessionId,
   joinUrl,
   qrCodeDataUrl,
+  errorText,
   onStartGame,
   onRestart,
   onSend,
@@ -28,6 +29,7 @@ export function DisplayShell({
         trainers={trainers}
         ready={ready}
         onStartGame={onStartGame}
+        errorText={errorText}
       />
     )
   }

@@ -31,7 +31,7 @@ export function NavigatorView({ roleData, summary }) {
 
       {/* Navigator Map (Static Maze Cells + Mover Pos + Reached Breadcrumb Path + Hazards/Ghosts/Keys if merged) */}
       <div className="flex flex-col items-center">
-        <GridCanvas
+        <GridCanvas keysCollected={summary?.keysCollected}
           width={maze?.width || 15}
           height={maze?.height || 15}
           cells={maze?.cells}

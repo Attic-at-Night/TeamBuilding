@@ -12,6 +12,7 @@ export function DisplayLobby({
   capacity = 4,
   onStartGame,
   onStartTimer,
+  errorText,
 }) {
   const [qrCodeImage, setQrCodeImage] = useState(qrCodeDataUrl || '')
 
@@ -92,6 +93,7 @@ export function DisplayLobby({
           <div className="text-center bg-blue-950/40 border border-blue-800/50 px-6 py-2 rounded-2xl w-full">
             <span className="text-[10px] text-blue-300 font-semibold block uppercase tracking-wider">Session Code</span>
             <span className="text-2xl font-black font-mono tracking-widest text-white">{sessionId}</span>
+            {errorText && <span className="text-xs text-red-400 block mt-1">{errorText}</span>}
           </div>
         </div>
 
