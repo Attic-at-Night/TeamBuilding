@@ -16,8 +16,26 @@ const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
-const defaultPort = Number.parseInt(process.env.PORT || '3000', 10);
-const fallbackPort = Number.isNaN(defaultPort) ? 3000 : defaultPort;
+
+function parsePort(value, fallbackPort = 3000) {
+  if (typeof value !== 'string') {
+    return fallbackPort;
+  }
+
+  const trimmedValue = value.trim();
+  if (!/^\d+$/.test(trimmedValue)) {
+    return fallbackPort;
+  }
+
+  const numericValue = Number.parseInt(trimmedValue, 10);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 65535) {
+    return fallbackPort;
+  }
+
+  return numericValue;
+}
+
+const fallbackPort = parsePort(process.env.PORT, 3000);
 let server;
 const sessionController = new SessionController({
   sessionModel,

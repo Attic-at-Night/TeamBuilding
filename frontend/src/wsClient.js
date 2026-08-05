@@ -16,14 +16,7 @@ function toWsUrl(httpOrigin) {
 }
 
 export function getBackendHttpOrigin() {
-  const origin = import.meta.env.VITE_BACKEND_ORIGIN
-  if (origin) {
-    return origin.replace(/\/+$/, '')
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:3000'
-  }
-  return window.location.origin
+  return normalizeBackendOrigin(import.meta.env.VITE_BACKEND_ORIGIN)
 }
 
 export function getBackendWsUrl() {
