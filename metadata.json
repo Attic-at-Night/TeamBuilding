@@ -1,6 +1,0 @@
-{
-  "name": "Project Setup Workspace",
-  "description": "An empty project workspace for configuring secrets and syncing repository code.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

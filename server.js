@@ -16,6 +16,8 @@ const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
+const defaultPort = Number.parseInt(process.env.PORT || '3000', 10);
+const fallbackPort = Number.isNaN(defaultPort) ? 3000 : defaultPort;
 let server;
 const sessionController = new SessionController({
   sessionModel,
@@ -25,7 +27,7 @@ const sessionController = new SessionController({
   toQrDataUrl: (value, options) => QRCode.toDataURL(value, options),
   resolveServerPort: () => {
     const address = server && typeof server.address === 'function' ? server.address() : null;
-    return address && typeof address === 'object' && address.port ? address.port : 3000;
+    return address && typeof address === 'object' && typeof address.port === 'number' ? address.port : fallbackPort;
   },
   publicOrigin: process.env.PUBLIC_ORIGIN || null,
 });
@@ -55,9 +57,9 @@ app.get('/join', sendIndexOrServiceUnavailable);
 
 registerSessionRoutes(app, sessionController);
 
-server = app.listen(3000, () => {
+server = app.listen(fallbackPort, () => {
   const address = server.address();
-  const port = address && typeof address === 'object' ? address.port : 3000;
+  const port = address && typeof address === 'object' ? address.port : fallbackPort;
   // eslint-disable-next-line no-console
   console.log(`Server running on http://localhost:${port}`);
 });

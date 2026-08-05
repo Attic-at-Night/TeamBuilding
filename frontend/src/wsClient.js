@@ -21,9 +21,9 @@ export function getBackendHttpOrigin() {
     return origin.replace(/\/+$/, '')
   }
   if (import.meta.env.DEV) {
-    return ''
+    return 'http://localhost:3000'
   }
-  return ''
+  return window.location.origin
 }
 
 export function getBackendWsUrl() {
