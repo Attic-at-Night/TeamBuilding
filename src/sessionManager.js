@@ -338,7 +338,7 @@ function buildDisplayState(state, session) {
     displayConnected: Boolean(session && session.display),
     trainerConnected,
     ready: state.players.length >= MIN_PLAYERS,
-    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
+    canRestart: (state.status === GameStatus.ENDED || state.status === GameStatus.SESSION_OVERVIEW) && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
     pendingReset: state.pendingReset || null,
     followUpFocusedEventId: state.followUpFocusedEventId || null,
@@ -562,7 +562,7 @@ function buildTrainerState(state, session) {
     log: state.log,
     maze: state.maze,
     mazeMeta,
-    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
+    canRestart: (state.status === GameStatus.ENDED || state.status === GameStatus.SESSION_OVERVIEW) && state.players.length >= MIN_PLAYERS,
     trainerMaze,
     trainerEvents,
     trainerRoleViews,
@@ -636,6 +636,25 @@ function finishGame(state, outcome, reason) {
     keys: state.summary.keysCollected,
     lives: state.summary.livesRemaining,
   });
+}
+
+function enterSessionOverview(state, outcome, reason) {
+  if (state.status === GameStatus.SESSION_OVERVIEW) {
+    return;
+  }
+
+  const endedAt = Date.now();
+  state.status = GameStatus.SESSION_OVERVIEW;
+  state.summary.endedAt = endedAt;
+  state.summary.durationMs = state.summary.startedAt ? endedAt - state.summary.startedAt : null;
+  if (typeof outcome === 'string' && outcome.length > 0) {
+    state.summary.outcome = outcome;
+  }
+  state.phaseFlow = createPhaseFlowState({
+    phaseType: 'session_overview',
+    currentPhase: null,
+  });
+  state.timer = createTimerState();
 }
 
 function createRoundMazeForState(state) {
@@ -1175,7 +1194,7 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.LOBBY) {
+    if (session.state.status !== GameStatus.LOBBY && session.state.status !== GameStatus.SESSION_OVERVIEW) {
       return false;
     }
 
@@ -1228,7 +1247,7 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.ENDED) {
+    if (session.state.status !== GameStatus.ENDED && session.state.status !== GameStatus.SESSION_OVERVIEW) {
       return false;
     }
 
@@ -1504,10 +1523,7 @@ class SessionManager {
       session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
-      beginGameState(session, now, {
-        cycleRoles: true,
-        previousRoles: session.state.roles,
-      });
+      enterSessionOverview(session.state, session.state.summary.livesRemaining > 0 ? 'success' : 'fail', 'session_overview');
     }
 
     this.broadcastState(sessionId);

@@ -1,10 +1,12 @@
 import { Trophy, RotateCcw, AlertTriangle, Key, Clock, Share2, Sparkles, CheckCircle2, XCircle } from 'lucide-react'
+import { GameStatus } from '../../protocol'
 import { getModeDisplayName, getModeFocusText } from './moiUtils'
 
 export function DisplayDebrief({ stateSync, onRestart }) {
   const summary = stateSync?.summary || {}
   const log = stateSync?.log || []
   const trainerBroadcast = stateSync?.trainerBroadcast || null
+  const isSessionOverview = stateSync?.status === GameStatus.SESSION_OVERVIEW
   const outcome = summary?.outcome || (summary?.livesRemaining > 0 ? 'success' : 'failure')
   const activeMode = getModeDisplayName(stateSync?.gameMode)
   const modeFocusText = getModeFocusText(stateSync?.gameMode)
@@ -15,20 +17,24 @@ export function DisplayDebrief({ stateSync, onRestart }) {
       <div className="text-center flex flex-col items-center gap-3">
         <div
           className={`p-4 rounded-3xl border shadow-2xl flex items-center justify-center ${
-            outcome === 'success'
+            isSessionOverview
+              ? 'bg-blue-950/80 border-blue-500 text-blue-400'
+              : outcome === 'success'
               ? 'bg-emerald-950/80 border-emerald-500 text-emerald-400'
               : 'bg-rose-950/80 border-rose-500 text-rose-400'
           }`}
         >
-          {outcome === 'success' ? <Trophy className="w-12 h-12" /> : <XCircle className="w-12 h-12" />}
+          {isSessionOverview ? <RotateCcw className="w-12 h-12" /> : outcome === 'success' ? <Trophy className="w-12 h-12" /> : <XCircle className="w-12 h-12" />}
         </div>
 
         <h1 className="text-4xl font-black text-white">
-          {outcome === 'success' ? 'Mission Complete!' : 'Challenge Ended'}
+          {isSessionOverview ? 'Session Overview' : outcome === 'success' ? 'Mission Complete!' : 'Challenge Ended'}
         </h1>
         <p className="text-indigo-300 text-sm font-semibold uppercase tracking-wider">{activeMode}</p>
         <p className="text-slate-400 text-sm max-w-md">
-          {outcome === 'success'
+          {isSessionOverview
+            ? 'The session is ready for a fresh round. Choose the mode and start the next game when you are ready.'
+            : outcome === 'success'
             ? `Great team coordination! All 3 keys were retrieved and the Mover reached the exit safely. ${modeFocusText}`
             : `The team encountered obstacles or ran out of lives. Review the retrospective debrief below. ${modeFocusText}`}
         </p>
@@ -93,7 +99,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
         className="px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-base shadow-2xl flex items-center gap-3 active:scale-95 transition-all"
       >
         <RotateCcw className="w-5 h-5" />
-        <span>Start Next Game Session</span>
+        <span>{isSessionOverview ? 'Start Next Round' : 'Start Next Game Session'}</span>
       </button>
     </div>
   )
