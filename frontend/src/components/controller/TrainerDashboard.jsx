@@ -312,10 +312,12 @@ export function TrainerDashboard({ stateSync, onSend }) {
               const isComm = mode === GameMode.COMMUNICATION_CLARITY
 
               return (
-                <div
+                <button
                   key={mode}
+                  type="button"
                   onClick={() => selectGameMode(mode)}
-                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col gap-2.5 relative ${
+                  aria-pressed={isSelected}
+                  className={`w-full p-5 rounded-2xl border cursor-pointer transition-all flex flex-col gap-2.5 relative text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
                     isSelected
                       ? 'bg-indigo-950/90 border-indigo-500 shadow-xl ring-2 ring-indigo-500/50'
                       : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
@@ -348,7 +350,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
                       {isComm ? 'Fixed Role Matrix' : 'Rotating Role Matrix'}
                     </span>
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
