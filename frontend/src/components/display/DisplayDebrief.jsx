@@ -33,7 +33,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
         <p className="text-indigo-300 text-sm font-semibold uppercase tracking-wider">{activeMode}</p>
         <p className="text-slate-400 text-sm max-w-md">
           {isSessionOverview
-            ? 'The session is ready for a fresh round. Choose the mode and start the next game when you are ready.'
+            ? 'The session is ready for a fresh round. Choose the mode and the trainer can launch the next round when ready.'
             : outcome === 'success'
             ? `Great team coordination! All 3 keys were retrieved and the Mover reached the exit safely. ${modeFocusText}`
             : `The team encountered obstacles or ran out of lives. Review the retrospective debrief below. ${modeFocusText}`}
@@ -93,14 +93,23 @@ export function DisplayDebrief({ stateSync, onRestart }) {
       </div>
 
       {/* Action Buttons */}
-      <button
-        type="button"
-        onClick={onRestart}
-        className="px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-base shadow-2xl flex items-center gap-3 active:scale-95 transition-all"
-      >
-        <RotateCcw className="w-5 h-5" />
-        <span>{isSessionOverview ? 'Start Next Round' : 'Start Next Game Session'}</span>
-      </button>
+      {isSessionOverview ? (
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="rounded-full border border-blue-400/40 bg-blue-950/60 px-4 py-2 text-sm font-semibold text-blue-200">
+            Waiting for the trainer to launch the next round.
+          </div>
+          <p className="text-sm text-slate-400">The facilitator can choose a mode and restart from the trainer dashboard.</p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onRestart}
+          className="px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-base shadow-2xl flex items-center gap-3 active:scale-95 transition-all"
+        >
+          <RotateCcw className="w-5 h-5" />
+          <span>Start Next Game Session</span>
+        </button>
+      )}
     </div>
   )
 }
