@@ -78,7 +78,7 @@ function cloneRoleAssignment(roleAssignment) {
 }
 
 function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_GAME_MODE, shouldCycleRoles = false) {
-  if (shouldCycleRoles && gameMode === GameMode.COLLABORATION_TEAMWORK) {
+  if (shouldCycleRoles) {
     const roles = buildCycledRoles(activePlayers, previousRoles, gameMode);
     if (roles && Object.keys(roles).length) {
       return roles;
@@ -106,7 +106,7 @@ function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_G
   }
 
   const roleOrder = getRoleOrder(activePlayers.length);
-  const randomizedPlayers = shufflePlayers(activePlayers);
+  const randomizedPlayers = shufflePlayers(activePlayers, gameMode);
   const roles = {};
   randomizedPlayers.forEach((player, index) => {
     roles[player.id] = roleOrder[index] || [];
@@ -327,6 +327,7 @@ function buildDisplayState(state, session) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     trainers,
     summary: state.summary,
     timer: state.timer,
@@ -338,7 +339,7 @@ function buildDisplayState(state, session) {
     displayConnected: Boolean(session && session.display),
     trainerConnected,
     ready: state.players.length >= MIN_PLAYERS,
-    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
+    canRestart: (state.status === GameStatus.ENDED || state.status === GameStatus.SESSION_OVERVIEW) && state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
     pendingReset: state.pendingReset || null,
     followUpFocusedEventId: state.followUpFocusedEventId || null,
@@ -556,13 +557,14 @@ function buildTrainerState(state, session) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
     log: state.log,
     maze: state.maze,
     mazeMeta,
-    canRestart: state.status === GameStatus.ENDED && state.players.length >= MIN_PLAYERS,
+    canRestart: (state.status === GameStatus.ENDED || state.status === GameStatus.SESSION_OVERVIEW) && state.players.length >= MIN_PLAYERS,
     trainerMaze,
     trainerEvents,
     trainerRoleViews,
@@ -598,6 +600,7 @@ function buildControllerState(state, session, playerId) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     summary: controllerSummary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -636,6 +639,25 @@ function finishGame(state, outcome, reason) {
     keys: state.summary.keysCollected,
     lives: state.summary.livesRemaining,
   });
+}
+
+function enterSessionOverview(state, outcome) {
+  if (state.status === GameStatus.SESSION_OVERVIEW) {
+    return;
+  }
+
+  const endedAt = Date.now();
+  state.status = GameStatus.SESSION_OVERVIEW;
+  state.summary.endedAt = endedAt;
+  state.summary.durationMs = state.summary.startedAt ? endedAt - state.summary.startedAt : null;
+  if (typeof outcome === 'string' && outcome.length > 0) {
+    state.summary.outcome = outcome;
+  }
+  state.phaseFlow = createPhaseFlowState({
+    phaseType: 'session_overview',
+    currentPhase: null,
+  });
+  state.timer = createTimerState();
 }
 
 function createRoundMazeForState(state) {
@@ -1175,7 +1197,7 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.LOBBY) {
+    if (session.state.status !== GameStatus.LOBBY && session.state.status !== GameStatus.SESSION_OVERVIEW) {
       return false;
     }
 
@@ -1190,11 +1212,18 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.gameMode === normalizedMode) {
+    const currentMode = getStateGameMode(session.state);
+    if (session.state.status !== GameStatus.SESSION_OVERVIEW && currentMode === normalizedMode) {
       return true;
     }
 
-    session.state.gameMode = normalizedMode;
+    if (session.state.status === GameStatus.SESSION_OVERVIEW) {
+      session.state.pendingGameMode = normalizedMode;
+    } else {
+      session.state.gameMode = normalizedMode;
+      session.state.pendingGameMode = null;
+    }
+
     appendLog(session.state, {
       ts: Date.now(),
       event: 'mode_set',
@@ -1228,7 +1257,7 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.ENDED) {
+    if (session.state.status !== GameStatus.ENDED && session.state.status !== GameStatus.SESSION_OVERVIEW) {
       return false;
     }
 
@@ -1237,6 +1266,9 @@ class SessionManager {
       return false;
     }
 
+    const nextGameMode = normalizeGameMode(session.state.pendingGameMode) || getStateGameMode(session.state);
+    session.state.gameMode = nextGameMode;
+    session.state.pendingGameMode = null;
     beginGameState(session, Date.now(), {
       cycleRoles: true,
       previousRoles: session.state.roles,
@@ -1504,10 +1536,7 @@ class SessionManager {
       session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
-      beginGameState(session, now, {
-        cycleRoles: true,
-        previousRoles: session.state.roles,
-      });
+      enterSessionOverview(session.state, session.state.summary.livesRemaining > 0 ? 'success' : 'fail');
     }
 
     this.broadcastState(sessionId);

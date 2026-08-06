@@ -23,6 +23,7 @@ export const GameStatus = {
   LOBBY: 'lobby',
   PLAYING: 'playing',
   FOLLOW_UP: 'follow_up',
+  SESSION_OVERVIEW: 'session_overview',
   ENDED: 'ended',
 }
 
