@@ -1197,7 +1197,11 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.status !== GameStatus.LOBBY && session.state.status !== GameStatus.SESSION_OVERVIEW) {
+    if (
+      session.state.status !== GameStatus.LOBBY &&
+      session.state.status !== GameStatus.SESSION_OVERVIEW &&
+      session.state.status !== GameStatus.ENDED
+    ) {
       return false;
     }
 
@@ -1213,11 +1217,15 @@ class SessionManager {
     }
 
     const currentMode = getStateGameMode(session.state);
-    if (session.state.status !== GameStatus.SESSION_OVERVIEW && currentMode === normalizedMode) {
+    if (
+      session.state.status !== GameStatus.SESSION_OVERVIEW &&
+      session.state.status !== GameStatus.ENDED &&
+      currentMode === normalizedMode
+    ) {
       return true;
     }
 
-    if (session.state.status === GameStatus.SESSION_OVERVIEW) {
+    if (session.state.status === GameStatus.SESSION_OVERVIEW || session.state.status === GameStatus.ENDED) {
       session.state.pendingGameMode = normalizedMode;
     } else {
       session.state.gameMode = normalizedMode;

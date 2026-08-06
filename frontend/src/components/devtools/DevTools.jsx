@@ -37,7 +37,9 @@ export const CONTROLLER_VIEWS = [
   { id: 'controller_guide', label: 'Guide Role', icon: Compass, color: 'text-purple-400' },
   { id: 'controller_key_seer', label: 'Key-Seer Role', icon: Eye, color: 'text-amber-400' },
   { id: 'controller_navigator', label: 'Navigator Role', icon: Map, color: 'text-teal-400' },
-  { id: 'controller_trainer', label: 'Trainer Dashboard', icon: GraduationCap, color: 'text-amber-300' },
+  { id: 'controller_trainer_lobby', label: 'Trainer (Lobby)', icon: GraduationCap, color: 'text-amber-500' },
+  { id: 'controller_trainer', label: 'Trainer (Playing)', icon: GraduationCap, color: 'text-amber-300' },
+  { id: 'controller_trainer_overview', label: 'Trainer (End)', icon: RotateCcw, color: 'text-amber-400' },
 ]
 
 export function DevTools({
