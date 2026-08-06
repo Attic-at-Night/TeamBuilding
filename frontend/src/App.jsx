@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { DisplayShell } from './components/display/DisplayShell'
 import { ControllerShell } from './components/controller/ControllerShell'
 import { DevTools } from './components/devtools/DevTools'
-import { ThemeSelector } from './components/ThemeSelector'
 import { NotificationOverlay } from './components/NotificationOverlay'
 import { MessageType } from './protocol'
 import { useSessionAppController } from './controllers/useSessionAppController'
+import { APP_VERSION } from './config'
 
 import { DisplayLobby } from './components/display/DisplayLobby'
 import { DisplayPlaying } from './components/display/DisplayPlaying'
@@ -181,7 +181,9 @@ export default function App() {
             Asymmetrical Escape Game
           </span>
         </div>
-        <ThemeSelector />
+        <div className="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-xs font-mono font-bold text-slate-300 shadow-sm">
+          v{APP_VERSION}
+        </div>
       </header>
 
       <main className="w-full relative">

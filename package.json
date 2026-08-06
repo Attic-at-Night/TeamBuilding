@@ -1,6 +1,6 @@
 {
   "name": "teambuilding",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "QR-based TV host and mobile join flow for TeamBuilding sessions",
   "main": "server.js",
   "scripts": {

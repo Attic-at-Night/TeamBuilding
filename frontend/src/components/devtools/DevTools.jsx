@@ -52,6 +52,26 @@ export function DevTools({
   const [isOpen, setIsOpen] = useState(false)
   const [showJson, setShowJson] = useState(false)
 
+  const isAIStudioEnv = () => {
+    try {
+      const inIframe = window.self !== window.top
+      const hostname = window.location.hostname || ''
+      const isDevHost = hostname.includes('ais-dev') || hostname === 'localhost' || hostname === '127.0.0.1'
+      const referrer = document.referrer || ''
+      const isAIStudioReferrer = referrer.includes('ai.studio') || referrer.includes('google')
+      const urlParams = new URLSearchParams(window.location.search)
+      const forceDevTools = urlParams.get('devtools') === 'true'
+
+      return inIframe || isDevHost || isAIStudioReferrer || forceDevTools
+    } catch (e) {
+      return false
+    }
+  }
+
+  if (!isAIStudioEnv()) {
+    return null
+  }
+
   const isLive = activeView === 'live'
 
   const handleSelectView = (viewId, targetMode) => {
