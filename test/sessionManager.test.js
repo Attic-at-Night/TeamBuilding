@@ -827,6 +827,36 @@ test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
   assert.ok(phase3State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
 });
 
+test('roles swap on round success in collaboration and teamwork mode', () => {
+  const { manager, display, controllers, trainer, sessionId } = bootstrapGame(2);
+  const session = manager.sessions.get(sessionId);
+  
+  // Set game mode to COLLABORATION_TEAMWORK
+  manager.setGameMode(sessionId, GameMode.COLLABORATION_TEAMWORK, { playerId: trainer.meta.playerId, isTrainer: true });
+  session.state.gameMode = GameMode.COLLABORATION_TEAMWORK;
+
+  const initialRoles = { ...session.state.roles };
+  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+
+  session.state.maze = makeOpenMaze({
+    goal: { row: 0, col: 1 },
+  });
+  session.state.summary.keysCollected = 3;
+
+  // Complete phase 1
+  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(manager.endFollowUp(sessionId), true);
+
+  const phase2State = display.sent.at(-1).state;
+  assert.equal(phase2State.phaseFlow.currentPhase, 2);
+
+  // Check that roles changed / swapped
+  const newRoles = session.state.roles;
+  for (const player of session.state.players) {
+    assert.notDeepEqual(newRoles[player.id], initialRoles[player.id], `Role for player ${player.id} should have swapped in phase 2`);
+  }
+});
+
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
