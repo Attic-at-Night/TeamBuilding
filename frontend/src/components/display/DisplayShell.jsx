@@ -41,10 +41,6 @@ export function DisplayShell({
   if (status === GameStatus.FOLLOW_UP) {
     return <DisplayFollowUp stateSync={stateSync} onSend={onSend} />
   }
- 
-  if (status === GameStatus.SESSION_OVERVIEW) {
-    return <DisplayDebrief stateSync={stateSync} onRestart={onRestart} />
-  }
- 
+
   return <DisplayDebrief stateSync={stateSync} onRestart={onRestart} />
 }

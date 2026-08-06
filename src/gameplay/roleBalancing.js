@@ -22,10 +22,6 @@ function shouldCycleRolesForMode(gameMode) {
 }
 
 function buildCycledRoles(activePlayers, previousRoles = {}, gameMode = GameMode.COMMUNICATION_CLARITY) {
-  if (!shouldCycleRolesForMode(gameMode)) {
-   return null;
-  }
-
   const roleGroups = getRoleOrder(activePlayers.length).map((group) => group.slice());
   const groupKeys = roleGroups.map((group) => roleGroupKey(group));
   if (!roleGroups.length) {

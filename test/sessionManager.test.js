@@ -238,7 +238,7 @@ test('trainer can change the game mode from session overview before restarting',
   assert.equal(latestState(trainer).gameMode, GameMode.COLLABORATION_TEAMWORK);
 });
 
-test('communication mode preserves roles when restarting a round', () => {
+test('communication mode rotates roles when restarting a round', () => {
   const manager = new SessionManager();
   const display = createFakeSocket();
   const trainer = createFakeSocket();
@@ -258,14 +258,14 @@ test('communication mode preserves roles when restarting a round', () => {
   const state = manager.sessions.get(sessionId).state;
   state.status = GameStatus.ENDED;
   state.roles = {
-    [registerPlayerId(playerOne)]: [MazeRole.MOVER],
-    [registerPlayerId(playerTwo)]: [MazeRole.GUIDE],
+    [registerPlayerId(playerOne)]: [MazeRole.MOVER, MazeRole.KEY_SEER],
+    [registerPlayerId(playerTwo)]: [MazeRole.GUIDE, MazeRole.NAVIGATOR],
   };
 
   assert.equal(manager.restartGame(sessionId), true);
   const restartedRoles = manager.sessions.get(sessionId).state.roles;
-  assert.deepEqual(restartedRoles[registerPlayerId(playerOne)], [MazeRole.MOVER]);
-  assert.deepEqual(restartedRoles[registerPlayerId(playerTwo)], [MazeRole.GUIDE]);
+  assert.deepEqual(restartedRoles[registerPlayerId(playerOne)], [MazeRole.GUIDE, MazeRole.NAVIGATOR]);
+  assert.deepEqual(restartedRoles[registerPlayerId(playerTwo)], [MazeRole.MOVER, MazeRole.KEY_SEER]);
 });
 
 test('communication mode falls back to fresh roles when any active player lacks a prior assignment', () => {
@@ -298,7 +298,7 @@ test('communication mode falls back to fresh roles when any active player lacks 
   assert.notDeepEqual(restartedRoles[registerPlayerId(playerTwo)], []);
 });
 
-test('trainer can select a mode through the socket controller and gameplay roles remain stable in communication mode', () => {
+test('trainer can select a mode through the socket controller and gameplay roles rotate in communication mode', () => {
   const manager = new SessionManager();
   const controller = createSessionSocketController({ sessionManager: manager });
   const displaySocket = createSocketHarness();
@@ -339,8 +339,8 @@ test('trainer can select a mode through the socket controller and gameplay roles
 
   assert.equal(manager.restartGame(sessionId), true);
   const restartedRoles = manager.sessions.get(sessionId).state.roles;
-  assert.deepEqual(restartedRoles[playerOneId], playerOneRoles);
-  assert.deepEqual(restartedRoles[playerTwoId], playerTwoRoles);
+  assert.deepEqual(restartedRoles[playerOneId], playerTwoRoles);
+  assert.deepEqual(restartedRoles[playerTwoId], playerOneRoles);
 });
 
 test('session rejects joins after four players', () => {
@@ -1171,7 +1171,7 @@ test('follow-up still blocks timer controls', () => {
   assert.equal(manager.resetTimer(sessionId, 30000), false);
 });
 
-test('restart after follow-up preserves roles in the default communication mode', () => {
+test('restart after follow-up rotates roles in the default communication mode', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const firstRoundRoles = new Map(controllers.map((socket) => [
     registerPlayerId(socket),
@@ -1202,8 +1202,8 @@ test('restart after follow-up preserves roles in the default communication mode'
     latestState(socket).roleData.assignedRoles.slice(),
   ]));
   const [firstPlayerId, secondPlayerId] = controllers.map((socket) => registerPlayerId(socket));
-  assert.deepEqual(restartedRoles.get(firstPlayerId), firstRoundRoles.get(firstPlayerId));
-  assert.deepEqual(restartedRoles.get(secondPlayerId), firstRoundRoles.get(secondPlayerId));
+  assert.deepEqual(restartedRoles.get(firstPlayerId), firstRoundRoles.get(secondPlayerId));
+  assert.deepEqual(restartedRoles.get(secondPlayerId), firstRoundRoles.get(firstPlayerId));
 });
 
 test('trainer can share full session export to display state', () => {

@@ -78,7 +78,7 @@ function cloneRoleAssignment(roleAssignment) {
 }
 
 function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_GAME_MODE, shouldCycleRoles = false) {
-  if (shouldCycleRoles && gameMode === GameMode.COLLABORATION_TEAMWORK) {
+  if (shouldCycleRoles) {
     const roles = buildCycledRoles(activePlayers, previousRoles, gameMode);
     if (roles && Object.keys(roles).length) {
       return roles;
