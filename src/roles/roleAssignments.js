@@ -1,6 +1,6 @@
 'use strict';
 
-const { MazeRole } = require('../protocol');
+const { MazeRole, GameMode } = require('../protocol');
 
 function getRoleOrder(playerCount) {
   if (playerCount <= 0) {
@@ -30,8 +30,18 @@ function getRoleOrder(playerCount) {
   ];
 }
 
-function shufflePlayers(players) {
-  return players.slice();
+function shufflePlayers(players, gameMode = GameMode.COMMUNICATION_CLARITY) {
+  const shuffled = players.slice();
+  if (shuffled.length <= 1) {
+    return shuffled;
+  }
+
+  if (gameMode === GameMode.COLLABORATION_TEAMWORK) {
+    const offset = 1 % shuffled.length;
+    return shuffled.slice(offset).concat(shuffled.slice(0, offset));
+  }
+
+  return shuffled;
 }
 
 module.exports = {

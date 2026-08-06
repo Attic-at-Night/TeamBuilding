@@ -8,8 +8,8 @@ export function DisplayDebrief({ stateSync, onRestart }) {
   const trainerBroadcast = stateSync?.trainerBroadcast || null
   const isSessionOverview = stateSync?.status === GameStatus.SESSION_OVERVIEW
   const outcome = summary?.outcome || (summary?.livesRemaining > 0 ? 'success' : 'failure')
-  const activeMode = getModeDisplayName(stateSync?.gameMode)
-  const modeFocusText = getModeFocusText(stateSync?.gameMode)
+  const activeMode = getModeDisplayName(stateSync?.nextGameMode || stateSync?.gameMode)
+  const modeFocusText = getModeFocusText(stateSync?.nextGameMode || stateSync?.gameMode)
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-5xl mx-auto p-8 text-slate-100 min-h-screen justify-center items-center">

@@ -106,7 +106,7 @@ function buildRoundRoles(activePlayers, previousRoles = {}, gameMode = DEFAULT_G
   }
 
   const roleOrder = getRoleOrder(activePlayers.length);
-  const randomizedPlayers = shufflePlayers(activePlayers);
+  const randomizedPlayers = shufflePlayers(activePlayers, gameMode);
   const roles = {};
   randomizedPlayers.forEach((player, index) => {
     roles[player.id] = roleOrder[index] || [];
@@ -556,6 +556,7 @@ function buildTrainerState(state, session) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -598,6 +599,7 @@ function buildControllerState(state, session, playerId) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     summary: controllerSummary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
@@ -638,7 +640,7 @@ function finishGame(state, outcome, reason) {
   });
 }
 
-function enterSessionOverview(state, outcome, reason) {
+function enterSessionOverview(state, outcome) {
   if (state.status === GameStatus.SESSION_OVERVIEW) {
     return;
   }
@@ -1209,11 +1211,18 @@ class SessionManager {
       return false;
     }
 
-    if (session.state.gameMode === normalizedMode) {
+    const currentMode = getStateGameMode(session.state);
+    if (session.state.status !== GameStatus.SESSION_OVERVIEW && currentMode === normalizedMode) {
       return true;
     }
 
-    session.state.gameMode = normalizedMode;
+    if (session.state.status === GameStatus.SESSION_OVERVIEW) {
+      session.state.pendingGameMode = normalizedMode;
+    } else {
+      session.state.gameMode = normalizedMode;
+      session.state.pendingGameMode = null;
+    }
+
     appendLog(session.state, {
       ts: Date.now(),
       event: 'mode_set',
@@ -1256,6 +1265,9 @@ class SessionManager {
       return false;
     }
 
+    const nextGameMode = normalizeGameMode(session.state.pendingGameMode) || getStateGameMode(session.state);
+    session.state.gameMode = nextGameMode;
+    session.state.pendingGameMode = null;
     beginGameState(session, Date.now(), {
       cycleRoles: true,
       previousRoles: session.state.roles,
@@ -1523,7 +1535,7 @@ class SessionManager {
       session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {
-      enterSessionOverview(session.state, session.state.summary.livesRemaining > 0 ? 'success' : 'fail', 'session_overview');
+      enterSessionOverview(session.state, session.state.summary.livesRemaining > 0 ? 'success' : 'fail');
     }
 
     this.broadcastState(sessionId);

@@ -42,7 +42,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
   const log = stateSync?.log || []
   const followingPhase = phaseFlow?.followingPhase || null
   const totalGameplayPhases = phaseFlow?.totalGameplayPhases || 3
-  const selectedGameMode = stateSync?.gameMode || GameMode.COMMUNICATION_CLARITY
+  const selectedGameMode = stateSync?.nextGameMode || stateSync?.gameMode || GameMode.COMMUNICATION_CLARITY
   const showModeSelection = status === GameStatus.LOBBY || status === GameStatus.SESSION_OVERVIEW
 
   // Timer calculation

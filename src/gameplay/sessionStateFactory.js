@@ -37,6 +37,7 @@ function makeInitialState() {
     timer: createTimerState(),
     phaseFlow: createPhaseFlowState(),
     gameMode: GameMode.COMMUNICATION_CLARITY,
+    pendingGameMode: null,
     pendingReset: null,
     followUpFocusedEventId: null,
   };
