@@ -232,6 +232,7 @@ test('trainer can change the game mode from session overview before restarting',
   assert.equal(manager.setGameMode(sessionId, GameMode.COLLABORATION_TEAMWORK, { playerId: trainerId, isTrainer: true }), true);
   assert.equal(session.state.gameMode, GameMode.COMMUNICATION_CLARITY);
   assert.equal(session.state.pendingGameMode, GameMode.COLLABORATION_TEAMWORK);
+  assert.equal(latestState(display).nextGameMode, GameMode.COLLABORATION_TEAMWORK);
   assert.equal(manager.restartGame(sessionId), true);
 
   const restartedState = manager.sessions.get(sessionId).state;

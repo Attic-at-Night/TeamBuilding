@@ -333,7 +333,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
                 </div>
                 <span className="text-[10px] text-indigo-300/80">
                   {selectedGameMode === GameMode.COMMUNICATION_CLARITY
-                    ? 'Roles stay stable for clearer communication and focus.'
+                    ? 'Current round roles stay consistent; a restart can rotate them for the next round.'
                     : 'Roles rotate to encourage collaboration and teamwork.'}
                 </span>
               </div>

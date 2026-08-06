@@ -327,6 +327,7 @@ function buildDisplayState(state, session) {
     status: state.status,
     players: state.players,
     gameMode: getStateGameMode(state),
+    nextGameMode: state.pendingGameMode || null,
     trainers,
     summary: state.summary,
     timer: state.timer,
