@@ -5,7 +5,7 @@ function normalizeBackendOrigin(origin) {
   if (import.meta.env.DEV) {
     return 'http://localhost:3000'
   }
-  return window.location.origin
+  return window.location.origin === 'null' ? '' : window.location.origin
 }
 
 function toWsUrl(httpOrigin) {
