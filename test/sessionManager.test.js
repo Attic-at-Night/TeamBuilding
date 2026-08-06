@@ -827,6 +827,55 @@ test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
   assert.ok(phase3State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
 });
 
+test('roles swap on round success in collaboration and teamwork mode', () => {
+  const manager = new SessionManager();
+  const display = createFakeSocket();
+  const session = manager.createSession('http://localhost:3000');
+  manager.registerDisplay(session.sessionId, display);
+
+  const trainer = createFakeSocket();
+  const trainerJoinResult = manager.joinController(session.sessionId, { name: 'Trainer', requestedTrainer: true }, trainer);
+  assert.equal(trainerJoinResult, true);
+
+  const controllers = [];
+  for (let i = 0; i < 2; i += 1) {
+    const socket = createFakeSocket();
+    controllers.push(socket);
+    assert.equal(manager.joinController(session.sessionId, `P${i + 1}`, socket), true);
+  }
+
+  const trainerPlayerId = registerPlayerId(trainer);
+  const sessionState = manager.sessions.get(session.sessionId);
+  assert.equal(manager.setGameMode(session.sessionId, GameMode.COLLABORATION_TEAMWORK, {
+    playerId: trainerPlayerId,
+    isTrainer: true,
+  }), true);
+  assert.equal(sessionState.state.gameMode, GameMode.COLLABORATION_TEAMWORK);
+
+  assert.equal(manager.startGame(session.sessionId), true);
+
+  const initialRoles = { ...sessionState.state.roles };
+  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+
+  sessionState.state.maze = makeOpenMaze({
+    goal: { row: 0, col: 1 },
+  });
+  sessionState.state.summary.keysCollected = 3;
+
+  // Complete phase 1
+  assert.equal(manager.handleInput(session.sessionId, moverId, { action: 'move', dir: 'e' }), true);
+  assert.equal(manager.endFollowUp(session.sessionId), true);
+
+  const phase2State = display.sent.at(-1).state;
+  assert.equal(phase2State.phaseFlow.currentPhase, 2);
+
+  // Check that roles changed / swapped
+  const newRoles = sessionState.state.roles;
+  for (const player of sessionState.state.players) {
+    assert.notDeepEqual(newRoles[player.id], initialRoles[player.id], `Role for player ${player.id} should have swapped in phase 2`);
+  }
+});
+
 test('hidden exit behaves like a normal cell until three keys are collected', () => {
   const { manager, display, controllers, sessionId } = bootstrapGame(2);
   const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));

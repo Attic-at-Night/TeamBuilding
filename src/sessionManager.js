@@ -1533,6 +1533,12 @@ class SessionManager {
     } else if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
       session.state.summary.keysCollected = 0;
       session.state.summary.resets = 0;
+      const gameMode = getStateGameMode(session.state);
+      const activePlayers = this._getPlayers(session);
+      const newRoles = buildRoundRoles(activePlayers, session.state.roles, gameMode, true);
+      if (newRoles && Object.keys(newRoles).length) {
+        session.state.roles = newRoles;
+      }
       session.state.maze = createRoundMazeForState(session.state);
       beginGameplayPhase(session.state, followingPhase + 1, now);
     } else {

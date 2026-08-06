@@ -273,6 +273,122 @@ export function TrainerDashboard({ stateSync, onSend }) {
     )
   }
 
+  // --- Dedicated Game Mode Selection View (shown before moving on to the maze) ---
+  if (showModeSelection) {
+    return (
+      <div className="flex flex-col gap-6 w-full max-w-xl mx-auto p-4 sm:p-6 text-slate-100 min-h-[70vh] justify-center items-center">
+        {/* Facilitator Header */}
+        <div className="w-full p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/40 shadow-2xl flex flex-col gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-indigo-600/30 border border-indigo-500/40">
+                <GraduationCap className="w-6 h-6 text-indigo-400" />
+              </div>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 block">Facilitator Control</span>
+                <h2 className="text-xl font-black text-white">Select Game Mode</h2>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 border border-indigo-700 text-indigo-200 shadow-sm">
+              {status === GameStatus.SESSION_OVERVIEW ? 'Session Overview' : `Lobby (${players.length}/4 Connected)`}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {status === GameStatus.SESSION_OVERVIEW
+              ? 'Choose a game mode focus for the next session before launching into the maze.'
+              : 'Select the learning objective for this team session. At least 2 players must be connected to start.'}
+          </p>
+        </div>
+
+        {/* Mode Selection Cards */}
+        <div className="w-full flex flex-col gap-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
+            Available Learning Modes
+          </span>
+
+          <div className="grid grid-cols-1 gap-4">
+            {Object.values(GameMode).map((mode) => {
+              const isSelected = selectedGameMode === mode
+              const isComm = mode === GameMode.COMMUNICATION_CLARITY
+
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => selectGameMode(mode)}
+                  aria-pressed={isSelected}
+                  className={`w-full p-5 rounded-2xl border cursor-pointer transition-all flex flex-col gap-2.5 relative text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                    isSelected
+                      ? 'bg-indigo-950/90 border-indigo-500 shadow-xl ring-2 ring-indigo-500/50'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-2 rounded-xl border ${isSelected ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <span className="text-base font-extrabold text-white capitalize">
+                        {mode}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center shadow-md">
+                        <Check className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed pl-10">
+                    {isComm
+                      ? 'Roles remain fixed across rounds. Ideal for practicing structured clarity, concise callouts, and explicit protocol alignment.'
+                      : 'Roles dynamically rotate between rounds. Best for encouraging empathy, adaptability, and active cross-role problem solving.'}
+                  </p>
+
+                  <div className="pl-10 mt-1">
+                    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${isSelected ? 'bg-indigo-900/60 border-indigo-700 text-indigo-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                      {isComm ? 'Fixed Role Matrix' : 'Rotating Role Matrix'}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Start Action Button */}
+        <div className="w-full flex flex-col gap-2 pt-2">
+          {status === GameStatus.LOBBY ? (
+            <button
+              type="button"
+              disabled={players.length < 2}
+              onClick={() => onSend({ type: MessageType.GAME_START })}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-base font-black shadow-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all cursor-pointer"
+            >
+              <Play className="w-5 h-5 fill-white" />
+              <span>Launch Game Session</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={sendRestart}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-base font-black shadow-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-5 h-5" />
+              <span>Start Next Game Session</span>
+            </button>
+          )}
+
+          {status === GameStatus.LOBBY && players.length < 2 && (
+            <p className="text-xs text-amber-400/90 text-center font-medium">
+              At least 2 players are required to start the session. Currently {players.length} connected.
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto p-4 text-slate-100">
       {/* Facilitator Header & Timer Controls */}
@@ -288,69 +404,16 @@ export function TrainerDashboard({ stateSync, onSend }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/60 border border-indigo-700/50 text-indigo-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold tracking-wider bg-indigo-900/80 border border-indigo-600 text-indigo-200 flex items-center gap-1.5 shadow-sm capitalize">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Mode: {selectedGameMode}</span>
+            </span>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 border border-slate-700 text-slate-300">
               {status}
             </span>
           </div>
         </div>
-
-        {/* Start Game Session Banner for Trainer in Lobby */}
-        {showModeSelection && (
-          <div className="p-3.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 shadow-lg">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-bold text-indigo-200 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                {status === GameStatus.SESSION_OVERVIEW ? 'Session Overview Ready' : `Session Lobby Active (${players.length}/4 Connected)`}
-              </span>
-              <span className="text-[11px] text-indigo-300/80">
-                {status === GameStatus.SESSION_OVERVIEW
-                  ? 'Choose a learning mode and restart the next round when you are ready.'
-                  : 'Requires at least 2 players to start the 3-round session (15m, 10m, 5m).'}
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
-              <div className="flex flex-col gap-1.5 rounded-xl border border-indigo-700/60 bg-slate-950/70 px-3 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-300">Learning Mode</span>
-                <div className="flex flex-wrap gap-2">
-                  {Object.values(GameMode).map((mode) => {
-                    const isActive = selectedGameMode === mode
-                    return (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => selectGameMode(mode)}
-                        className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-all ${
-                          isActive
-                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
-                            : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        {mode}
-                      </button>
-                    )
-                  })}
-                </div>
-                <span className="text-[10px] text-indigo-300/80">
-                  {selectedGameMode === GameMode.COMMUNICATION_CLARITY
-                    ? 'Roles stay consistent across rounds in this mode.'
-                    : 'Roles rotate between rounds to encourage collaboration and teamwork.'}
-                </span>
-              </div>
-              {status === GameStatus.LOBBY && (
-                <button
-                  type="button"
-                  disabled={players.length < 2}
-                  onClick={() => onSend({ type: MessageType.GAME_START })}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg flex items-center gap-2 shrink-0 active:scale-95 transition-all cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  <span>Start Game Session</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Timer Control Bar & Clock Display */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 gap-3 flex-wrap">

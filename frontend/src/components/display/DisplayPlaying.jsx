@@ -1,10 +1,12 @@
-import { Heart, Key, Timer, Shield, Users, Radio, Compass, Eye, Map, Footprints, AlertCircle, Lock } from 'lucide-react'
+import { Heart, Key, Timer, Shield, Users, Radio, Compass, Eye, Map, Footprints, AlertCircle, Lock, Sparkles } from 'lucide-react'
+import { getModeDisplayName } from './moiUtils'
 
 export function DisplayPlaying({ stateSync }) {
   const summary = stateSync?.summary || {}
   const timer = stateSync?.timer || {}
   const players = stateSync?.players || []
   const trainerBroadcast = stateSync?.trainerBroadcast || null
+  const activeMode = getModeDisplayName(stateSync?.gameMode)
 
   const lives = summary?.livesRemaining ?? summary?.lives ?? 3
   const keysCollected = summary?.keysCollected ?? 0
@@ -37,10 +39,19 @@ export function DisplayPlaying({ stateSync }) {
           </div>
         </div>
 
-        {/* Timer Display */}
-        <div className="flex items-center gap-3 bg-slate-950 px-8 py-4 rounded-2xl border border-slate-800 shadow-inner">
-          <Timer className="w-7 h-7 text-indigo-400" />
-          <span className="text-4xl font-black font-mono tracking-widest text-white">{timerFormatted}</span>
+        {/* Timer Display & Mode Badge */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex items-center gap-3 bg-slate-950 px-8 py-4 rounded-2xl border border-slate-800 shadow-inner">
+            <Timer className="w-7 h-7 text-indigo-400" />
+            <span className="text-4xl font-black font-mono tracking-widest text-white">{timerFormatted}</span>
+          </div>
+          <div className="flex items-center gap-2.5 bg-slate-950/80 px-4 py-3.5 rounded-2xl border border-indigo-900/60 shadow-inner">
+            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-indigo-300/80 font-bold uppercase tracking-wider block">Game Mode</span>
+              <span className="text-sm font-black text-white">{activeMode}</span>
+            </div>
+          </div>
         </div>
 
         {/* Key Progress Bar */}
