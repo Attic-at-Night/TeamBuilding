@@ -14,6 +14,8 @@
  * timer_stop        – display pauses the session timer
  * timer_reset       – display resets the session timer
  * followup_end      – display/trainer ends the follow-up phase; the last follow-up transitions into session overview before a manual restart
+ * followup_navigate – trainer steps forward/backward through follow-up events
+ * return_to_lobby   – trainer resets the session back to lobby (mode selection)
  * player_input      – controller sends an action to the server
  * resync_request    – any client requests a full state_sync (e.g. on reconnect)
  *
@@ -37,6 +39,7 @@ const MessageType = {
   TIMER_RESET: 'timer_reset',
   FOLLOWUP_END: 'followup_end',
   FOLLOWUP_NAVIGATE: 'followup_navigate',
+  RETURN_TO_LOBBY: 'return_to_lobby',
   PLAYER_INPUT: 'player_input',
   RESYNC_REQUEST: 'resync_request',
 

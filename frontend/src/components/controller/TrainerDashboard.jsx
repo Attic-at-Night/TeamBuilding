@@ -19,9 +19,21 @@ import {
   ChevronRight,
   ArrowRight,
   LogOut,
+  Trophy,
+  Clock,
+  Key,
+  AlertTriangle,
 } from 'lucide-react'
 import { MessageType, CLARITY_TYPES, GameMode, GameStatus } from '../../protocol'
-import { formatSeconds, getMoiDisplayTime, getMoiEventsForPhase, getMoiLabel } from '../display/moiUtils'
+import {
+  MOI_COLORS,
+  classifyMoiEvent,
+  extractRoundsData,
+  formatSeconds,
+  getMoiDisplayTime,
+  getMoiEventsForPhase,
+  getMoiLabel,
+} from '../display/moiUtils'
 
 export function TrainerDashboard({ stateSync, onSend }) {
   const [activeTab, setActiveTab] = useState('maze') // 'maze', 'events', 'perspectives', 'ai', 'broadcast'
@@ -43,7 +55,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
   const followingPhase = phaseFlow?.followingPhase || null
   const totalGameplayPhases = phaseFlow?.totalGameplayPhases || 3
   const selectedGameMode = stateSync?.nextGameMode || stateSync?.gameMode || GameMode.COMMUNICATION_CLARITY
-  const showModeSelection = status === GameStatus.LOBBY || status === GameStatus.SESSION_OVERVIEW || status === GameStatus.ENDED
+  const showModeSelection = status === GameStatus.LOBBY
 
   // Timer calculation
   const remainingMs = timer?.remainingMs ?? phaseFlow?.phaseRemainingMs ?? 0
@@ -270,6 +282,133 @@ export function TrainerDashboard({ stateSync, onSend }) {
           )}
         </button>
 
+      </div>
+    )
+  }
+
+  // --- Session Overview / Retrospective View (shown when session ends before trainer moves back to mode select) ---
+  if (status === GameStatus.SESSION_OVERVIEW || status === GameStatus.ENDED) {
+    const roundsData = extractRoundsData(log, stateSync?.summary)
+    const totalDurationSeconds = Math.round(roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0))
+    const totalKeysCollected = roundsData.reduce((acc, r) => acc + (r.keysCollected || 0), 0)
+    const totalPossibleKeys = roundsData.length * 3
+    const totalHazardsHit = roundsData.reduce((acc, r) => acc + (r.hazardsHit || 0), 0)
+    const totalResets = roundsData.reduce((acc, r) => acc + (r.resetsCount || 0), 0)
+
+    return (
+      <div className="flex flex-col gap-6 w-full max-w-xl mx-auto p-4 sm:p-6 text-slate-100 min-h-[70vh] justify-center items-center">
+        {/* Facilitator Header */}
+        <div className="w-full p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/40 shadow-2xl flex flex-col gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-indigo-600/30 border border-indigo-500/40">
+                <Trophy className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 block">Facilitator Session Overview</span>
+                <h2 className="text-xl font-black text-white">{roundsData.length}-Round Session Concluded</h2>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 border border-indigo-700 text-indigo-200 shadow-sm">
+              {roundsData.length} Rounds Completed
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Review session retrospective metrics and round timelines with the group. When ready, click below to proceed to mode selection for the next session.
+          </p>
+        </div>
+
+        {/* Aggregate Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center gap-0.5 shadow-lg">
+            <Clock className="w-4 h-4 text-blue-400 mb-0.5" />
+            <span className="text-lg font-black text-white">{formatSeconds(totalDurationSeconds)}</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Play Time</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center gap-0.5 shadow-lg">
+            <Key className="w-4 h-4 text-amber-400 mb-0.5" />
+            <span className="text-lg font-black text-white">{totalKeysCollected} / {totalPossibleKeys}</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Keys Found</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center gap-0.5 shadow-lg">
+            <AlertTriangle className="w-4 h-4 text-rose-400 mb-0.5" />
+            <span className="text-lg font-black text-white">{totalHazardsHit}</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Hazards</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center gap-0.5 shadow-lg">
+            <RotateCcw className="w-4 h-4 text-purple-400 mb-0.5" />
+            <span className="text-lg font-black text-white">{totalResets}</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Resets</span>
+          </div>
+        </div>
+
+        {/* Per-Round Timelines */}
+        <div className="w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <span className="text-xs font-bold text-white uppercase tracking-wider">Round Timelines Overview</span>
+            <span className="text-[11px] text-slate-400">{roundsData.length} Round(s)</span>
+          </div>
+
+          <div className="flex flex-col gap-5">
+            {roundsData.map((rd) => {
+              const timelineSecs = Math.max(1, rd.durationSeconds)
+              const events = rd.moiEvents || []
+
+              return (
+                <div key={rd.round} className="flex flex-col gap-2 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                    <span className="text-indigo-400">Round {rd.round}</span>
+                    <span className="font-mono text-slate-400">{formatSeconds(timelineSecs)}</span>
+                  </div>
+
+                  {/* Timeline Bar */}
+                  <div className="flex items-center gap-2 my-2">
+                    <div className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+                    <div className="relative flex-1 h-2 bg-slate-800 rounded-full overflow-visible">
+                      {events.map((entry, idx) => {
+                        const moiType = classifyMoiEvent(entry)
+                        const color = MOI_COLORS[moiType] || '#64748b'
+                        const tOffset = entry.t ?? 0
+                        const pct = Math.min(100, Math.max(0, (tOffset / timelineSecs) * 100))
+
+                        return (
+                          <div
+                            key={entry.eventId || idx}
+                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                            style={{ left: `${pct}%` }}
+                          >
+                            <div
+                              className="w-3 h-3 rounded-full border border-slate-900 transition-transform group-hover:scale-150"
+                              style={{ backgroundColor: color }}
+                            />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-20 pointer-events-none">
+                              <div className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[10px] font-bold text-white whitespace-nowrap shadow-xl">
+                                {getMoiLabel(entry, selectedGameMode)} ({formatSeconds(tOffset)})
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Action Button to move to mode select */}
+        <div className="w-full pt-2">
+          <button
+            type="button"
+            onClick={() => onSend({ type: MessageType.RETURN_TO_LOBBY })}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-base font-black shadow-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all cursor-pointer"
+          >
+            <span>Proceed to Mode Selection</span>
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     )
   }

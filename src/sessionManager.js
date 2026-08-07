@@ -1263,6 +1263,36 @@ class SessionManager {
     return true;
   }
 
+  resetToLobby(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    if (session.state.status !== GameStatus.SESSION_OVERVIEW) {
+      return false;
+    }
+
+    session.state.status = GameStatus.LOBBY;
+    session.state.players = this._getPlayers(session);
+    session.state.roles = {};
+    session.state.maze = null;
+    session.state.log = [];
+    session.state.nextEventId = 1;
+    session.state.aiSuggestionDecisions = {};
+    session.state.trainerBroadcast = null;
+    session.state.trainerHighlightEventIds = [];
+    session.state.pendingReset = null;
+    session.state.followUpFocusedEventId = null;
+    session.state.pendingGameMode = null;
+    session.state.summary = createSummaryState(START_LIVES);
+    session.state.phaseFlow = createPhaseFlowState({ phaseType: 'lobby' });
+    session.state.timer = createTimerState();
+
+    this.broadcastState(sessionId);
+    return true;
+  }
+
   startTimer(sessionId, durationMs) {
     const session = this.sessions.get(sessionId);
     if (!session) {
