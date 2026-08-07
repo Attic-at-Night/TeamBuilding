@@ -721,8 +721,6 @@ function applyHazardOutcome(state, controller, playerId, input, hazardType, posi
     delta: state.summary.livesRemaining - beforeLives,
     lives: state.summary.livesRemaining,
   });
-
-  return true;
 }
 
 function applyGhostHazard(state, ghost) {
@@ -733,7 +731,7 @@ function applyGhostHazard(state, ghost) {
     ghostId: ghost.id,
     position: { row: ghost.row, col: ghost.col },
   });
-  return applyHazardOutcome(
+  applyHazardOutcome(
     state,
     { name: 'Ghost' },
     'ghost',
@@ -1584,12 +1582,10 @@ class SessionManager {
 
       const ghostAtPlayer = findGhostAt(state.maze, state.maze.playerPos.row, state.maze.playerPos.col);
       if (ghostAtPlayer) {
-        const needsReset = applyGhostHazard(state, ghostAtPlayer);
-        if (needsReset) {
-          this._applyResetFeedback(sessionId, 'ghost', { row: ghostAtPlayer.row, col: ghostAtPlayer.col });
-          changed += 1;
-          continue;
-        }
+        applyGhostHazard(state, ghostAtPlayer);
+        this._applyResetFeedback(sessionId, 'ghost', { row: ghostAtPlayer.row, col: ghostAtPlayer.col });
+        changed += 1;
+        continue;
       }
 
       this.broadcastState(sessionId);
@@ -1917,12 +1913,8 @@ class SessionManager {
 
     if (moveResult.result === 'wall') {
       const wallPos = clonePoint(moveResult.from || maze.playerPos);
-      const needsReset = applyHazardOutcome(state, controller, playerId, input, 'wall', wallPos);
-      if (needsReset) {
-        this._applyResetFeedback(sessionId, 'wall', wallPos, input?.dir);
-      } else {
-        this.broadcastState(sessionId);
-      }
+      applyHazardOutcome(state, controller, playerId, input, 'wall', wallPos);
+      this._applyResetFeedback(sessionId, 'wall', wallPos, input?.dir);
       return true;
     }
 
@@ -1972,12 +1964,8 @@ class SessionManager {
       : false;
 
     if (hitHazard) {
-      const needsReset = applyHazardOutcome(state, controller, playerId, input, 'grid', position);
-      if (needsReset) {
-        this._applyResetFeedback(sessionId, 'grid', position);
-      } else {
-        this.broadcastState(sessionId);
-      }
+      applyHazardOutcome(state, controller, playerId, input, 'grid', position);
+      this._applyResetFeedback(sessionId, 'grid', position);
       return true;
     }
 
