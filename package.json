@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/Attic-at-Night/TeamBuilding#readme",
   "dependencies": {
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "qrcode": "^1.5.4",
     "ws": "^8.21.0"

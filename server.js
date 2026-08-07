@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
@@ -51,6 +52,7 @@ const sessionController = new SessionController({
 });
 
 app.set('trust proxy', true);
+app.use(cors());
 app.use(express.json());
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/join' || req.path.endsWith('.html')) {
