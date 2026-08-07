@@ -616,7 +616,6 @@ function buildControllerState(state, session, playerId) {
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
     pendingReset: state.pendingReset || null,
-    log: state.log,
   };
 }
 
