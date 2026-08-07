@@ -69,18 +69,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
     const currBroadcast = curr?.trainerBroadcast?.message
 
     // 1. Death / Life Lost Detection (including pendingReset on controller)
-    if (currReset?.cause === 'victory' && prevReset?.cause !== 'victory') {
-      triggerNotification({
-        id: `victory-${Date.now()}`,
-        type: 'win',
-        variant: 'success',
-        title: 'MAZE ESCAPED! VICTORY!',
-        subtitle: 'All keys collected and exit reached safely. Outstanding teamwork!',
-        icon: Trophy,
-        duration: 8000,
-      })
-    }
-    else if (currLives < prevLives || (!prevReset && currReset)) {
+    if (currLives < prevLives || (!prevReset && currReset)) {
       const lostCount = prevLives > currLives ? prevLives - currLives : 1
       const effectiveLives = currLives
 
