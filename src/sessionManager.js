@@ -255,6 +255,7 @@ function buildRoleData(state, role) {
   const roleData = {
     assignedRoles: roles,
     recentEvents,
+    pendingReset: state.pendingReset,
   };
 
   if (roles.includes(MazeRole.MOVER)) {
@@ -332,6 +333,7 @@ function buildDisplayState(state, session) {
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
+    pendingReset: state.pendingReset || null,
     displayMaze: buildTrainerCombinedMaze(state.maze),
     mazeMeta: buildMazeMeta(state.maze),
     log: state.log,
@@ -561,6 +563,7 @@ function buildTrainerState(state, session) {
     summary: state.summary,
     timer: state.timer,
     phaseFlow: state.phaseFlow,
+    pendingReset: state.pendingReset || null,
     log: state.log,
     maze: state.maze,
     mazeMeta,
@@ -2004,24 +2007,42 @@ class SessionManager {
 
     if (maze.reached) {
       if (exitUnlocked) {
-        const phaseFlow = state.phaseFlow || createPhaseFlowState();
-        if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
-          const endedAt = Date.now();
-          const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
-          const totalPhases = phaseFlow.totalGameplayPhases || GAMEPLAY_PHASE_DURATIONS_MS.length;
-          const terminalReason = 'goal_reached';
-          appendLog(state, {
-            ts: endedAt,
-            event: 'session_end',
-            outcome: 'success',
-            reason: terminalReason,
-            keys: state.summary.keysCollected,
-            lives: state.summary.livesRemaining,
-          });
-          beginFollowUpPhase(state, currentPhase, endedAt);
-        } else {
-          finishGame(state, 'success', 'goal_reached');
+        if (!state.pendingReset) {
+          state.pendingReset = {
+            cause: 'victory',
+            hazardType: 'victory',
+            position: clonePoint(maze.playerPos),
+            message: 'Victory!',
+            expiresAt: Date.now() + 2500,
+          };
+          this.broadcastState(sessionId);
+
+          setTimeout(() => {
+            const s = this.sessions.get(sessionId);
+            if (!s || !s.state.pendingReset || s.state.pendingReset.cause !== 'victory') return;
+            s.state.pendingReset = null;
+
+            const phaseFlow = s.state.phaseFlow || createPhaseFlowState();
+            if (s.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+              const endedAt = Date.now();
+              const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+              const terminalReason = 'goal_reached';
+              appendLog(s.state, {
+                ts: endedAt,
+                event: 'session_end',
+                outcome: 'success',
+                reason: terminalReason,
+                keys: s.state.summary.keysCollected,
+                lives: s.state.summary.livesRemaining,
+              });
+              beginFollowUpPhase(s.state, currentPhase, endedAt);
+            } else {
+              finishGame(s.state, 'success', 'goal_reached');
+            }
+            this.broadcastState(sessionId);
+          }, 2500);
         }
+        return true;
       } else {
         maze.reached = false;
       }

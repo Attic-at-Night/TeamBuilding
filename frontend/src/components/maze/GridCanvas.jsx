@@ -16,7 +16,8 @@ export function GridCanvas({
   hazards = [],
   ghosts = [],
   lifePickups = [],
-  reached = [],
+  reached = false,
+  pendingReset = null,
   fogRadius = null, // null = no fog, number = distance from player in cells
   mode = 'spectator', // 'mover', 'guide', 'key-seer', 'navigator', 'trainer', 'spectator'
   accentColor = '#3b82f6',
@@ -25,6 +26,7 @@ export function GridCanvas({
   const animPlayerPosRef = useRef(null)
   const propsRef = useRef({})
   const prevKeysCollectedRef = useRef(keysCollected)
+  const prevReachedRef = useRef(reached)
   const keyAnimationsRef = useRef([])
 
   // Keep latest props available to the requestAnimationFrame loop without triggering frame teardowns
@@ -39,11 +41,24 @@ export function GridCanvas({
           row: p.row,
           col: p.col,
           startTime: performance.now(),
-          duration: 1200 // ms
+          duration: 1200, // ms
+          type: 'key'
         })
       }
     }
     prevKeysCollectedRef.current = keysCollected
+    
+    if (reached && !prevReachedRef.current) {
+      const p = goal || playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
+      keyAnimationsRef.current.push({
+        row: p.row,
+        col: p.col,
+        startTime: performance.now(),
+        duration: 1200,
+        type: 'goal'
+      })
+    }
+    prevReachedRef.current = reached
 
     propsRef.current = {
       width,
@@ -56,6 +71,7 @@ export function GridCanvas({
       ghosts,
       lifePickups,
       reached,
+      pendingReset,
       fogRadius,
       mode,
       accentColor,
@@ -84,7 +100,8 @@ export function GridCanvas({
         hazards = [],
         ghosts = [],
         lifePickups = [],
-        reached = [],
+        reached = false,
+        pendingReset = null,
         fogRadius = null,
         accentColor = '#3b82f6',
       } = props
@@ -468,7 +485,75 @@ export function GridCanvas({
           ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          ctx.fillText('🔑', 0, 0)
+          ctx.fillText(anim.type === 'goal' ? '🏁' : '🔑', 0, 0)
+          
+          ctx.restore()
+        }
+      }
+
+      // 14. Draw Pending Reset Collision/Victory
+      if (pendingReset && pendingReset.position) {
+        const { cause, position } = pendingReset
+        if (isVisible(position.row, position.col)) {
+          const cx = position.col * cellSize + cellSize / 2
+          const cy = position.row * cellSize + cellSize / 2
+          
+          ctx.save()
+          ctx.translate(cx, cy)
+          
+          if (cause === 'victory') {
+            const scale = 1 + (Math.sin(time / 150) * 0.2) // slight pulse
+            const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
+            keyGlow.addColorStop(1, 'transparent')
+            ctx.fillStyle = keyGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#000000'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('🔑', 0, 0) // "exactly the same as the key"
+          } else if (cause === 'wall') {
+            const scale = 1 + (Math.sin(time / 100) * 0.15)
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('🧱', 0, 0)
+          } else if (cause === 'ghost') {
+            const scale = 1 + (Math.sin(time / 100) * 0.15)
+            const ghostGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.7)')
+            ghostGlow.addColorStop(1, 'transparent')
+            ctx.fillStyle = ghostGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('👻', 0, 0)
+          } else if (cause === 'grid' || cause === 'hazard') {
+            const scale = 1 + (Math.sin(time / 100) * 0.15)
+            const hazardGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            hazardGlow.addColorStop(0, 'rgba(239, 68, 68, 0.5)')
+            hazardGlow.addColorStop(1, 'transparent')
+            ctx.fillStyle = hazardGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('⚡', 0, 0)
+          }
           
           ctx.restore()
         }
