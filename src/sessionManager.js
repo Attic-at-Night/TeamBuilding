@@ -882,6 +882,7 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
   if (!phaseDurationMs) {
     return false;
   }
+  state.pendingReset = null;
   state.status = GameStatus.PLAYING;
   state.phaseFlow = createPhaseFlowState({
     phaseType: 'gameplay',
@@ -925,7 +926,8 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
 function beginFollowUpPhase(state, followingPhase, startedAt = Date.now(), options = {}) {
   const terminalOutcome = options?.terminalOutcome || null;
   const terminalReason = options?.terminalReason || null;
-  state.pendingReset = null;
+  const pendingReset = options?.pendingReset || null;
+  state.pendingReset = pendingReset;
   state.status = GameStatus.FOLLOW_UP;
   state.phaseFlow = createPhaseFlowState({
     phaseType: 'follow_up',
@@ -2002,7 +2004,15 @@ class SessionManager {
             keys: state.summary.keysCollected,
             lives: state.summary.livesRemaining,
           });
-          beginFollowUpPhase(state, currentPhase, endedAt);
+          beginFollowUpPhase(state, currentPhase, endedAt, {
+            pendingReset: {
+              cause: 'victory',
+              hazardType: 'victory',
+              position: clonePoint(maze.playerPos),
+              message: 'Victory!',
+              expiresAt: endedAt + 2500,
+            },
+          });
         } else {
           finishGame(state, 'success', 'goal_reached');
         }
