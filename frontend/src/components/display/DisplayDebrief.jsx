@@ -26,7 +26,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
   // Compute aggregate stats across all rounds
   const totalDurationSeconds = roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0)
   const totalKeysCollected = roundsData.reduce((acc, r) => acc + (r.keysCollected || 0), 0)
-  const totalPossibleKeys = roundsData.length * 3
+  const totalPossibleKeys = roundsData.reduce((acc, r) => acc + (r.possibleKeys || 3), 0)
   const totalHazardsHit = roundsData.reduce((acc, r) => acc + (r.hazardsHit || 0), 0)
   const totalResets = roundsData.reduce((acc, r) => acc + (r.resetsCount || 0), 0)
 
@@ -115,7 +115,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
               </div>
               <div className="flex flex-col bg-slate-950/60 p-2 rounded-xl border border-slate-800/50">
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Keys</span>
-                <span className="font-extrabold text-amber-400 mt-0.5">{rd.keysCollected}/3</span>
+                <span className="font-extrabold text-amber-400 mt-0.5">{rd.keysCollected}/{rd.possibleKeys ?? 3}</span>
               </div>
               <div className="flex flex-col bg-slate-950/60 p-2 rounded-xl border border-slate-800/50">
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Hazards</span>
