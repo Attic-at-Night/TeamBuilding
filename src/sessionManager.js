@@ -1269,6 +1269,10 @@ class SessionManager {
       return false;
     }
 
+    if (session.state.status !== GameStatus.SESSION_OVERVIEW) {
+      return false;
+    }
+
     session.state.status = GameStatus.LOBBY;
     session.state.players = this._getPlayers(session);
     session.state.roles = {};
