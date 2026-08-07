@@ -478,17 +478,38 @@ export function GridCanvas({
           continue
         }
         if (isVisible(anim.row, anim.col)) {
-          // Clamp progress at 1 if keepShowing is true
-          const progress = Math.min(elapsed / anim.duration, 1)
-          const isHolding = anim.keepShowing && progress === 1
-          
-          // If holding, add a gentle pulse
-          const pulse = isHolding ? (Math.sin(time / 150) * 0.1) : 0
-          const scale = 1 + progress * 1.5 + pulse
-          const alpha = isHolding ? 1 : (1 - progress)
-          
-          // Add a slight upward float effect
-          const floatUp = progress * cellSize * 0.5
+          // Calculate scale, floatUp, and alpha based on animation phase
+          let scale = 1.0
+          let floatUp = 0
+          let alpha = 1.0
+
+          const scaleUpDuration = 250 // ms to scale up from 1.0 to 1.5
+          const totalDuration = anim.duration || 1200
+
+          if (elapsed < scaleUpDuration) {
+            // Phase 1: Rapid Scale Up + Float Up, fully opaque
+            const progress = elapsed / scaleUpDuration
+            const easeOut = 1 - Math.pow(1 - progress, 2)
+            scale = 1.0 + easeOut * 0.5
+            floatUp = easeOut * cellSize * 0.35
+            alpha = 1.0
+          } else if (anim.keepShowing || elapsed < totalDuration - 400) {
+            // Phase 2: Hold & Gentle Pulsing at top, fully opaque
+            const holdElapsed = elapsed - scaleUpDuration
+            const pulse = Math.sin(holdElapsed / 120) * 0.12
+            scale = 1.5 + pulse
+            floatUp = cellSize * 0.35
+            alpha = 1.0
+          } else {
+            // Phase 3: Smooth Fade Out at the end
+            const fadeElapsed = elapsed - (totalDuration - 400)
+            const fadeProgress = Math.min(fadeElapsed / 400, 1)
+            const holdElapsed = elapsed - scaleUpDuration
+            const pulse = Math.sin(holdElapsed / 120) * 0.12
+            scale = 1.5 + pulse
+            floatUp = cellSize * 0.35 + fadeProgress * cellSize * 0.2
+            alpha = 1.0 - fadeProgress
+          }
 
           const cx = anim.col * cellSize + cellSize / 2
           const cy = anim.row * cellSize + cellSize / 2 - floatUp
