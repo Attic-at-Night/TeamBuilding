@@ -49,28 +49,34 @@ export function GridCanvas({
     }
     prevKeysCollectedRef.current = keysCollected
     
-    if (reached && !prevReachedRef.current) {
+    if (typeof reached === 'boolean' && reached && !prevReachedRef.current) {
       const p = goal || playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
-      keyAnimationsRef.current.push({
-        row: p.row,
-        col: p.col,
-        startTime: performance.now(),
-        duration: 1200,
-        type: 'goal',
-        keepShowing: false
-      })
+      if (!keyAnimationsRef.current.some(a => a.type === 'goal')) {
+        keyAnimationsRef.current.push({
+          row: p.row,
+          col: p.col,
+          startTime: performance.now(),
+          duration: 1200,
+          type: 'goal',
+          keepShowing: false
+        })
+      }
     }
     prevReachedRef.current = reached
 
     if (pendingReset && !prevPendingResetRef.current) {
-      if (pendingReset.cause !== 'victory') {
+      const isVictory = pendingReset.cause === 'victory' || pendingReset.hazardType === 'victory'
+      const pos = pendingReset.position || goal || playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
+      const animType = isVictory ? 'goal' : pendingReset.cause
+
+      if (!keyAnimationsRef.current.some(a => a.type === animType && a.keepShowing)) {
         keyAnimationsRef.current.push({
-          row: pendingReset.position.row,
-          col: pendingReset.position.col,
+          row: pos.row,
+          col: pos.col,
           dir: pendingReset.dir,
           startTime: performance.now(),
           duration: 1200,
-          type: pendingReset.cause,
+          type: animType,
           keepShowing: true
         })
       }
@@ -536,8 +542,13 @@ export function GridCanvas({
           // Aura and text based on type
           if (anim.type === 'key' || anim.type === 'goal') {
             const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
-            keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
-            keyGlow.addColorStop(1, 'transparent')
+            if (anim.type === 'goal') {
+              keyGlow.addColorStop(0, 'rgba(16, 185, 129, 0.85)')
+              keyGlow.addColorStop(1, 'transparent')
+            } else {
+              keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
+              keyGlow.addColorStop(1, 'transparent')
+            }
             ctx.fillStyle = keyGlow
             ctx.beginPath()
             ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
