@@ -5,21 +5,26 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendPort = env.VITE_BACKEND_PORT || process.env.PORT || '3000'
+  const backendTarget = `http://localhost:${backendPort}`
 
   return {
-    define: {
-      __BACKEND_PORT__: JSON.stringify(backendPort),
-    },
     plugins: [react(), tailwindcss()],
     server: {
       proxy: {
         '/api': {
-          target: `http://localhost:${backendPort}`,
+          target: backendTarget,
           changeOrigin: true,
         },
         '/join': {
-          target: `http://localhost:${backendPort}`,
+          target: backendTarget,
           changeOrigin: true,
+        },
+        // Game WebSocket connection. Proxied by path (rather than the site
+        // root) so it doesn't collide with Vite's own dev-server sockets.
+        '/ws': {
+          target: backendTarget,
+          changeOrigin: true,
+          ws: true,
         },
       },
     },
