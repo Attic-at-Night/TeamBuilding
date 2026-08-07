@@ -1516,7 +1516,7 @@ class SessionManager {
     });
 
     if (terminalOutcome) {
-      finishGame(session.state, terminalOutcome, terminalReason || 'follow_up_completed');
+      enterSessionOverview(session.state, terminalOutcome);
     } else if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
       session.state.summary.keysCollected = 0;
       session.state.summary.resets = 0;
