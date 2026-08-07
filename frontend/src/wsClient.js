@@ -1,9 +1,11 @@
+const fallbackBackendPort = typeof __BACKEND_PORT__ === 'string' ? __BACKEND_PORT__ : '3000'
+
 function normalizeBackendOrigin(origin) {
   if (origin) {
     return origin.replace(/\/+$/, '')
   }
   if (import.meta.env.DEV) {
-    return 'http://localhost:3000'
+    return `http://localhost:${fallbackBackendPort}`
   }
   return window.location.origin === 'null' ? '' : window.location.origin
 }

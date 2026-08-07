@@ -12,31 +12,14 @@ const { registerSessionRoutes } = require('./src/mvc/session/sessionRoutes');
 const { createSessionSocketController } = require('./src/mvc/session/sessionSocketController');
 const { detectNetworkConnection } = require('./src/network');
 const { getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
+const { getServerPort } = require('./src/serverConfig');
 
 const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
 
-function parsePort(value, fallbackPort = 3000) {
-  if (typeof value !== 'string') {
-    return fallbackPort;
-  }
-
-  const trimmedValue = value.trim();
-  if (!/^\d+$/.test(trimmedValue)) {
-    return fallbackPort;
-  }
-
-  const numericValue = Number.parseInt(trimmedValue, 10);
-  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 65535) {
-    return fallbackPort;
-  }
-
-  return numericValue;
-}
-
-const fallbackPort = 3000;
+const fallbackPort = getServerPort();
 let server;
 const sessionController = new SessionController({
   sessionModel,
