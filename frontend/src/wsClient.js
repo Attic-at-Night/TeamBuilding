@@ -1,6 +1,7 @@
 function normalizeBackendOrigin(origin) {
-  if (origin) {
-    return origin.replace(/\/+$/, '')
+  const trimmedOrigin = typeof origin === 'string' ? origin.trim() : ''
+  if (trimmedOrigin) {
+    return trimmedOrigin.replace(/\/+$/, '')
   }
   // No explicit override: use the origin the page was actually loaded from.
   // In dev this lets Vite's own proxy (see vite.config.js) forward /api, /join,

@@ -19,6 +19,22 @@ const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
 
+const allowedCorsOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || origin === 'null' || allowedCorsOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+  credentials: true,
+};
+
 const fallbackPort = getServerPort();
 let server;
 const sessionController = new SessionController({
@@ -35,7 +51,7 @@ const sessionController = new SessionController({
 });
 
 app.set('trust proxy', true);
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/join' || req.path.endsWith('.html')) {
