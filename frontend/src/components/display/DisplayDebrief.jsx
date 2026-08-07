@@ -1,4 +1,4 @@
-import { Trophy, RotateCcw, AlertTriangle, Key, Clock, XCircle, CheckCircle, Flame, Layers } from 'lucide-react'
+import { Trophy, RotateCcw, AlertTriangle, Key, Clock, XCircle, Flame, Layers } from 'lucide-react'
 import { GameStatus } from '../../protocol'
 import {
   MOI_COLORS,
