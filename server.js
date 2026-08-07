@@ -21,16 +21,23 @@ const sessionModel = new SessionModel({ sessionManager });
 
 const allowedCorsOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean);
+
+const allowNullOrigin = process.env.CORS_ALLOW_NULL_ORIGIN === 'true';
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || origin === 'null' || allowedCorsOrigins.includes(origin)) {
+    const normalizedOrigin = typeof origin === 'string' ? origin.trim().replace(/\/+$/, '') : '';
+    if (!normalizedOrigin) {
       callback(null, true);
       return;
     }
-    callback(null, false);
+    if (normalizedOrigin === 'null') {
+      callback(null, allowNullOrigin);
+      return;
+    }
+    callback(null, allowedCorsOrigins.includes(normalizedOrigin));
   },
   credentials: true,
 };
