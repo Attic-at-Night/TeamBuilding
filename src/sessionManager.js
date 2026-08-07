@@ -20,6 +20,7 @@ const RECENT_EVENT_LIMIT = gameplaySettings.events.recentLimit;
 const DEFAULT_TIMER_DURATION_MS = gameplaySettings.timer.defaultDurationMs;
 const GAMEPLAY_PHASE_DURATIONS_MS = gameplaySettings.timer.gameplayPhaseDurationsMs;
 const RESET_FEEDBACK_MS = gameplaySettings.events.resetFeedbackMs;
+const VICTORY_FEEDBACK_MS = 2500;
 const DEFAULT_ABANDONED_SESSION_TIMEOUT_MS = gameplaySettings.session.abandonedTimeoutMs;
 const MOVEMENT_PAUSE_THRESHOLD_MS = 15 * 1000;
 const DEFAULT_GAME_MODE = GameMode.COMMUNICATION_CLARITY;
@@ -1977,7 +1978,7 @@ class SessionManager {
             hazardType: 'victory',
             position: clonePoint(maze.playerPos),
             message: 'Victory!',
-            expiresAt: Date.now() + 2500,
+            expiresAt: Date.now() + VICTORY_FEEDBACK_MS,
           };
           this.broadcastState(sessionId);
 
@@ -2004,7 +2005,7 @@ class SessionManager {
               finishGame(s.state, 'success', 'goal_reached');
             }
             this.broadcastState(sessionId);
-          }, 2500);
+          }, VICTORY_FEEDBACK_MS);
         }
         return true;
       } else {
