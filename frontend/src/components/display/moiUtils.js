@@ -129,22 +129,25 @@ function getMoiEventsForPhase(log, followingPhase) {
 
   if (phaseStartIdx < 0) return []
 
-  const phaseStartTs = phaseStartEntry?.ts || log[phaseStartIdx]?.ts || 0
+  const phaseStartEntry_ = phaseStartEntry || log[phaseStartIdx]
+  // Use session-relative t if available, otherwise derive from ts
+  const phaseStartTs = phaseStartEntry_?.ts || 0
+  const phaseStartT = typeof phaseStartEntry_?.t === 'number' ? phaseStartEntry_.t : 0
+
+  function toPhaseRelativeT(e) {
+    if (typeof e.t === 'number') return Math.max(0, e.t - phaseStartT)
+    if (typeof e.ts === 'number' && phaseStartTs) return Math.max(0, (e.ts - phaseStartTs) / 1000)
+    return 0
+  }
 
   const phaseEvents = log.slice(phaseStartIdx + 1, phaseEndIdx)
     .filter((e) => classifyMoiEvent(e) !== null)
-    .map((e) => ({
-      ...e,
-      t: typeof e.t === 'number' ? e.t : (e.ts && phaseStartTs ? (e.ts - phaseStartTs) / 1000 : 0)
-    }))
+    .map((e) => ({ ...e, t: toPhaseRelativeT(e) }))
 
   const prePhaseEvents = followingPhase === 1
     ? log.slice(0, phaseStartIdx)
         .filter((e) => e.event === 'mode_set' && classifyMoiEvent(e) !== null)
-        .map((e) => ({
-          ...e,
-          t: typeof e.t === 'number' ? e.t : (e.ts && phaseStartTs ? (e.ts - phaseStartTs) / 1000 : 0)
-        }))
+        .map((e) => ({ ...e, t: toPhaseRelativeT(e) }))
     : []
 
   return [...prePhaseEvents, ...phaseEvents].sort((a, b) => (a.t ?? 0) - (b.t ?? 0))
@@ -159,6 +162,7 @@ function extractRoundsData(log, summary = {}) {
       keysCollected: summary?.keysCollected || 0,
       hazardsHit: summary?.hazardsHit || 0,
       resetsCount: summary?.resetsCount || summary?.resets || 0,
+      possibleKeys: 3 * ((summary?.resetsCount || summary?.resets || 0) + 1),
       moiEvents: [],
       phaseStartT: 0,
     }]
@@ -180,7 +184,9 @@ function extractRoundsData(log, summary = {}) {
     }))
     const keysCount = log.filter((e) => e.event === 'key_pickup').length
     const hazardsCount = log.filter((e) => e.event === 'hazard_hit').length
-    const resetsCount = log.filter((e) => e.event === 'reset').length
+    const resetsCount = Math.max(log.filter((e) => e.event === 'reset').length, summary?.resetsCount || summary?.resets || 0)
+    const lastResetIdx = log.map((e, idx) => e.event === 'reset' ? idx : -1).filter((idx) => idx >= 0).pop() ?? -1
+    const keysAfterLastReset = log.slice(lastResetIdx + 1).filter((e) => e.event === 'key_pickup').length
     const endEvent = [...log].reverse().find((e) => e.event === 'session_end' || e.event === 'timer_expired')
     const lastTs = endEvent?.ts || log[log.length - 1]?.ts || firstTs
     const durationSeconds = Math.max(1, Math.round((lastTs - firstTs) / 1000)) || summary?.durationSeconds || 0
@@ -192,9 +198,10 @@ function extractRoundsData(log, summary = {}) {
       round: 1,
       outcome,
       durationSeconds,
-      keysCollected: Math.max(keysCount, summary?.keysCollected || 0),
+      keysCollected: Math.max(keysAfterLastReset, summary?.keysCollected || 0),
+      possibleKeys: 3 * (resetsCount + 1),
       hazardsHit: Math.max(hazardsCount, summary?.hazardsHit || 0),
-      resetsCount: Math.max(resetsCount, summary?.resetsCount || summary?.resets || 0),
+      resetsCount,
       moiEvents,
       phaseStartT: 0,
     }]
@@ -213,9 +220,12 @@ function extractRoundsData(log, summary = {}) {
     const lastTs = endEvent?.ts || phaseLog[phaseLog.length - 1]?.ts || startTs
     const durationSeconds = Math.max(1, Math.round((lastTs - startTs) / 1000))
 
-    const keysCollected = phaseLog.filter((e) => e.event === 'key_pickup').length
     const hazardsHit = phaseLog.filter((e) => e.event === 'hazard_hit').length
     const resetsCount = phaseLog.filter((e) => e.event === 'reset').length
+    // Count keys collected after the last reset (or from the start if no reset)
+    const lastResetIdx = phaseLog.map((e, idx) => e.event === 'reset' ? idx : -1).filter((idx) => idx >= 0).pop() ?? -1
+    const keysCollected = phaseLog.slice(lastResetIdx + 1).filter((e) => e.event === 'key_pickup').length
+    const possibleKeys = 3 * (resetsCount + 1)
 
     let outcome = 'success'
     if (endEvent) {
@@ -241,6 +251,7 @@ function extractRoundsData(log, summary = {}) {
       outcome,
       durationSeconds,
       keysCollected,
+      possibleKeys,
       hazardsHit,
       resetsCount,
       moiEvents,
