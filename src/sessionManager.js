@@ -722,30 +722,6 @@ function applyHazardOutcome(state, controller, playerId, input, hazardType, posi
     lives: state.summary.livesRemaining,
   });
 
-  if (state.summary.livesRemaining <= 0) {
-    const phaseFlow = state.phaseFlow || createPhaseFlowState();
-    if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
-      const ts = Date.now();
-      const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
-      const terminalReason = `${hazardType}_hazard`;
-      appendLog(state, {
-        ts,
-        event: 'session_end',
-        outcome: 'fail',
-        reason: terminalReason,
-        keys: state.summary.keysCollected,
-        lives: state.summary.livesRemaining,
-      });
-      beginFollowUpPhase(state, currentPhase, ts, {
-        terminalOutcome: 'fail',
-        terminalReason,
-      });
-    } else {
-      finishGame(state, 'fail', `${hazardType}_hazard`);
-    }
-    return false;
-  }
-
   return true;
 }
 
@@ -2224,7 +2200,30 @@ class SessionManager {
         return;
       }
       s.state.pendingReset = null;
-      resetRound(s.state, 'hazard_hit', { hazardType });
+      if (s.state.summary.livesRemaining <= 0) {
+        const phaseFlow = s.state.phaseFlow || createPhaseFlowState();
+        if (s.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+          const endedAt = Date.now();
+          const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+          const terminalReason = `${hazardType}_hazard`;
+          appendLog(s.state, {
+            ts: endedAt,
+            event: 'session_end',
+            outcome: 'fail',
+            reason: terminalReason,
+            keys: s.state.summary.keysCollected,
+            lives: s.state.summary.livesRemaining,
+          });
+          beginFollowUpPhase(s.state, currentPhase, endedAt, {
+            terminalOutcome: 'fail',
+            terminalReason,
+          });
+        } else {
+          finishGame(s.state, 'fail', `${hazardType}_hazard`);
+        }
+      } else {
+        resetRound(s.state, 'hazard_hit', { hazardType });
+      }
       this.broadcastState(sessionId);
     }, RESET_FEEDBACK_MS);
   }

@@ -97,7 +97,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
           title: 'TEAM DEFEATED!',
           subtitle: 'All team lives lost. Review session debrief with trainer.',
           icon: HeartCrack,
-          persistent: true,
+          duration: 5000,
         })
       }
     }
