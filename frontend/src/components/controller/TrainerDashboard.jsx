@@ -306,11 +306,11 @@ export function TrainerDashboard({ stateSync, onSend }) {
               </div>
               <div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 block">Facilitator Session Overview</span>
-                <h2 className="text-xl font-black text-white">3-Round Session Concluded</h2>
+                <h2 className="text-xl font-black text-white">{roundsData.length}-Round Session Concluded</h2>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 border border-indigo-700 text-indigo-200 shadow-sm">
-              3 Rounds Completed
+              {roundsData.length} Rounds Completed
             </span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
