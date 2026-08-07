@@ -455,23 +455,17 @@ export function GridCanvas({
           ctx.globalAlpha = alpha
           ctx.translate(cx, cy)
           
-          // Glowing aura behind key
-          const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, cellSize * 0.5 * scale)
-          glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.8)') // Amber/Gold glow
-          glowGrad.addColorStop(1, 'rgba(234, 179, 8, 0)')
-          ctx.fillStyle = glowGrad
+          // Gold aura
+          const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
+          keyGlow.addColorStop(1, 'transparent')
+          ctx.fillStyle = keyGlow
           ctx.beginPath()
           ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
           ctx.fill()
           
-          // Actual key circle
-          ctx.fillStyle = '#eab308'
-          ctx.beginPath()
-          ctx.arc(0, 0, cellSize * 0.3 * scale, 0, Math.PI * 2)
-          ctx.fill()
-          
-          ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4 * scale)}px sans-serif`
+          ctx.fillStyle = '#000000'
+          ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('🔑', 0, 0)
