@@ -47,6 +47,7 @@ export function GuideView({ roleData, summary, onSendInput, status }) {
           keys={keys}
           goal={goal}
           reached={reached}
+          pendingReset={roleData?.pendingReset}
           fogRadius={null}
           mode="guide"
           accentColor="#3b82f6"

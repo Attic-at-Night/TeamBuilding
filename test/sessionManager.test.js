@@ -202,43 +202,53 @@ test('trainer can set the game mode before the round starts', () => {
 });
 
 test('trainer can change the game mode from session overview before restarting', () => {
-  const manager = new SessionManager();
-  const display = createFakeSocket();
-  const trainer = createFakeSocket();
-  const player = createFakeSocket();
-  const secondPlayer = createFakeSocket();
-  const { sessionId } = manager.createSession('http://localhost:3000');
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const manager = new SessionManager();
+    const display = createFakeSocket();
+    const trainer = createFakeSocket();
+    const player = createFakeSocket();
+    const secondPlayer = createFakeSocket();
+    const { sessionId } = manager.createSession('http://localhost:3000');
 
-  manager.registerDisplay(sessionId, display);
-  assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
-  assert.equal(manager.joinController(sessionId, 'Pat', player), true);
-  assert.equal(manager.joinController(sessionId, 'Sam', secondPlayer), true);
+    manager.registerDisplay(sessionId, display);
+    assert.equal(manager.joinController(sessionId, { name: 'Trainer', requestedTrainer: true }, trainer), true);
+    assert.equal(manager.joinController(sessionId, 'Pat', player), true);
+    assert.equal(manager.joinController(sessionId, 'Sam', secondPlayer), true);
 
-  const trainerId = registerPlayerId(trainer);
-  assert.equal(manager.setGameMode(sessionId, GameMode.COMMUNICATION_CLARITY, { playerId: trainerId, isTrainer: true }), true);
-  assert.equal(manager.startGame(sessionId), true);
+    const trainerId = registerPlayerId(trainer);
+    assert.equal(manager.setGameMode(sessionId, GameMode.COMMUNICATION_CLARITY, { playerId: trainerId, isTrainer: true }), true);
+    assert.equal(manager.startGame(sessionId), true);
 
-  const moverId = registerPlayerId(player);
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    goal: { row: 0, col: 1 },
-  });
-  session.state.summary.keysCollected = 3;
-  session.state.phaseFlow.currentPhase = 3;
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  assert.equal(manager.endFollowUp(sessionId), true);
+    const moverId = registerPlayerId(player);
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      goal: { row: 0, col: 1 },
+    });
+    session.state.summary.keysCollected = 3;
+    session.state.phaseFlow.currentPhase = 3;
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(session.state.status, GameStatus.PLAYING);
+    assert.ok(session.state.pendingReset);
 
-  assert.equal(session.state.status, GameStatus.SESSION_OVERVIEW);
-  assert.equal(manager.setGameMode(sessionId, GameMode.COLLABORATION_TEAMWORK, { playerId: trainerId, isTrainer: true }), true);
-  assert.equal(session.state.gameMode, GameMode.COMMUNICATION_CLARITY);
-  assert.equal(session.state.pendingGameMode, GameMode.COLLABORATION_TEAMWORK);
-  assert.equal(latestState(display).nextGameMode, GameMode.COLLABORATION_TEAMWORK);
-  assert.equal(manager.restartGame(sessionId), true);
+    mock.timers.tick(2500);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+    assert.equal(manager.endFollowUp(sessionId), true);
 
-  const restartedState = manager.sessions.get(sessionId).state;
-  assert.equal(restartedState.status, GameStatus.PLAYING);
-  assert.equal(restartedState.gameMode, GameMode.COLLABORATION_TEAMWORK);
-  assert.equal(latestState(trainer).gameMode, GameMode.COLLABORATION_TEAMWORK);
+    assert.equal(session.state.status, GameStatus.SESSION_OVERVIEW);
+    assert.equal(manager.setGameMode(sessionId, GameMode.COLLABORATION_TEAMWORK, { playerId: trainerId, isTrainer: true }), true);
+    assert.equal(session.state.gameMode, GameMode.COMMUNICATION_CLARITY);
+    assert.equal(session.state.pendingGameMode, GameMode.COLLABORATION_TEAMWORK);
+    assert.equal(latestState(display).nextGameMode, GameMode.COLLABORATION_TEAMWORK);
+    assert.equal(manager.restartGame(sessionId), true);
+
+    const restartedState = manager.sessions.get(sessionId).state;
+    assert.equal(restartedState.status, GameStatus.PLAYING);
+    assert.equal(restartedState.gameMode, GameMode.COLLABORATION_TEAMWORK);
+    assert.equal(latestState(trainer).gameMode, GameMode.COLLABORATION_TEAMWORK);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('communication mode preserves roles when restarting a round', () => {
@@ -407,7 +417,7 @@ test('startGame assigns gameplay roles while trainer remains observer', () => {
 
   assert.ok(latestState(mover).roleData.maze);
   assert.equal(latestState(mover).roleData.maze.cells, undefined);
-  assert.equal(latestState(mover).summary.livesRemaining, undefined);
+  assert.equal(latestState(mover).summary.livesRemaining, 3);
 
   assert.ok(Array.isArray(latestState(guide).roleData.hazards));
   assert.ok(Array.isArray(latestState(guide).roleData.ghosts));
@@ -757,122 +767,150 @@ test('repeated resets advance maze variant into hard mode without ghosts', () =>
 });
 
 test('phase 1 goal completion advances to phase 2 after follow-up ends', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    goal: { row: 0, col: 1 },
-  });
-  session.state.summary.keysCollected = 3;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      goal: { row: 0, col: 1 },
+    });
+    session.state.summary.keysCollected = 3;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
-  const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
-  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
-  assert.equal(sync.state.phaseFlow.followingPhase, 1);
-  assert.equal(sync.state.phaseFlow.terminalOutcome, null);
-  assert.equal(sync.state.phaseFlow.terminalReason, null);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
-  assert.equal(manager.endFollowUp(sessionId), true);
+    const sync = display.sent.at(-1);
+    assert.equal(sync.state.status, GameStatus.PLAYING);
+    assert.ok(sync.state.pendingReset);
 
-  const phase2State = display.sent.at(-1).state;
-  assert.equal(phase2State.status, GameStatus.PLAYING);
-  assert.equal(phase2State.phaseFlow.phaseType, 'gameplay');
-  assert.equal(phase2State.phaseFlow.currentPhase, 2);
-  assert.equal(phase2State.summary.outcome, null);
-  // Per-phase state must be fresh: keys reset, maze generated, goal not pre-reached
-  assert.equal(phase2State.summary.keysCollected, 0);
-  assert.ok(phase2State.displayMaze, 'a new maze must be present for phase 2');
-  assert.equal(phase2State.displayMaze.reached, false);
-  assert.ok(phase2State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
-  // Player must be able to provide input immediately
-  assert.equal(
-    manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }),
-    true,
-    'input must be accepted in phase 2',
-  );
+    mock.timers.tick(2500);
+    const followUpState = display.sent.at(-1).state;
+    assert.equal(followUpState.status, GameStatus.FOLLOW_UP);
+    assert.equal(followUpState.phaseFlow.phaseType, 'follow_up');
+    assert.equal(followUpState.phaseFlow.followingPhase, 1);
+    assert.equal(followUpState.phaseFlow.terminalOutcome, null);
+    assert.equal(followUpState.phaseFlow.terminalReason, null);
+    assert.ok(followUpState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
+    assert.equal(manager.endFollowUp(sessionId), true);
+
+    const phase2State = display.sent.at(-1).state;
+    assert.equal(phase2State.status, GameStatus.PLAYING);
+    assert.equal(phase2State.phaseFlow.phaseType, 'gameplay');
+    assert.equal(phase2State.phaseFlow.currentPhase, 2);
+    assert.equal(phase2State.summary.outcome, null);
+    // Per-phase state must be fresh: keys reset, maze generated, goal not pre-reached
+    assert.equal(phase2State.summary.keysCollected, 0);
+    assert.ok(phase2State.displayMaze, 'a new maze must be present for phase 2');
+    assert.equal(phase2State.displayMaze.reached, false);
+    assert.ok(phase2State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
+    // Player must be able to provide input immediately
+    assert.equal(
+      manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }),
+      true,
+      'input must be accepted in phase 2',
+    );
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('phase 2 goal completion advances to phase 3 after follow-up ends', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.phaseFlow.currentPhase = 2;
-  session.state.maze = makeOpenMaze({
-    goal: { row: 0, col: 1 },
-  });
-  session.state.summary.keysCollected = 3;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.phaseFlow.currentPhase = 2;
+    session.state.maze = makeOpenMaze({
+      goal: { row: 0, col: 1 },
+    });
+    session.state.summary.keysCollected = 3;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
-  const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
-  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
-  assert.equal(sync.state.phaseFlow.followingPhase, 2);
-  assert.equal(sync.state.phaseFlow.terminalOutcome, null);
-  assert.equal(sync.state.phaseFlow.terminalReason, null);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
-  assert.equal(manager.endFollowUp(sessionId), true);
+    const sync = display.sent.at(-1);
+    assert.equal(sync.state.status, GameStatus.PLAYING);
+    assert.ok(sync.state.pendingReset);
 
-  const phase3State = display.sent.at(-1).state;
-  assert.equal(phase3State.status, GameStatus.PLAYING);
-  assert.equal(phase3State.phaseFlow.phaseType, 'gameplay');
-  assert.equal(phase3State.phaseFlow.currentPhase, 3);
-  assert.equal(phase3State.summary.outcome, null);
-  // Per-phase state must be fresh
-  assert.equal(phase3State.summary.keysCollected, 0);
-  assert.ok(phase3State.displayMaze, 'a new maze must be present for phase 3');
-  assert.equal(phase3State.displayMaze.reached, false);
-  assert.ok(phase3State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
+    mock.timers.tick(2500);
+    const followUpState = display.sent.at(-1).state;
+    assert.equal(followUpState.status, GameStatus.FOLLOW_UP);
+    assert.equal(followUpState.phaseFlow.phaseType, 'follow_up');
+    assert.equal(followUpState.phaseFlow.followingPhase, 2);
+    assert.equal(followUpState.phaseFlow.terminalOutcome, null);
+    assert.equal(followUpState.phaseFlow.terminalReason, null);
+    assert.ok(followUpState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'goal_reached'));
+    assert.equal(manager.endFollowUp(sessionId), true);
+
+    const phase3State = display.sent.at(-1).state;
+    assert.equal(phase3State.status, GameStatus.PLAYING);
+    assert.equal(phase3State.phaseFlow.phaseType, 'gameplay');
+    assert.equal(phase3State.phaseFlow.currentPhase, 3);
+    assert.equal(phase3State.summary.outcome, null);
+    // Per-phase state must be fresh
+    assert.equal(phase3State.summary.keysCollected, 0);
+    assert.ok(phase3State.displayMaze, 'a new maze must be present for phase 3');
+    assert.equal(phase3State.displayMaze.reached, false);
+    assert.ok(phase3State.displayMaze.keys.every((k) => !k.collected), 'all keys must be uncollected at phase start');
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('roles swap on round success in collaboration and teamwork mode', () => {
-  const manager = new SessionManager();
-  const display = createFakeSocket();
-  const session = manager.createSession('http://localhost:3000');
-  manager.registerDisplay(session.sessionId, display);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const manager = new SessionManager();
+    const display = createFakeSocket();
+    const session = manager.createSession('http://localhost:3000');
+    manager.registerDisplay(session.sessionId, display);
 
-  const trainer = createFakeSocket();
-  const trainerJoinResult = manager.joinController(session.sessionId, { name: 'Trainer', requestedTrainer: true }, trainer);
-  assert.equal(trainerJoinResult, true);
+    const trainer = createFakeSocket();
+    const trainerJoinResult = manager.joinController(session.sessionId, { name: 'Trainer', requestedTrainer: true }, trainer);
+    assert.equal(trainerJoinResult, true);
 
-  const controllers = [];
-  for (let i = 0; i < 2; i += 1) {
-    const socket = createFakeSocket();
-    controllers.push(socket);
-    assert.equal(manager.joinController(session.sessionId, `P${i + 1}`, socket), true);
-  }
+    const controllers = [];
+    for (let i = 0; i < 2; i += 1) {
+      const socket = createFakeSocket();
+      controllers.push(socket);
+      assert.equal(manager.joinController(session.sessionId, `P${i + 1}`, socket), true);
+    }
 
-  const trainerPlayerId = registerPlayerId(trainer);
-  const sessionState = manager.sessions.get(session.sessionId);
-  assert.equal(manager.setGameMode(session.sessionId, GameMode.COLLABORATION_TEAMWORK, {
-    playerId: trainerPlayerId,
-    isTrainer: true,
-  }), true);
-  assert.equal(sessionState.state.gameMode, GameMode.COLLABORATION_TEAMWORK);
+    const trainerPlayerId = registerPlayerId(trainer);
+    const sessionState = manager.sessions.get(session.sessionId);
+    assert.equal(manager.setGameMode(session.sessionId, GameMode.COLLABORATION_TEAMWORK, {
+      playerId: trainerPlayerId,
+      isTrainer: true,
+    }), true);
+    assert.equal(sessionState.state.gameMode, GameMode.COLLABORATION_TEAMWORK);
 
-  assert.equal(manager.startGame(session.sessionId), true);
+    assert.equal(manager.startGame(session.sessionId), true);
 
-  const initialRoles = { ...sessionState.state.roles };
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const initialRoles = { ...sessionState.state.roles };
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
 
-  sessionState.state.maze = makeOpenMaze({
-    goal: { row: 0, col: 1 },
-  });
-  sessionState.state.summary.keysCollected = 3;
+    sessionState.state.maze = makeOpenMaze({
+      goal: { row: 0, col: 1 },
+    });
+    sessionState.state.summary.keysCollected = 3;
 
-  // Complete phase 1
-  assert.equal(manager.handleInput(session.sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  assert.equal(manager.endFollowUp(session.sessionId), true);
+    // Complete phase 1
+    assert.equal(manager.handleInput(session.sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(sessionState.state.status, GameStatus.PLAYING);
+    assert.ok(sessionState.state.pendingReset);
+    mock.timers.tick(2500);
+    assert.equal(manager.endFollowUp(session.sessionId), true);
 
-  const phase2State = display.sent.at(-1).state;
-  assert.equal(phase2State.phaseFlow.currentPhase, 2);
+    const phase2State = display.sent.at(-1).state;
+    assert.equal(phase2State.phaseFlow.currentPhase, 2);
 
-  // Check that roles changed / swapped
-  const newRoles = sessionState.state.roles;
-  for (const player of sessionState.state.players) {
-    assert.notDeepEqual(newRoles[player.id], initialRoles[player.id], `Role for player ${player.id} should have swapped in phase 2`);
+    // Check that roles changed / swapped
+    const newRoles = sessionState.state.roles;
+    for (const player of sessionState.state.players) {
+      assert.notDeepEqual(newRoles[player.id], initialRoles[player.id], `Role for player ${player.id} should have swapped in phase 2`);
+    }
+  } finally {
+    mock.timers.reset();
   }
 });
 
@@ -910,107 +948,141 @@ test('key-seer only sees exit after collecting all keys', () => {
 });
 
 test('lives-zero follow-up ends the session as a failure', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-  });
-  session.state.summary.livesRemaining = 1;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+    });
+    session.state.summary.livesRemaining = 1;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
 
-  const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.FOLLOW_UP);
-  assert.equal(sync.state.phaseFlow.phaseType, 'follow_up');
-  assert.equal(sync.state.phaseFlow.followingPhase, 1);
-  assert.equal(sync.state.phaseFlow.terminalOutcome, 'fail');
-  assert.equal(sync.state.phaseFlow.terminalReason, 'grid_hazard');
-  assert.equal(sync.state.summary.livesRemaining, 0);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'session_end' && entry.outcome === 'fail'));
-  assert.equal(manager.endFollowUp(sessionId), true);
+    const sync = display.sent.at(-1);
+    assert.equal(sync.state.status, GameStatus.PLAYING);
+    assert.ok(sync.state.pendingReset);
 
-  const finalState = display.sent.at(-1).state;
-  assert.equal(finalState.status, GameStatus.ENDED);
-  assert.equal(finalState.summary.outcome, 'fail');
-  assert.equal(finalState.summary.livesRemaining, 0);
-  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
+    mock.timers.tick(5000);
+    const followUpState = display.sent.at(-1).state;
+    assert.equal(followUpState.status, GameStatus.FOLLOW_UP);
+    assert.equal(followUpState.phaseFlow.phaseType, 'follow_up');
+    assert.equal(followUpState.phaseFlow.followingPhase, 1);
+    assert.equal(followUpState.phaseFlow.terminalOutcome, 'fail');
+    assert.equal(followUpState.phaseFlow.terminalReason, 'grid_hazard');
+    assert.equal(followUpState.summary.livesRemaining, 0);
+    assert.ok(followUpState.log.some((entry) => entry.event === 'session_end' && entry.outcome === 'fail'));
+    assert.equal(manager.endFollowUp(sessionId), true);
+
+    const finalState = display.sent.at(-1).state;
+    assert.equal(finalState.status, GameStatus.SESSION_OVERVIEW);
+    assert.equal(finalState.summary.outcome, 'fail');
+    assert.equal(finalState.summary.livesRemaining, 0);
+    assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('ending terminal follow-up preserves terminal outcome instead of advancing phases', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-  });
-  session.state.summary.livesRemaining = 1;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+    });
+    session.state.summary.livesRemaining = 1;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
-  assert.equal(manager.endFollowUp(sessionId), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.PLAYING);
 
-  const finalState = display.sent.at(-1).state;
-  assert.equal(finalState.status, GameStatus.ENDED);
-  assert.equal(finalState.summary.outcome, 'fail');
-  assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
+    mock.timers.tick(5000);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+    assert.equal(manager.endFollowUp(sessionId), true);
+
+    const finalState = display.sent.at(-1).state;
+    assert.equal(finalState.status, GameStatus.SESSION_OVERVIEW);
+    assert.equal(finalState.summary.outcome, 'fail');
+    assert.ok(finalState.log.some((entry) => entry.event === 'session_end' && entry.reason === 'grid_hazard'));
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('ended sessions can restart into a fresh round', () => {
-  const { manager, display, trainer, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    hazards: [{ row: 0, col: 1 }],
-  });
-  session.state.summary.livesRemaining = 1;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, trainer, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      hazards: [{ row: 0, col: 1 }],
+    });
+    session.state.summary.livesRemaining = 1;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
-  assert.equal(display.sent.at(-1).state.phaseFlow.terminalOutcome, 'fail');
-  assert.equal(manager.endFollowUp(sessionId), true);
-  assert.equal(latestState(trainer).canRestart, true);
-  assert.equal(manager.restartGame(sessionId), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.PLAYING);
 
-  const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.PLAYING);
-  assert.equal(sync.state.summary.outcome, null);
-  assert.equal(sync.state.summary.keysCollected, 0);
-  assert.equal(sync.state.summary.resets, 0);
-  assert.ok(sync.state.log.some((entry) => entry.event === 'game_start'));
+    mock.timers.tick(5000);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+    assert.equal(display.sent.at(-1).state.phaseFlow.terminalOutcome, 'fail');
+    assert.equal(manager.endFollowUp(sessionId), true);
+    assert.equal(latestState(trainer).canRestart, true);
+    assert.equal(manager.restartGame(sessionId), true);
+
+    const sync = display.sent.at(-1);
+    assert.equal(sync.state.status, GameStatus.PLAYING);
+    assert.equal(sync.state.summary.outcome, null);
+    assert.equal(sync.state.summary.keysCollected, 0);
+    assert.equal(sync.state.summary.resets, 0);
+    assert.ok(sync.state.log.some((entry) => entry.event === 'game_start'));
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('final follow-up transitions into session overview before a manual restart', () => {
-  const { manager, display, controllers, sessionId } = bootstrapGame(2);
-  const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
-  const session = manager.sessions.get(sessionId);
-  session.state.maze = makeOpenMaze({
-    goal: { row: 0, col: 1 },
-  });
-  session.state.summary.keysCollected = 3;
-  session.state.phaseFlow.currentPhase = 3;
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { manager, display, controllers, sessionId } = bootstrapGame(2);
+    const moverId = registerPlayerId(findControllerByRole(controllers, MazeRole.MOVER));
+    const session = manager.sessions.get(sessionId);
+    session.state.maze = makeOpenMaze({
+      goal: { row: 0, col: 1 },
+    });
+    session.state.summary.keysCollected = 3;
+    session.state.phaseFlow.currentPhase = 3;
 
-  assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
-  assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
-  assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
-  assert.equal(manager.endFollowUp(sessionId), true);
+    assert.equal(manager.handleInput(sessionId, moverId, { action: 'move', dir: 'e' }), true);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.PLAYING);
 
-  const sync = display.sent.at(-1);
-  assert.equal(sync.state.status, GameStatus.SESSION_OVERVIEW);
-  assert.equal(sync.state.phaseFlow.phaseType, 'session_overview');
-  assert.equal(sync.state.summary.outcome, 'success');
-  assert.equal(sync.state.summary.keysCollected, 3);
-  assert.equal(sync.state.summary.resets, 0);
-  assert.equal(manager.restartGame(sessionId), true);
+    mock.timers.tick(2500);
+    assert.equal(display.sent.at(-1).state.status, GameStatus.FOLLOW_UP);
+    assert.equal(display.sent.at(-1).state.phaseFlow.followingPhase, 3);
+    assert.equal(manager.endFollowUp(sessionId), true);
 
-  const restartedSync = display.sent.at(-1);
-  assert.equal(restartedSync.state.status, GameStatus.PLAYING);
-  assert.equal(restartedSync.state.phaseFlow.phaseType, 'gameplay');
-  assert.equal(restartedSync.state.phaseFlow.currentPhase, 1);
-  assert.equal(restartedSync.state.summary.outcome, null);
-  assert.equal(restartedSync.state.summary.keysCollected, 0);
-  assert.equal(restartedSync.state.summary.resets, 0);
-  assert.ok(restartedSync.state.log.some((entry) => entry.event === 'game_start'));
+    const sync = display.sent.at(-1);
+    assert.equal(sync.state.status, GameStatus.SESSION_OVERVIEW);
+    assert.equal(sync.state.phaseFlow.phaseType, 'session_overview');
+    assert.equal(sync.state.summary.outcome, 'success');
+    assert.equal(sync.state.summary.keysCollected, 3);
+    assert.equal(sync.state.summary.resets, 0);
+    assert.equal(manager.restartGame(sessionId), true);
+
+    const restartedSync = display.sent.at(-1);
+    assert.equal(restartedSync.state.status, GameStatus.PLAYING);
+    assert.equal(restartedSync.state.phaseFlow.phaseType, 'gameplay');
+    assert.equal(restartedSync.state.phaseFlow.currentPhase, 1);
+    assert.equal(restartedSync.state.summary.outcome, null);
+    assert.equal(restartedSync.state.summary.keysCollected, 0);
+    assert.equal(restartedSync.state.summary.resets, 0);
+    assert.ok(restartedSync.state.log.some((entry) => entry.event === 'game_start'));
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test('startTimer initializes running timer state', () => {

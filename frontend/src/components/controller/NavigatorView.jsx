@@ -40,6 +40,7 @@ export function NavigatorView({ roleData, summary }) {
           ghosts={ghosts}
           keys={keys}
           goal={goal}
+          pendingReset={roleData?.pendingReset}
           fogRadius={null}
           mode="navigator"
           accentColor="#3b82f6"

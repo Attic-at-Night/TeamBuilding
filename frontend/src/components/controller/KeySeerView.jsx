@@ -42,6 +42,7 @@ export function KeySeerView({ roleData, summary, onSendInput, status }) {
           hazards={hazards}
           ghosts={ghosts}
           reached={reached}
+          pendingReset={roleData?.pendingReset}
           fogRadius={null}
           mode="key-seer"
           accentColor="#3b82f6"

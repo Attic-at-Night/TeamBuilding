@@ -47,6 +47,7 @@ export function MoverView({ roleData, summary, timer, onSendInput, status }) {
           ghosts={roleData?.ghosts}
           lifePickups={roleData?.maze?.lifePickups}
           reached={roleData?.maze?.reached}
+          pendingReset={roleData?.pendingReset}
           fogRadius={null}
           mode="mover"
           accentColor="#3b82f6"

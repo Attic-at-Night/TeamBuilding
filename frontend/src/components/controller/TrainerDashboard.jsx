@@ -183,7 +183,8 @@ export function TrainerDashboard({ stateSync, onSend }) {
     const moiEvents = getMoiEventsForPhase(log, followingPhase)
     const focusedEvent = moiEvents.find((e) => e.eventId === followUpFocusedEventId) || moiEvents[0] || null
     const focusedIndex = moiEvents.findIndex((e) => e.eventId === focusedEvent?.eventId)
-    const isLastPhase = !Number.isInteger(followingPhase) || followingPhase >= totalGameplayPhases
+    const terminalOutcome = phaseFlow?.terminalOutcome || stateSync?.summary?.outcome || null
+    const isLastPhase = Boolean(terminalOutcome) || !Number.isInteger(followingPhase) || followingPhase >= totalGameplayPhases
     const phaseStartEntry = log.find(
       (e) => e.event === 'phase_start' && e.phaseType === 'gameplay' && e.phase === followingPhase
     )
@@ -563,6 +564,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
             ghosts={trainerMaze?.ghosts}
             lifePickups={trainerMaze?.lifePickups}
             reached={trainerMaze?.reached}
+            pendingReset={stateSync?.pendingReset}
             fogRadius={null}
             mode="trainer"
             accentColor="#3b82f6"
@@ -684,6 +686,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
               ghosts={pRoleData?.ghosts}
               lifePickups={pRoleData?.lifePickups}
               reached={pRoleData?.maze?.reached}
+              pendingReset={pRoleData?.pendingReset}
               fogRadius={null}
               mode={selectedPerspective}
               accentColor="#3b82f6"

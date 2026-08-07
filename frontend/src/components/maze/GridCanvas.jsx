@@ -16,7 +16,8 @@ export function GridCanvas({
   hazards = [],
   ghosts = [],
   lifePickups = [],
-  reached = [],
+  reached = false,
+  pendingReset = null,
   fogRadius = null, // null = no fog, number = distance from player in cells
   mode = 'spectator', // 'mover', 'guide', 'key-seer', 'navigator', 'trainer', 'spectator'
   accentColor = '#3b82f6',
@@ -25,6 +26,8 @@ export function GridCanvas({
   const animPlayerPosRef = useRef(null)
   const propsRef = useRef({})
   const prevKeysCollectedRef = useRef(keysCollected)
+  const prevReachedRef = useRef(reached)
+  const prevPendingResetRef = useRef(pendingReset)
   const keyAnimationsRef = useRef([])
 
   // Keep latest props available to the requestAnimationFrame loop without triggering frame teardowns
@@ -39,11 +42,50 @@ export function GridCanvas({
           row: p.row,
           col: p.col,
           startTime: performance.now(),
-          duration: 1200 // ms
+          duration: 1200, // ms
+          type: 'key'
         })
       }
     }
     prevKeysCollectedRef.current = keysCollected
+    
+    if (typeof reached === 'boolean' && reached && !prevReachedRef.current) {
+      const p = goal || playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
+      if (!keyAnimationsRef.current.some(a => a.type === 'goal')) {
+        keyAnimationsRef.current.push({
+          row: p.row,
+          col: p.col,
+          startTime: performance.now(),
+          duration: 1200,
+          type: 'goal',
+          keepShowing: false
+        })
+      }
+    }
+    prevReachedRef.current = reached
+
+    if (pendingReset && !prevPendingResetRef.current) {
+      const isVictory = pendingReset.cause === 'victory' || pendingReset.hazardType === 'victory'
+      const pos = pendingReset.position || goal || playerPos || animPlayerPosRef.current || { row: 0, col: 0 }
+      const animType = isVictory ? 'goal' : pendingReset.cause
+
+      if (!keyAnimationsRef.current.some(a => a.type === animType && a.keepShowing)) {
+        keyAnimationsRef.current.push({
+          row: pos.row,
+          col: pos.col,
+          dir: pendingReset.dir,
+          startTime: performance.now(),
+          duration: 1200,
+          type: animType,
+          keepShowing: true
+        })
+      }
+    }
+    if (!pendingReset && prevPendingResetRef.current) {
+      // Clear out any keepShowing animations
+      keyAnimationsRef.current = keyAnimationsRef.current.filter(anim => !anim.keepShowing)
+    }
+    prevPendingResetRef.current = pendingReset
 
     propsRef.current = {
       width,
@@ -56,6 +98,7 @@ export function GridCanvas({
       ghosts,
       lifePickups,
       reached,
+      pendingReset,
       fogRadius,
       mode,
       accentColor,
@@ -84,7 +127,8 @@ export function GridCanvas({
         hazards = [],
         ghosts = [],
         lifePickups = [],
-        reached = [],
+        reached = false,
+        pendingReset = null,
         fogRadius = null,
         accentColor = '#3b82f6',
       } = props
@@ -246,19 +290,16 @@ export function GridCanvas({
 
           // Pulsing warning ring
           const hazardPulse = Math.sin(tSec * 6 + h.row) * 2
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'
-          ctx.lineWidth = 2
+          const hazardGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, r + 4 + hazardPulse)
+          hazardGlow.addColorStop(0, 'rgba(239, 68, 68, 0.5)')
+          hazardGlow.addColorStop(1, 'transparent')
+          ctx.fillStyle = hazardGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r + 2 + hazardPulse, 0, Math.PI * 2)
-          ctx.stroke()
-
-          ctx.fillStyle = '#ef4444' // Bright Red
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 4 + hazardPulse, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('⚡', cx, cy)
@@ -275,21 +316,16 @@ export function GridCanvas({
           const r = cellSize * 0.38
 
           // Eerie purple glow
-          const ghostGlow = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r + 6)
-          ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.8)')
+          const ghostGlow = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r + 8)
+          ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.7)')
           ghostGlow.addColorStop(1, 'transparent')
           ctx.fillStyle = ghostGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r + 6, 0, Math.PI * 2)
-          ctx.fill()
-
-          ctx.fillStyle = '#a855f7' // Purple Ghost Body
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 8, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.45)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.65)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('👻', cx, cy)
@@ -305,21 +341,16 @@ export function GridCanvas({
           const cy = k.row * cellSize + cellSize / 2 + keyFloat
 
           // Gold aura
-          const keyGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, cellSize * 0.4)
-          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.6)')
+          const keyGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, cellSize * 0.5)
+          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
           keyGlow.addColorStop(1, 'transparent')
           ctx.fillStyle = keyGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, cellSize * 0.4, 0, Math.PI * 2)
-          ctx.fill()
-
-          ctx.fillStyle = '#eab308' // Amber Gold
-          ctx.beginPath()
-          ctx.arc(cx, cy, cellSize * 0.3, 0, Math.PI * 2)
+          ctx.arc(cx, cy, cellSize * 0.5, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#000000'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('🔑', cx, cy)
@@ -335,13 +366,16 @@ export function GridCanvas({
           const cy = l.row * cellSize + cellSize / 2
           const r = cellSize * 0.3 * (1 + heartbeat)
 
-          ctx.fillStyle = '#22c55e'
+          const lifeGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, r + 6)
+          lifeGlow.addColorStop(0, 'rgba(34, 197, 94, 0.6)')
+          lifeGlow.addColorStop(1, 'transparent')
+          ctx.fillStyle = lifeGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 6, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('❤️', cx, cy)
@@ -442,49 +476,124 @@ export function GridCanvas({
         ctx.fillText('🏃', cx, cy + floatY)
       }
 
-      // 13. Draw Key Pickup Animations (Rendered on top of player)
+      // 13. Draw Key Pickup and Reset Animations (Rendered on top of player)
       for (let i = keyAnimationsRef.current.length - 1; i >= 0; i--) {
         const anim = keyAnimationsRef.current[i]
         const elapsed = time - anim.startTime
-        if (elapsed > anim.duration) {
+        if (elapsed > anim.duration && !anim.keepShowing) {
           keyAnimationsRef.current.splice(i, 1)
           continue
         }
         if (isVisible(anim.row, anim.col)) {
-          const progress = elapsed / anim.duration
-          const scale = 1 + progress * 1.5
-          const alpha = 1 - progress
-          
-          // Add a slight upward float effect
-          const floatUp = progress * cellSize * 0.5
+          // Calculate scale, floatUp, and alpha based on animation phase
+          let scale = 1.0
+          let floatUp = 0
+          let alpha = 1.0
 
-          const cx = anim.col * cellSize + cellSize / 2
-          const cy = anim.row * cellSize + cellSize / 2 - floatUp
+          const scaleUpDuration = 250 // ms to scale up from 1.0 to 1.5
+          const totalDuration = anim.duration || 1200
+
+          if (elapsed < scaleUpDuration) {
+            // Phase 1: Rapid Scale Up + Float Up, fully opaque
+            const progress = elapsed / scaleUpDuration
+            const easeOut = 1 - Math.pow(1 - progress, 2)
+            scale = 1.0 + easeOut * 0.5
+            floatUp = easeOut * cellSize * 0.35
+            alpha = 1.0
+          } else if (anim.keepShowing || elapsed < totalDuration - 400) {
+            // Phase 2: Hold & Gentle Pulsing at top, fully opaque
+            const holdElapsed = elapsed - scaleUpDuration
+            const pulse = Math.sin(holdElapsed / 120) * 0.12
+            scale = 1.5 + pulse
+            floatUp = cellSize * 0.35
+            alpha = 1.0
+          } else {
+            // Phase 3: Smooth Fade Out at the end
+            const fadeElapsed = elapsed - (totalDuration - 400)
+            const fadeProgress = Math.min(fadeElapsed / 400, 1)
+            const holdElapsed = elapsed - scaleUpDuration
+            const pulse = Math.sin(holdElapsed / 120) * 0.12
+            scale = 1.5 + pulse
+            floatUp = cellSize * 0.35 + fadeProgress * cellSize * 0.2
+            alpha = 1.0 - fadeProgress
+          }
+
+          let cx = anim.col * cellSize + cellSize / 2
+          let cy = anim.row * cellSize + cellSize / 2
+
+          if (anim.type === 'wall' && anim.dir) {
+            if (anim.dir === 'n') {
+              cy = anim.row * cellSize
+            } else if (anim.dir === 's') {
+              cy = (anim.row + 1) * cellSize
+            } else if (anim.dir === 'e') {
+              cx = (anim.col + 1) * cellSize
+            } else if (anim.dir === 'w') {
+              cx = anim.col * cellSize
+            }
+          }
+
+          cy -= floatUp
 
           ctx.save()
           ctx.globalAlpha = alpha
           ctx.translate(cx, cy)
           
-          // Glowing aura behind key
-          const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, cellSize * 0.5 * scale)
-          glowGrad.addColorStop(0, 'rgba(234, 179, 8, 0.8)') // Amber/Gold glow
-          glowGrad.addColorStop(1, 'rgba(234, 179, 8, 0)')
-          ctx.fillStyle = glowGrad
-          ctx.beginPath()
-          ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
-          ctx.fill()
-          
-          // Actual key circle
-          ctx.fillStyle = '#eab308'
-          ctx.beginPath()
-          ctx.arc(0, 0, cellSize * 0.3 * scale, 0, Math.PI * 2)
-          ctx.fill()
-          
-          ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4 * scale)}px sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText('🔑', 0, 0)
+          // Aura and text based on type
+          if (anim.type === 'key' || anim.type === 'goal') {
+            const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            if (anim.type === 'goal') {
+              keyGlow.addColorStop(0, 'rgba(16, 185, 129, 0.85)')
+              keyGlow.addColorStop(1, 'transparent')
+            } else {
+              keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
+              keyGlow.addColorStop(1, 'transparent')
+            }
+            ctx.fillStyle = keyGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#000000'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(anim.type === 'goal' ? '🏁' : '🔑', 0, 0)
+          } else if (anim.type === 'wall') {
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('🧱', 0, 0)
+          } else if (anim.type === 'ghost') {
+            const ghostGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.7)')
+            ghostGlow.addColorStop(1, 'transparent')
+            ctx.fillStyle = ghostGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('👻', 0, 0)
+          } else if (anim.type === 'grid' || anim.type === 'hazard') {
+            const hazardGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
+            hazardGlow.addColorStop(0, 'rgba(239, 68, 68, 0.5)')
+            hazardGlow.addColorStop(1, 'transparent')
+            ctx.fillStyle = hazardGlow
+            ctx.beginPath()
+            ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
+            ctx.fill()
+            
+            ctx.fillStyle = '#ffffff'
+            ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('⚡', 0, 0)
+          }
           
           ctx.restore()
         }
