@@ -1276,6 +1276,10 @@ class SessionManager {
     session.state.trainerHighlightEventIds = [];
     session.state.pendingReset = null;
     session.state.followUpFocusedEventId = null;
+    session.state.roles = {};
+    session.state.maze = null;
+    session.state.aiSuggestionDecisions = {};
+    session.state.pendingGameMode = null;
     session.state.summary = createSummaryState(START_LIVES);
     session.state.phaseFlow = createPhaseFlowState({ phaseType: 'lobby' });
     session.state.timer = createTimerState();
