@@ -67,6 +67,7 @@ export function GridCanvas({
         keyAnimationsRef.current.push({
           row: pendingReset.position.row,
           col: pendingReset.position.col,
+          dir: pendingReset.dir,
           startTime: performance.now(),
           duration: 1200,
           type: pendingReset.cause,
@@ -511,8 +512,22 @@ export function GridCanvas({
             alpha = 1.0 - fadeProgress
           }
 
-          const cx = anim.col * cellSize + cellSize / 2
-          const cy = anim.row * cellSize + cellSize / 2 - floatUp
+          let cx = anim.col * cellSize + cellSize / 2
+          let cy = anim.row * cellSize + cellSize / 2
+
+          if (anim.type === 'wall' && anim.dir) {
+            if (anim.dir === 'n') {
+              cy = anim.row * cellSize
+            } else if (anim.dir === 's') {
+              cy = (anim.row + 1) * cellSize
+            } else if (anim.dir === 'e') {
+              cx = (anim.col + 1) * cellSize
+            } else if (anim.dir === 'w') {
+              cx = anim.col * cellSize
+            }
+          }
+
+          cy -= floatUp
 
           ctx.save()
           ctx.globalAlpha = alpha

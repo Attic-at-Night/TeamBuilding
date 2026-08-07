@@ -1943,7 +1943,7 @@ class SessionManager {
       const wallPos = clonePoint(moveResult.from || maze.playerPos);
       const needsReset = applyHazardOutcome(state, controller, playerId, input, 'wall', wallPos);
       if (needsReset) {
-        this._applyResetFeedback(sessionId, 'wall', wallPos);
+        this._applyResetFeedback(sessionId, 'wall', wallPos, input?.dir);
       } else {
         this.broadcastState(sessionId);
       }
@@ -2195,7 +2195,7 @@ class SessionManager {
     }
   }
 
-  _applyResetFeedback(sessionId, hazardType, position) {
+  _applyResetFeedback(sessionId, hazardType, position, dir = null) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return;
@@ -2211,6 +2211,7 @@ class SessionManager {
       cause: hazardType,
       hazardType,
       position: position || null,
+      dir: dir || null,
       message,
       expiresAt: Date.now() + RESET_FEEDBACK_MS,
     };
