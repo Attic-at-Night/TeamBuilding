@@ -563,6 +563,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
             ghosts={trainerMaze?.ghosts}
             lifePickups={trainerMaze?.lifePickups}
             reached={trainerMaze?.reached}
+            pendingReset={stateSync?.pendingReset}
             fogRadius={null}
             mode="trainer"
             accentColor="#3b82f6"
@@ -684,6 +685,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
               ghosts={pRoleData?.ghosts}
               lifePickups={pRoleData?.lifePickups}
               reached={pRoleData?.maze?.reached}
+              pendingReset={pRoleData?.pendingReset}
               fogRadius={null}
               mode={selectedPerspective}
               accentColor="#3b82f6"

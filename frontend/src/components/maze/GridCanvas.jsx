@@ -27,6 +27,7 @@ export function GridCanvas({
   const propsRef = useRef({})
   const prevKeysCollectedRef = useRef(keysCollected)
   const prevReachedRef = useRef(reached)
+  const prevPendingResetRef = useRef(pendingReset)
   const keyAnimationsRef = useRef([])
 
   // Keep latest props available to the requestAnimationFrame loop without triggering frame teardowns
@@ -55,10 +56,29 @@ export function GridCanvas({
         col: p.col,
         startTime: performance.now(),
         duration: 1200,
-        type: 'goal'
+        type: 'goal',
+        keepShowing: false
       })
     }
     prevReachedRef.current = reached
+
+    if (pendingReset && !prevPendingResetRef.current) {
+      if (pendingReset.cause !== 'victory') {
+        keyAnimationsRef.current.push({
+          row: pendingReset.position.row,
+          col: pendingReset.position.col,
+          startTime: performance.now(),
+          duration: 1200,
+          type: pendingReset.cause,
+          keepShowing: true
+        })
+      }
+    }
+    if (!pendingReset && prevPendingResetRef.current) {
+      // Clear out any keepShowing animations
+      keyAnimationsRef.current = keyAnimationsRef.current.filter(anim => !anim.keepShowing)
+    }
+    prevPendingResetRef.current = pendingReset
 
     propsRef.current = {
       width,
@@ -449,18 +469,23 @@ export function GridCanvas({
         ctx.fillText('🏃', cx, cy + floatY)
       }
 
-      // 13. Draw Key Pickup Animations (Rendered on top of player)
+      // 13. Draw Key Pickup and Reset Animations (Rendered on top of player)
       for (let i = keyAnimationsRef.current.length - 1; i >= 0; i--) {
         const anim = keyAnimationsRef.current[i]
         const elapsed = time - anim.startTime
-        if (elapsed > anim.duration) {
+        if (elapsed > anim.duration && !anim.keepShowing) {
           keyAnimationsRef.current.splice(i, 1)
           continue
         }
         if (isVisible(anim.row, anim.col)) {
-          const progress = elapsed / anim.duration
-          const scale = 1 + progress * 1.5
-          const alpha = 1 - progress
+          // Clamp progress at 1 if keepShowing is true
+          const progress = Math.min(elapsed / anim.duration, 1)
+          const isHolding = anim.keepShowing && progress === 1
+          
+          // If holding, add a gentle pulse
+          const pulse = isHolding ? (Math.sin(time / 150) * 0.1) : 0
+          const scale = 1 + progress * 1.5 + pulse
+          const alpha = isHolding ? 1 : (1 - progress)
           
           // Add a slight upward float effect
           const floatUp = progress * cellSize * 0.5
@@ -472,37 +497,8 @@ export function GridCanvas({
           ctx.globalAlpha = alpha
           ctx.translate(cx, cy)
           
-          // Gold aura
-          const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
-          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
-          keyGlow.addColorStop(1, 'transparent')
-          ctx.fillStyle = keyGlow
-          ctx.beginPath()
-          ctx.arc(0, 0, cellSize * 0.5 * scale, 0, Math.PI * 2)
-          ctx.fill()
-          
-          ctx.fillStyle = '#000000'
-          ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(anim.type === 'goal' ? '🏁' : '🔑', 0, 0)
-          
-          ctx.restore()
-        }
-      }
-
-      // 14. Draw Pending Reset Collision/Victory
-      if (pendingReset && pendingReset.position) {
-        const { cause, position } = pendingReset
-        if (isVisible(position.row, position.col)) {
-          const cx = position.col * cellSize + cellSize / 2
-          const cy = position.row * cellSize + cellSize / 2
-          
-          ctx.save()
-          ctx.translate(cx, cy)
-          
-          if (cause === 'victory') {
-            const scale = 1 + (Math.sin(time / 150) * 0.2) // slight pulse
+          // Aura and text based on type
+          if (anim.type === 'key' || anim.type === 'goal') {
             const keyGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
             keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
             keyGlow.addColorStop(1, 'transparent')
@@ -515,16 +511,14 @@ export function GridCanvas({
             ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
-            ctx.fillText('🔑', 0, 0) // "exactly the same as the key"
-          } else if (cause === 'wall') {
-            const scale = 1 + (Math.sin(time / 100) * 0.15)
+            ctx.fillText(anim.type === 'goal' ? '🏁' : '🔑', 0, 0)
+          } else if (anim.type === 'wall') {
             ctx.fillStyle = '#ffffff'
             ctx.font = `bold ${Math.max(12 * scale, cellSize * 0.6 * scale)}px sans-serif`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText('🧱', 0, 0)
-          } else if (cause === 'ghost') {
-            const scale = 1 + (Math.sin(time / 100) * 0.15)
+          } else if (anim.type === 'ghost') {
             const ghostGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
             ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.7)')
             ghostGlow.addColorStop(1, 'transparent')
@@ -538,8 +532,7 @@ export function GridCanvas({
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText('👻', 0, 0)
-          } else if (cause === 'grid' || cause === 'hazard') {
-            const scale = 1 + (Math.sin(time / 100) * 0.15)
+          } else if (anim.type === 'grid' || anim.type === 'hazard') {
             const hazardGlow = ctx.createRadialGradient(0, 0, 2 * scale, 0, 0, cellSize * 0.5 * scale)
             hazardGlow.addColorStop(0, 'rgba(239, 68, 68, 0.5)')
             hazardGlow.addColorStop(1, 'transparent')
