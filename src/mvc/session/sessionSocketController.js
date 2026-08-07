@@ -81,6 +81,13 @@ function createSessionSocketController({ sessionManager, logger = console } = {}
       }
     },
 
+    [MessageType.RETURN_TO_LOBBY](_message, socket) {
+      const meta = socket.meta;
+      if (meta?.role === ClientRole.DISPLAY || (meta?.role === ClientRole.CONTROLLER && meta.isTrainer)) {
+        sessionManager.resetToLobby(meta.sessionId);
+      }
+    },
+
     [MessageType.PLAYER_INPUT](message, socket) {
       const meta = socket.meta;
       if (meta?.role === ClientRole.CONTROLLER) {

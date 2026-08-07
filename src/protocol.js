@@ -37,6 +37,7 @@ const MessageType = {
   TIMER_RESET: 'timer_reset',
   FOLLOWUP_END: 'followup_end',
   FOLLOWUP_NAVIGATE: 'followup_navigate',
+  RETURN_TO_LOBBY: 'return_to_lobby',
   PLAYER_INPUT: 'player_input',
   RESYNC_REQUEST: 'resync_request',
 

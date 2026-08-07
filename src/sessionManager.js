@@ -616,6 +616,7 @@ function buildControllerState(state, session, playerId) {
     ready: state.players.length >= MIN_PLAYERS,
     capacity: MAX_PLAYERS,
     pendingReset: state.pendingReset || null,
+    log: state.log,
   };
 }
 
@@ -1259,6 +1260,27 @@ class SessionManager {
       cycleRoles: true,
       previousRoles: session.state.roles,
     });
+    this.broadcastState(sessionId);
+    return true;
+  }
+
+  resetToLobby(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    session.state.status = GameStatus.LOBBY;
+    session.state.log = [];
+    session.state.nextEventId = 1;
+    session.state.trainerBroadcast = null;
+    session.state.trainerHighlightEventIds = [];
+    session.state.pendingReset = null;
+    session.state.followUpFocusedEventId = null;
+    session.state.summary = createSummaryState(START_LIVES);
+    session.state.phaseFlow = createPhaseFlowState({ phaseType: 'lobby' });
+    session.state.timer = createTimerState();
+
     this.broadcastState(sessionId);
     return true;
   }
