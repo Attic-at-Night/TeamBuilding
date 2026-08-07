@@ -68,8 +68,11 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
     const prevBroadcast = prev?.trainerBroadcast?.message
     const currBroadcast = curr?.trainerBroadcast?.message
 
+    const isVictoryReset = currReset && (currReset.cause === 'victory' || currReset.hazardType === 'victory')
+    const isHazardReset = currReset && !isVictoryReset
+
     // 1. Death / Life Lost Detection (including pendingReset on controller)
-    if (currLives < prevLives || (!prevReset && currReset)) {
+    if (currLives < prevLives || (!prevReset && isHazardReset)) {
       const lostCount = prevLives > currLives ? prevLives - currLives : 1
       const effectiveLives = currLives
 
@@ -104,6 +107,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
     }
     // 2. Round Win / Victory Detection
     else if (
+      (!prevReset && isVictoryReset) ||
       (currOutcome === 'success' && prevOutcome !== 'success') ||
       (currStatus === 'ended' && prevStatus !== 'ended' && currOutcome === 'success')
     ) {
@@ -111,7 +115,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
         id: `victory-${Date.now()}`,
         type: 'win',
         variant: 'success',
-        title: 'MAZE ESCAPED! VICTORY!',
+        title: 'MAZE DEFEATED! VICTORY!',
         subtitle: 'All keys collected and exit reached safely. Outstanding teamwork!',
         icon: Trophy,
         duration: 8000,
@@ -122,15 +126,17 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
       (currStatus === 'follow_up' && prevStatus !== 'follow_up') ||
       (currPhaseType === 'follow_up' && prevPhaseType !== 'follow_up')
     ) {
-      triggerNotification({
-        id: `followup-${Date.now()}`,
-        type: 'follow_up',
-        variant: 'info',
-        title: 'FOLLOW-UP PHASE STARTED',
-        subtitle: 'Gameplay paused. Proceeding into trainer guided debrief & reflection.',
-        icon: Clock,
-        duration: 6000,
-      })
+      if (notification?.type !== 'win') {
+        triggerNotification({
+          id: `followup-${Date.now()}`,
+          type: 'follow_up',
+          variant: 'info',
+          title: 'FOLLOW-UP PHASE STARTED',
+          subtitle: 'Gameplay paused. Proceeding into trainer guided debrief & reflection.',
+          icon: Clock,
+          duration: 6000,
+        })
+      }
     }
     // 4. Gameplay Phase Advance
     else if (
