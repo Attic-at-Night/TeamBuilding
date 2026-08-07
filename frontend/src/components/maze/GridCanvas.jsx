@@ -246,19 +246,16 @@ export function GridCanvas({
 
           // Pulsing warning ring
           const hazardPulse = Math.sin(tSec * 6 + h.row) * 2
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'
-          ctx.lineWidth = 2
+          const hazardGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, r + 4 + hazardPulse)
+          hazardGlow.addColorStop(0, 'rgba(239, 68, 68, 0.5)')
+          hazardGlow.addColorStop(1, 'transparent')
+          ctx.fillStyle = hazardGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r + 2 + hazardPulse, 0, Math.PI * 2)
-          ctx.stroke()
-
-          ctx.fillStyle = '#ef4444' // Bright Red
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 4 + hazardPulse, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('⚡', cx, cy)
@@ -275,21 +272,16 @@ export function GridCanvas({
           const r = cellSize * 0.38
 
           // Eerie purple glow
-          const ghostGlow = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r + 6)
-          ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.8)')
+          const ghostGlow = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r + 8)
+          ghostGlow.addColorStop(0, 'rgba(168, 85, 247, 0.7)')
           ghostGlow.addColorStop(1, 'transparent')
           ctx.fillStyle = ghostGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r + 6, 0, Math.PI * 2)
-          ctx.fill()
-
-          ctx.fillStyle = '#a855f7' // Purple Ghost Body
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 8, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.45)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.65)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('👻', cx, cy)
@@ -305,21 +297,16 @@ export function GridCanvas({
           const cy = k.row * cellSize + cellSize / 2 + keyFloat
 
           // Gold aura
-          const keyGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, cellSize * 0.4)
-          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.6)')
+          const keyGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, cellSize * 0.5)
+          keyGlow.addColorStop(0, 'rgba(234, 179, 8, 0.7)')
           keyGlow.addColorStop(1, 'transparent')
           ctx.fillStyle = keyGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, cellSize * 0.4, 0, Math.PI * 2)
-          ctx.fill()
-
-          ctx.fillStyle = '#eab308' // Amber Gold
-          ctx.beginPath()
-          ctx.arc(cx, cy, cellSize * 0.3, 0, Math.PI * 2)
+          ctx.arc(cx, cy, cellSize * 0.5, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#000000'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('🔑', cx, cy)
@@ -335,13 +322,16 @@ export function GridCanvas({
           const cy = l.row * cellSize + cellSize / 2
           const r = cellSize * 0.3 * (1 + heartbeat)
 
-          ctx.fillStyle = '#22c55e'
+          const lifeGlow = ctx.createRadialGradient(cx, cy, 2, cx, cy, r + 6)
+          lifeGlow.addColorStop(0, 'rgba(34, 197, 94, 0.6)')
+          lifeGlow.addColorStop(1, 'transparent')
+          ctx.fillStyle = lifeGlow
           ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.arc(cx, cy, r + 6, 0, Math.PI * 2)
           ctx.fill()
 
           ctx.fillStyle = '#ffffff'
-          ctx.font = `bold ${Math.max(10, cellSize * 0.4)}px sans-serif`
+          ctx.font = `bold ${Math.max(12, cellSize * 0.6)}px sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText('❤️', cx, cy)
