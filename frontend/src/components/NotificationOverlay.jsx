@@ -74,9 +74,10 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
       const effectiveLives = currLives
 
       if (effectiveLives > 0) {
-        const hazardLabel = currReset?.reason === 'ghost_collision' 
+        const cause = currReset?.cause || currReset?.hazardType || currReset?.reason
+        const hazardLabel = cause === 'ghost' 
           ? 'GHOST CAUGHT PLAYER!' 
-          : currReset?.reason === 'wall_hazard' 
+          : cause === 'wall' 
           ? 'WALL HAZARD COLLISION!' 
           : 'HAZARD HIT - LIFE LOST!'
 

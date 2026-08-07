@@ -597,7 +597,7 @@ function buildTrainerState(state, session) {
 function buildControllerState(state, session, playerId) {
   const roles = getRoleForPlayer(state, playerId);
   const role = getPrimaryRole(roles);
-  const { livesRemaining, ...controllerSummary } = state.summary;
+  const controllerSummary = state.summary;
   const mazeMeta = buildMazeMeta(state.maze);
   return {
     status: state.status,
