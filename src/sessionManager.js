@@ -597,8 +597,7 @@ function buildTrainerState(state, session) {
 function buildControllerState(state, session, playerId) {
   const roles = getRoleForPlayer(state, playerId);
   const role = getPrimaryRole(roles);
-  const controllerSummary = { ...state.summary };
-  delete controllerSummary.livesRemaining;
+  const controllerSummary = state.summary;
   const mazeMeta = buildMazeMeta(state.maze);
   return {
     status: state.status,
@@ -925,7 +924,6 @@ function beginGameplayPhase(state, phase, startedAt = Date.now()) {
 function beginFollowUpPhase(state, followingPhase, startedAt = Date.now(), options = {}) {
   const terminalOutcome = options?.terminalOutcome || null;
   const terminalReason = options?.terminalReason || null;
-  state.pendingReset = null;
   state.status = GameStatus.FOLLOW_UP;
   state.phaseFlow = createPhaseFlowState({
     phaseType: 'follow_up',
@@ -1518,11 +1516,7 @@ class SessionManager {
     });
 
     if (terminalOutcome) {
-      if (terminalOutcome === 'fail') {
-        finishGame(session.state, 'fail', terminalReason || 'terminal_outcome');
-      } else {
-        enterSessionOverview(session.state, terminalOutcome);
-      }
+      enterSessionOverview(session.state, terminalOutcome);
     } else if (Number.isInteger(followingPhase) && followingPhase < totalPhases) {
       session.state.summary.keysCollected = 0;
       session.state.summary.resets = 0;
@@ -1989,24 +1983,41 @@ class SessionManager {
 
     if (maze.reached) {
       if (exitUnlocked) {
-        const phaseFlow = state.phaseFlow || createPhaseFlowState();
-        if (state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
-          const endedAt = Date.now();
-          const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
-          const terminalReason = 'goal_reached';
-          appendLog(state, {
-            ts: endedAt,
-            event: 'session_end',
-            outcome: 'success',
-            reason: terminalReason,
-            keys: state.summary.keysCollected,
-            lives: state.summary.livesRemaining,
-          });
-          beginFollowUpPhase(state, currentPhase, endedAt);
-        } else {
-          finishGame(state, 'success', 'goal_reached');
+        if (!state.pendingReset) {
+          state.pendingReset = {
+            cause: 'victory',
+            hazardType: 'victory',
+            position: clonePoint(maze.playerPos),
+            message: 'Victory!',
+            expiresAt: Date.now() + 2500,
+          };
+          this.broadcastState(sessionId);
+
+          setTimeout(() => {
+            const s = this.sessions.get(sessionId);
+            if (!s || !s.state.pendingReset || s.state.pendingReset.cause !== 'victory') return;
+            s.state.pendingReset = null;
+
+            const phaseFlow = s.state.phaseFlow || createPhaseFlowState();
+            if (s.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+              const endedAt = Date.now();
+              const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+              const terminalReason = 'goal_reached';
+              appendLog(s.state, {
+                ts: endedAt,
+                event: 'session_end',
+                outcome: 'success',
+                reason: terminalReason,
+                keys: s.state.summary.keysCollected,
+                lives: s.state.summary.livesRemaining,
+              });
+              beginFollowUpPhase(s.state, currentPhase, endedAt);
+            } else {
+              finishGame(s.state, 'success', 'goal_reached');
+            }
+            this.broadcastState(sessionId);
+          }, 2500);
         }
-        this.broadcastState(sessionId);
         return true;
       } else {
         maze.reached = false;
@@ -2183,44 +2194,36 @@ class SessionManager {
 
     this.broadcastState(sessionId);
 
-    const s = this.sessions.get(sessionId);
-    if (!s) {
-      return;
-    }
-
-    if (s.state.summary.livesRemaining <= 0) {
-      s.state.pendingReset = null;
-      const phaseFlow = s.state.phaseFlow || createPhaseFlowState();
-      if (s.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
-        const endedAt = Date.now();
-        const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
-        const terminalReason = `${hazardType}_hazard`;
-        appendLog(s.state, {
-          ts: endedAt,
-          event: 'session_end',
-          outcome: 'fail',
-          reason: terminalReason,
-          keys: s.state.summary.keysCollected,
-          lives: s.state.summary.livesRemaining,
-        });
-        beginFollowUpPhase(s.state, currentPhase, endedAt, {
-          terminalOutcome: 'fail',
-          terminalReason,
-        });
-      } else {
-        finishGame(s.state, 'fail', `${hazardType}_hazard`);
-      }
-      this.broadcastState(sessionId);
-      return;
-    }
-
     setTimeout(() => {
-      const resetSession = this.sessions.get(sessionId);
-      if (!resetSession) {
+      const s = this.sessions.get(sessionId);
+      if (!s || !s.state.pendingReset) {
         return;
       }
-      resetSession.state.pendingReset = null;
-      resetRound(resetSession.state, 'hazard_hit', { hazardType });
+      s.state.pendingReset = null;
+      if (s.state.summary.livesRemaining <= 0) {
+        const phaseFlow = s.state.phaseFlow || createPhaseFlowState();
+        if (s.state.status === GameStatus.PLAYING && phaseFlow.phaseType === 'gameplay') {
+          const endedAt = Date.now();
+          const currentPhase = Number.isInteger(phaseFlow.currentPhase) ? phaseFlow.currentPhase : 1;
+          const terminalReason = `${hazardType}_hazard`;
+          appendLog(s.state, {
+            ts: endedAt,
+            event: 'session_end',
+            outcome: 'fail',
+            reason: terminalReason,
+            keys: s.state.summary.keysCollected,
+            lives: s.state.summary.livesRemaining,
+          });
+          beginFollowUpPhase(s.state, currentPhase, endedAt, {
+            terminalOutcome: 'fail',
+            terminalReason,
+          });
+        } else {
+          finishGame(s.state, 'fail', `${hazardType}_hazard`);
+        }
+      } else {
+        resetRound(s.state, 'hazard_hit', { hazardType });
+      }
       this.broadcastState(sessionId);
     }, RESET_FEEDBACK_MS);
   }
