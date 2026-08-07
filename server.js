@@ -35,7 +35,7 @@ function parsePort(value, fallbackPort = 3000) {
   return numericValue;
 }
 
-const fallbackPort = parsePort(process.env.PORT, 3000);
+const fallbackPort = 3000;
 let server;
 const sessionController = new SessionController({
   sessionModel,
