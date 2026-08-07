@@ -289,7 +289,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
   // --- Session Overview / Retrospective View (shown when session ends before trainer moves back to mode select) ---
   if (status === GameStatus.SESSION_OVERVIEW || status === GameStatus.ENDED) {
     const roundsData = extractRoundsData(log, stateSync?.summary)
-    const totalDurationSeconds = roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0)
+    const totalDurationSeconds = Math.round(roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0))
     const totalKeysCollected = roundsData.reduce((acc, r) => acc + (r.keysCollected || 0), 0)
     const totalPossibleKeys = roundsData.length * 3
     const totalHazardsHit = roundsData.reduce((acc, r) => acc + (r.hazardsHit || 0), 0)

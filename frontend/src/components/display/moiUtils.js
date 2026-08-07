@@ -245,15 +245,17 @@ function extractRoundsData(log, summary = {}) {
     }
 
     const moiEvents = getMoiEventsForPhase(log, roundNum)
-    const timelineDurationSeconds = Math.max(
-      durationSeconds,
-      moiEvents.reduce((max, entry) => Math.max(max, entry.t ?? 0), 0),
+    const timelineDurationSeconds = Math.round(
+      Math.max(
+        durationSeconds,
+        moiEvents.reduce((max, entry) => Math.max(max, entry.t ?? 0), 0),
+      )
     )
 
     roundsData.push({
       round: roundNum,
       outcome,
-      durationSeconds: timelineDurationSeconds,
+      durationSeconds: Math.round(timelineDurationSeconds),
       keysCollected,
       possibleKeys,
       hazardsHit,

@@ -24,7 +24,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
   const roundsData = extractRoundsData(log, summary)
 
   // Compute aggregate stats across all rounds
-  const totalDurationSeconds = roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0)
+  const totalDurationSeconds = Math.round(roundsData.reduce((acc, r) => acc + (r.durationSeconds || 0), 0))
   const totalKeysCollected = roundsData.reduce((acc, r) => acc + (r.keysCollected || 0), 0)
   const totalPossibleKeys = roundsData.reduce((acc, r) => acc + (r.possibleKeys || 3), 0)
   const totalHazardsHit = roundsData.reduce((acc, r) => acc + (r.hazardsHit || 0), 0)
@@ -111,7 +111,7 @@ export function DisplayDebrief({ stateSync, onRestart }) {
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
               <div className="flex flex-col bg-slate-950/60 p-2 rounded-xl border border-slate-800/50">
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Time</span>
-                <span className="font-extrabold text-white mt-0.5">{rd.durationSeconds}s</span>
+                <span className="font-extrabold text-white mt-0.5">{Math.round(rd.durationSeconds)}s</span>
               </div>
               <div className="flex flex-col bg-slate-950/60 p-2 rounded-xl border border-slate-800/50">
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Keys</span>
