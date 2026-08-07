@@ -113,7 +113,7 @@ export function NotificationOverlay({ stateSync, customNotification, onDismiss }
         title: 'MAZE ESCAPED! VICTORY!',
         subtitle: 'All keys collected and exit reached safely. Outstanding teamwork!',
         icon: Trophy,
-        persistent: true,
+        duration: 8000,
       })
     }
     // 3. Follow-Up Phase Detection

@@ -43,7 +43,7 @@ export function TrainerDashboard({ stateSync, onSend }) {
   const followingPhase = phaseFlow?.followingPhase || null
   const totalGameplayPhases = phaseFlow?.totalGameplayPhases || 3
   const selectedGameMode = stateSync?.nextGameMode || stateSync?.gameMode || GameMode.COMMUNICATION_CLARITY
-  const showModeSelection = status === GameStatus.LOBBY || status === GameStatus.SESSION_OVERVIEW
+  const showModeSelection = status === GameStatus.LOBBY || status === GameStatus.SESSION_OVERVIEW || status === GameStatus.ENDED
 
   // Timer calculation
   const remainingMs = timer?.remainingMs ?? phaseFlow?.phaseRemainingMs ?? 0
@@ -286,17 +286,23 @@ export function TrainerDashboard({ stateSync, onSend }) {
               </div>
               <div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 block">Facilitator Control</span>
-                <h2 className="text-xl font-black text-white">Select Game Mode</h2>
+                <h2 className="text-xl font-black text-white">
+                  {status === GameStatus.LOBBY ? 'Select Game Mode' : '3-Round Session Concluded'}
+                </h2>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 border border-indigo-700 text-indigo-200 shadow-sm">
-              {status === GameStatus.SESSION_OVERVIEW ? 'Session Overview' : `Lobby (${players.length}/4 Connected)`}
+              {status === GameStatus.LOBBY
+                ? `Lobby (${players.length}/4 Connected)`
+                : status === GameStatus.SESSION_OVERVIEW
+                ? '3 Rounds Completed'
+                : 'Session Ended'}
             </span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            {status === GameStatus.SESSION_OVERVIEW
-              ? 'Choose a game mode focus for the next session before launching into the maze.'
-              : 'Select the learning objective for this team session. At least 2 players must be connected to start.'}
+            {status === GameStatus.LOBBY
+              ? 'Select the learning objective for this team session. At least 2 players must be connected to start.'
+              : 'All 3 rounds have finished! Choose a game mode focus for the next session below, then launch when ready.'}
           </p>
         </div>
 
@@ -374,14 +380,20 @@ export function TrainerDashboard({ stateSync, onSend }) {
               onClick={sendRestart}
               className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-base font-black shadow-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all cursor-pointer"
             >
-              <RotateCcw className="w-5 h-5" />
-              <span>Start Next Game Session</span>
+              <Play className="w-5 h-5 fill-white" />
+              <span className="capitalize">Start Game Session ({selectedGameMode})</span>
             </button>
           )}
 
           {status === GameStatus.LOBBY && players.length < 2 && (
             <p className="text-xs text-amber-400/90 text-center font-medium">
               At least 2 players are required to start the session. Currently {players.length} connected.
+            </p>
+          )}
+
+          {status !== GameStatus.LOBBY && (
+            <p className="text-xs text-indigo-300/80 text-center font-medium">
+              Clicking start launches a new 3-round session in <span className="font-bold text-white capitalize">{selectedGameMode}</span> mode.
             </p>
           )}
         </div>

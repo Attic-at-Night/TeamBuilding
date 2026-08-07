@@ -22,8 +22,12 @@ npm run frontend:preview
 
 By default:
 
-- `npm run dev` assumes backend at `http://localhost:3000`
-- production build uses `window.location.origin`
+- `npm run dev` and production builds both use the page's own origin
+  (`window.location.origin`), relying on the Vite dev server's `/api`, `/join`,
+  and `/ws` proxy rules (see `vite.config.js`) to reach the backend at
+  `http://localhost:$PORT` (default `3000`). This works both for local
+  development and for remote/sandboxed preview environments where the
+  browser can't reach `localhost` directly.
 
 Optional env vars:
 

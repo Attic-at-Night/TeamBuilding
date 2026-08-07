@@ -347,10 +347,32 @@ export function getMockStateForView(viewKey) {
     }
   }
 
+  if (viewKey === 'controller_trainer_lobby') {
+    return {
+      stateSync: {
+        ...fullStateSync,
+        status: 'lobby',
+        viewerRole: 'trainer',
+      },
+      roleData: {},
+    }
+  }
+
   if (viewKey === 'controller_trainer') {
     return {
       stateSync: {
         ...fullStateSync,
+        viewerRole: 'trainer',
+      },
+      roleData: {},
+    }
+  }
+
+  if (viewKey === 'controller_trainer_overview') {
+    return {
+      stateSync: {
+        ...fullStateSync,
+        status: 'session_overview',
         viewerRole: 'trainer',
       },
       roleData: {},

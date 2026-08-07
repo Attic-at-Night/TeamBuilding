@@ -1,17 +1,22 @@
 function normalizeBackendOrigin(origin) {
-  if (origin) {
-    return origin.replace(/\/+$/, '')
+  const trimmedOrigin = typeof origin === 'string' ? origin.trim() : ''
+  if (trimmedOrigin) {
+    return trimmedOrigin.replace(/\/+$/, '')
   }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:3000'
-  }
-  return window.location.origin
+  // No explicit override: use the origin the page was actually loaded from.
+  // In dev this lets Vite's own proxy (see vite.config.js) forward /api, /join,
+  // and /ws to the real backend, which is always reachable from the Vite dev
+  // server itself (same machine/container) even when the browser viewing the
+  // page cannot reach "localhost" directly (e.g. remote preview environments
+  // like Google AI Studio, where "localhost" resolves to the viewer's own
+  // machine, not the container running the app).
+  return window.location.origin === 'null' ? '' : window.location.origin
 }
 
 function toWsUrl(httpOrigin) {
   const url = new URL(httpOrigin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.pathname = '/'
+  url.pathname = '/ws'
   return url.toString().replace(/\/$/, '')
 }
 
@@ -27,7 +32,7 @@ export function getBackendWsUrl() {
   const httpOrigin = getBackendHttpOrigin()
   if (!httpOrigin) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${window.location.host}`
+    return `${protocol}//${window.location.host}/ws`
   }
   return toWsUrl(httpOrigin)
 }

@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { SessionManager } = require('./src/sessionManager');
@@ -11,31 +12,37 @@ const { registerSessionRoutes } = require('./src/mvc/session/sessionRoutes');
 const { createSessionSocketController } = require('./src/mvc/session/sessionSocketController');
 const { detectNetworkConnection } = require('./src/network');
 const { getPublicSessionOrigin, getSessionOrigin } = require('./src/url');
+const { getServerPort } = require('./src/serverConfig');
 
 const app = express();
 const logStore = new SessionLogStore();
 const sessionManager = new SessionManager({ logStore, logger: console });
 const sessionModel = new SessionModel({ sessionManager });
 
-function parsePort(value, fallbackPort = 3000) {
-  if (typeof value !== 'string') {
-    return fallbackPort;
-  }
+const allowedCorsOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 
-  const trimmedValue = value.trim();
-  if (!/^\d+$/.test(trimmedValue)) {
-    return fallbackPort;
-  }
+const allowNullOrigin = process.env.CORS_ALLOW_NULL_ORIGIN === 'true';
 
-  const numericValue = Number.parseInt(trimmedValue, 10);
-  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 65535) {
-    return fallbackPort;
-  }
+const corsOptions = {
+  origin(origin, callback) {
+    const normalizedOrigin = typeof origin === 'string' ? origin.trim().replace(/\/+$/, '') : '';
+    if (!normalizedOrigin) {
+      callback(null, true);
+      return;
+    }
+    if (normalizedOrigin === 'null') {
+      callback(null, allowNullOrigin);
+      return;
+    }
+    callback(null, allowedCorsOrigins.includes(normalizedOrigin));
+  },
+  credentials: true,
+};
 
-  return numericValue;
-}
-
-const fallbackPort = parsePort(process.env.PORT, 3000);
+const fallbackPort = getServerPort();
 let server;
 const sessionController = new SessionController({
   sessionModel,
@@ -51,6 +58,7 @@ const sessionController = new SessionController({
 });
 
 app.set('trust proxy', true);
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/join' || req.path.endsWith('.html')) {
